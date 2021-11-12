@@ -10,6 +10,7 @@
 #include <vtkPointData.h>
 #include <vtkPolyData.h>
 #include <vtkSignedCharArray.h>
+#include <vtkUnsignedCharArray.h>
 
 #include <ttkMacros.h>
 #include <ttkUtils.h>
@@ -54,6 +55,11 @@ int ttkScalarFieldCriticalPoints::RequestData(
   vtkInformationVector *outputVector) {
 
   vtkDataSet *input = vtkDataSet::GetData(inputVector[0]);
+
+  #if TTK_ENABLE_MPI
+    this->setPointGhostArray(static_cast<unsigned char *>(ttkUtils::GetVoidPointer(input->GetPointGhostArray())));
+  #endif
+  
   vtkPolyData *output = vtkPolyData::GetData(outputVector, 0);
 
   ttk::Triangulation *triangulation = ttkAlgorithm::GetTriangulation(input);

@@ -125,6 +125,10 @@ namespace ttk {
       forceNonManifoldCheck = b;
     }
 
+    void setPointGhostArray(unsigned char * array) {
+      this->PointGhostArray = array;
+    }
+
     void displayStats();
 
   protected:
@@ -143,6 +147,7 @@ namespace ttk {
     int StoppingResolutionLevel{-1};
     bool IsResumable{false};
     double TimeLimit{};
+    unsigned char * PointGhostArray;
   };
 } // namespace ttk
 
@@ -215,15 +220,20 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
 
   Timer t;
 
-  std::vector<char> vertexTypes(vertexNumber_);
+  std::vector<char> vertexTypes(vertexNumber_, (char)(CriticalType::Regular));
 
+#if TTK_ENABLE_MPI
+if (this->PointGhostArray) {
+#endif
   if(triangulation) {
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp parallel for num_threads(threadNumber_)
 #endif
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
-
-      vertexTypes[i] = getCriticalType(i, offsets, triangulation);
+      #if TTK_ENABLE_MPI
+      if (!(this->PointGhostArray[i] & 1))
+      #endif
+        vertexTypes[i] = getCriticalType(i, offsets, triangulation);
     }
   } else if(vertexLinkEdgeLists_) {
     // legacy implementation
@@ -231,10 +241,19 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
 #pragma omp parallel for num_threads(threadNumber_)
 #endif
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
-
-      vertexTypes[i] = getCriticalType(i, offsets, (*vertexLinkEdgeLists_)[i]);
+      #if TTK_ENABLE_MPI
+      if (!(this->PointGhostArray[i] & 1))
+      #endif
+        vertexTypes[i] = getCriticalType(i, offsets, (*vertexLinkEdgeLists_)[i]);
     }
   }
+#if TTK_ENABLE_MPI
+}
+else {
+  printErr("Please use Ghost Arrays for parallel computation of critical points");
+  return -1;
+}       
+#endif
 
   SimplexId minimumNumber = 0, maximumNumber = 0, saddleNumber = 0,
             oneSaddleNumber = 0, twoSaddleNumber = 0, monkeySaddleNumber = 0;
@@ -311,7 +330,7 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
   criticalPoints_->reserve(vertexNumber_);
   for(SimplexId i = 0; i < vertexNumber_; i++) {
     if(vertexTypes[i] != (char)(CriticalType::Regular)) {
-      criticalPoints_->emplace_back(i, vertexTypes[i]);
+      criticalPoints_->emplace_back(i, vertexTypes[i]); // i: ttkVertexScalarField (local)
     }
   }
 
