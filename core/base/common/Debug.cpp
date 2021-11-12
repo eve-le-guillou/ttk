@@ -32,6 +32,14 @@ Debug::~Debug() {
 }
 
 int Debug::welcomeMsg(ostream &stream) {
+  
+  #if TTK_ENABLE_MPI
+    int rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if (rank != 0){
+      ttk::welcomeMsg_ = false;
+    }
+  #endif
 
   int priorityAsInt = (int)debug::Priority::PERFORMANCE;
 
