@@ -95,7 +95,10 @@ int ttkScalarFieldCriticalPoints::RequestData(
     (status = this->execute(
        static_cast<SimplexId *>(ttkUtils::GetVoidPointer(offsetField)),
        (TTK_TT *)triangulation->getData())));
-
+  
+  if(status == -1) {
+    vtkErrorMacro("Please use Ghost Arrays for parallel computation of critical points");
+  }
   if(status < 0)
     return 0;
 

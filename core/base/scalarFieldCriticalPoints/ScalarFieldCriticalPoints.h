@@ -158,7 +158,7 @@ int ttk::ScalarFieldCriticalPoints::execute(
   const SimplexId *const offsets, const triangulationType *triangulation) {
 
   checkProgressivityRequirement(triangulation);
-
+  int ret = 0;
   switch(BackEnd) {
 
     case BACKEND::PROGRESSIVE_TOPOLOGY:
@@ -166,7 +166,7 @@ int ttk::ScalarFieldCriticalPoints::execute(
       break;
 
     case BACKEND::GENERIC:
-      this->executeLegacy(offsets, triangulation);
+      ret = this->executeLegacy(offsets, triangulation);
       break;
 
     default:
@@ -174,7 +174,7 @@ int ttk::ScalarFieldCriticalPoints::execute(
   }
 
   printMsg(ttk::debug::Separator::L1);
-  return 0;
+  return ret;
 }
 
 template <class triangulationType>
