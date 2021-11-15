@@ -6,6 +6,7 @@ COMMON_EXPORTS ttk::debug::LineMode ttk::Debug::lastLineMode
 COMMON_EXPORTS bool ttk::welcomeMsg_ = true;
 COMMON_EXPORTS bool ttk::goodbyeMsg_ = true;
 COMMON_EXPORTS int ttk::globalDebugLevel_ = 0;
+COMMON_EXPORTS int ttk::rank_ = 0;
 
 using namespace std;
 using namespace ttk;
@@ -34,9 +35,9 @@ Debug::~Debug() {
 int Debug::welcomeMsg(ostream &stream) {
   
   #if TTK_ENABLE_MPI
-    int rank = 0;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    if (rank != 0){
+    MPI_Comm_rank(MPI_COMM_WORLD, &ttk::rank_);
+
+    if (ttk::rank_ != 0){
       ttk::welcomeMsg_ = false;
     }
   #endif
