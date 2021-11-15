@@ -33,6 +33,7 @@
 #include <ProgressiveTopology.h>
 #include <Triangulation.h>
 #include <UnionFind.h>
+#include <DataSetAttributes.h>
 
 namespace ttk {
 
@@ -231,7 +232,7 @@ if (this->PointGhostArray) {
 #endif
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
       #if TTK_ENABLE_MPI
-      if (!(this->PointGhostArray[i] & 1))
+      if (!(this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT))
       #endif
         vertexTypes[i] = getCriticalType(i, offsets, triangulation);
     }
@@ -242,7 +243,7 @@ if (this->PointGhostArray) {
 #endif
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
       #if TTK_ENABLE_MPI
-      if (!(this->PointGhostArray[i] & 1))
+      if (!(this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT))
       #endif
         vertexTypes[i] = getCriticalType(i, offsets, (*vertexLinkEdgeLists_)[i]);
     }
