@@ -11,9 +11,14 @@
 #include <vtkPolyData.h>
 #include <vtkSignedCharArray.h>
 #include <vtkUnsignedCharArray.h>
+#include <vtkInformationVector.h>
+#include <vtkMultiProcessController.h>
+#include <vtkMPIController.h>
+
 
 #include <ttkMacros.h>
 #include <ttkUtils.h>
+#include <DataSetAttributes.h>
 
 using namespace std;
 using namespace ttk;
@@ -56,10 +61,6 @@ int ttkScalarFieldCriticalPoints::RequestData(
 
   vtkDataSet *input = vtkDataSet::GetData(inputVector[0]);
 
-  #if TTK_ENABLE_MPI
-    this->setPointGhostArray(static_cast<unsigned char *>(ttkUtils::GetVoidPointer(input->GetPointGhostArray())));
-  #endif
-  
   vtkPolyData *output = vtkPolyData::GetData(outputVector, 0);
 
   ttk::Triangulation *triangulation = ttkAlgorithm::GetTriangulation(input);
@@ -84,6 +85,58 @@ int ttkScalarFieldCriticalPoints::RequestData(
   // setting up the base layer
   this->preconditionTriangulation(triangulation);
   this->setOutput(&criticalPoints_);
+
+  #if TTK_ENABLE_MPI
+
+    unsigned char *pointGhostArray = static_cast<unsigned char *>(ttkUtils::GetVoidPointer(input->GetPointGhostArray()));
+    // Get BoundingBox
+    const double* oriBounds = input->GetBounds();
+    vtkBoundingBox myBoundingBox(oriBounds[0],oriBounds[1],oriBounds[2],oriBounds[3],oriBounds[4],oriBounds[5]);
+    //myBoundingBox.Inflate(-0.001);
+    double bounds[6];
+    myBoundingBox.GetBounds(bounds);
+    vtkMPIController* controller = vtkMPIController::SafeDownCast(vtkMultiProcessController::GetGlobalController());    
+    // Send bounding boxes across all processes
+    vtkSmartPointer<vtkDoubleArray> allBoundsArray = vtkSmartPointer<vtkDoubleArray>::New(); 
+    allBoundsArray->SetNumberOfComponents(6); 
+    allBoundsArray->SetNumberOfTuples(controller->GetNumberOfProcesses());  
+    controller->AllGather(bounds, reinterpret_cast<double*>(allBoundsArray->GetVoidPointer(0)), 6);    
+    // Retrieve neighbouring processes   
+    int myRank = controller->GetLocalProcessId();
+    std::vector<int> MySubNeighbors;
+    for (int p = 0; p < myRank; p++)
+    {
+      double potentialNeighborBounds[6];
+      allBoundsArray->GetTuple(p, potentialNeighborBounds);
+      vtkBoundingBox potentialNeighborBoundingBox(potentialNeighborBounds);
+      if (myBoundingBox.Intersects(potentialNeighborBoundingBox))
+      {
+        string str = "Add neighbour, rank:";
+        printMsg(str + std::to_string(myRank));
+        MySubNeighbors.push_back(p);
+      }
+    }
+    // Set points in boundary to Ghost
+    int n = MySubNeighbors.size();  
+    for (int p = 0; p < n; p++){
+      double bb[6];
+      allBoundsArray->GetTuple(MySubNeighbors[p], bb);
+      vtkBoundingBox neighborBB(bb[0], bb[1], bb[2], bb[3], bb[4], bb[5]);
+      for (vtkIdType id = 0; id < triangulation->getNumberOfVertices(); id++){
+        float pt[3];
+        triangulation->getVertexPoint(id, pt[0], pt[1], pt[2]);
+        double dPt[3] = {(double)pt[0], (double)pt[1], (double)pt[2]};
+        if (neighborBB.ContainsPoint(dPt))
+        {
+          pointGhostArray[id] = (unsigned char) ttk::type::DUPLICATEPOINT;
+        }
+      }
+        
+    }
+
+  this->setPointGhostArray(pointGhostArray);
+
+  #endif
 
   printMsg("Starting computation...");
   printMsg({{"  Scalar Array", inputScalarField->GetName()},

@@ -2,3 +2,5 @@ NAME
   ttkScalarFieldCriticalPoints
 DEPENDS
   ttkAlgorithm
+PRIVATE_DEPENDS
+  VTK::ParallelCore
