@@ -2,6 +2,37 @@ Thanks for contributing to TTK!
 
 Please find below a few guidelines that we invite you to consider before making a pull request.
 
+# 0. Getting set up with Github
+Please find below generic recommendations for setting up your fork of TTK's main repository.
+  - Setting up your Github account:
+    - Create an account on [Github](https://github.com/).
+    - If applicable, we recommand to upgrade (for free) this account to a Github Pro account, through the [Github education program](https://docs.github.com/en/education/explore-the-benefits-of-teaching-and-learning-with-github-education/use-github-in-your-classroom-and-research/apply-for-an-educator-or-researcher-discount).
+  - Forking TTK's main repository:
+    - Go to [TTK's main source code repository](https://github.com/topology-tool-kit/ttk) and click on the "Fork" button (top right corner).
+    - In the remainder, let us designate by `@PUBLIC` the URL of [TTK's main source code repository](https://github.com/topology-tool-kit/ttk) (i.e. `@PUBLIC = https://github.com/topology-tool-kit/ttk`)
+    - Similarly, let us designate by `@FORK` the URL of your public fork of TTK's public repository.
+  - Creating your private TTK repository:
+    - We recommand to use a private repository for the development of unpublished features.
+    - For this, create and setup a *private* repository (e.g. `ttk-yourusername`). Let us call it `@PRIVATE`.
+    - Clone your `@PRIVATE` repository locally and enter the following commands:
+    ```
+    $ git clone @PRIVATE ttk-yourusername
+    $ cd ttk-yourusername
+    $ git remote add ttk-public @PUBLIC
+    $ git remote add ttk-fork @FORK
+    ```
+  - Daily usage:
+    - At this point, you can regularly keep your private repository up-to-date by entering the following command in it:
+    ```
+    $ git pull ttk-public dev
+    ```
+    - When developing a new unpublished feature, we recommand to create a new branch on your `@PRIVATE` repository.
+    - When this feature is ready to be made public (e.g. after publication of the corresponding research), push the corresponding branch to your `@FORK`. This will enable you to open a pull-request (PR) to the [main TTK repository](https://github.com/topology-tool-kit/ttk).
+  - Setting up [ttk-data](https://github.com/topology-tool-kit/ttk-data)
+    - The repository [ttk-data](https://github.com/topology-tool-kit/ttk-data) hosts data sets and examples.
+    - We recommand that you re-iterate the above procedure (with a public fork and a private repository) for this repository as well.
+    - Note that only the features which are covered by examples in [ttk-data](https://github.com/topology-tool-kit/ttk-data) are tested by the continuous integration.
+
 # 1. Authorship
   - Please enter in header files doxygen style information regarding authorship and, if applicable, related publications. See [core/base/topologicalSimplification/TopologicalSimplification.h](https://github.com/topology-tool-kit/ttk/blob/dev/core/base/topologicalSimplification/TopologicalSimplification.h) for a base layer example, [core/vtk/ttkTopologicalSimplification/ttkTopologicalSimplification.h](https://github.com/topology-tool-kit/ttk/blob/dev/core/vtk/ttkTopologicalSimplification/ttkTopologicalSimplification.h) for a vtk wrapper example and [paraview/TopologicalSimplification/TopologicalSimplification.xml](https://github.com/topology-tool-kit/ttk/blob/dev/paraview/TopologicalSimplification/TopologicalSimplification.xml) for a ParaView plugin example.
 
@@ -14,13 +45,20 @@ $ clang-format -i -style=file core/\*/\*/\*h core/\*/\*/\*hpp core/\*/\*/\*cpp c
   - To make your life even easier, we recommend that you setup a clang-format pre-commit hook, which will automatically run clang-format on any of your commits to your local repository.
 For this, we recommend to use scripts such as [this one](https://github.com/barisione/clang-format-hooks/).
 
+# 3. Code documentation and examples
+  - TTK uses [Doxygen](https://www.doxygen.nl/index.html) for the automatic generation of online documentation.
+  - Please use Doxygen commands for documenting your header files:
+    - Examples for the base layer:
+      - [Triangulation.h](https://github.com/topology-tool-kit/ttk/blob/dev/core/base/triangulation/Triangulation.h)
+      - [HelloWorld.h](https://github.com/topology-tool-kit/ttk/blob/dev/core/base/helloWorld/HelloWorld.h)
+    - Examples for the VTK layer:
+      - [ttkHelloWorld.h](https://github.com/topology-tool-kit/ttk/blob/dev/core/vtk/ttkHelloWorld/ttkHelloWorld.h)
 
-# 3. Continuous integration
-  - TTK uses some basic continuous integration, which consists in testing for build success under Linux, Windows and MacOs (with [Azure](https://azure.microsoft.com/en-us/services/devops/pipelines/)) upon each commit or pull request. **Your pull request will not be merged if it fails these tests**.
-  - To make your life easier, we recommend that you sign up for this (free) service and that you connect your TTK github fork to it. This will run the build tests upon each of your commits to your local TTK repository.
+# 4. Continuous integration
+  - TTK uses some basic continuous integration, which consists in testing for build and run success under Linux, Windows and MacOs upon each commit or pull request. **Your pull request will not be merged if it fails these tests**.
 
 
-# 4. Submitting code
+# 5. Submitting code
   - If you plan to submit a **new module**, we invite you to read our [Guidelines for Developing a New TTK Module](https://github.com/topology-tool-kit/ttk/wiki/Guidelines-for-Developing-a-New-TTK-Module). 
   - Prepare your pull-request to the **dev** branch of [TTK](https://github.com/topology-tool-kit/ttk/tree/dev). **Before** submitting it, please make sure that your fork is in sync with the latest version of TTK's source tree (typically by entering a command like <code>git pull ttk-public dev</code>, where <code>ttk-public</code> is the name of your remote pointing to TTK's public source tree). Please make sure that your new code runs fine with TTK's performance mode turned on <code>TTK\_ENABLE\_KAMIKAZE=ON</code> (OFF by default on the **dev** branch).
   - Please submit a pull-request with an example to the **dev** branch of [ttk-data](https://github.com/topology-tool-kit/ttk-data/tree/dev):
