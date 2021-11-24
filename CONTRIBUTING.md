@@ -45,29 +45,82 @@ $ clang-format -i -style=file core/\*/\*/\*h core/\*/\*/\*hpp core/\*/\*/\*cpp c
   - To make your life even easier, we recommend that you setup a clang-format pre-commit hook, which will automatically run clang-format on any of your commits to your local repository.
 For this, we recommend to use scripts such as [this one](https://github.com/barisione/clang-format-hooks/).
 
-# 3. Code documentation and examples
+# 3. Examples
+- The repository [ttk-data](https://github.com/topology-tool-kit/ttk-data) hosts a list of data sets and example pipelines.
+- If you develop some new feature in TTK (either by creating a new module or by extending an existing one), we strongly invite you to produce an entry in the [ttk-data](https://github.com/topology-tool-kit/ttk-data) repository (by pull request).
+- Note that, at the moment, only code features which are used in [ttk-data](https://github.com/topology-tool-kit/ttk-data)'s state files are automatically tested by continuous integration (upon code pull requests). Also, note that only such code features (i.e. automatically tested by continuous integration) are considered for integration in Kitware's ParaView official distribution.
+- Please checkout [ttk-data](https://github.com/topology-tool-kit/ttk-data)'s [CONTRIBUTOR Guide](https://github.com/topology-tool-kit/ttk-data/blob/dev/CONTRIBUTING.md) for detailed instructions.
+
+# 4. Code documentation
   - TTK uses [Doxygen](https://www.doxygen.nl/index.html) for the automatic generation of online documentation.
-  - Please use Doxygen commands for documenting your header files:
+  - Each base layer header file should be organized as follows:
+    - A overview, including in order:
+      - the line `\ingroup base`
+      - the name of the class, with the command `\class ttk::`
+      - the author(s) of the class, with the command `\author`
+      - the date of creation of the class, with the command `\date`
+      - a one-liner description of the class, with the command `\brief`
+      - a long description of the purpose of the class
+      - related publications (if applicable)
+      - a list of related classes, with the command `\sa`:
+        - other base layer modules commonly used in conjunction with the present filter
+      - a pointer to the corresponding VTK layer class (if applicable), with the command `\sa`
+    - Each function should be documented as follows:
+      - a quick description, with preconditions `\pre`, notes `\note` or warnings `\warning` if needed.
+      - a description of each attribute, with the command `\param`
+      - a description of the return code, with the command `\return`
+      - a list of related functions, with the command `\sa`
+  - Each VTK layer header file should be organized as follows:
+    - A overview, including in order:
+      - the line `\ingroup vtk`
+      - the name of the class, with the command `\class`
+      - the author(s) of the class, with the command `\author`
+      - the date of creation of the class, with the command `\date`
+      - a one-liner description of the class, with the command `\brief`
+      - a long description of the purpose of the class
+      - if the class is a filter (this is the case in general):
+        - a description of each input, with the command `\param`, describing:
+          - its class (e.g. `vtkDataSet`, `vtkPointSet`, etc.)
+          - the required data arrays if any (type, size, meaning).
+        - a description of each output, with the command `\param`, describing:
+          - the output class (e.g. `vtkDataSet`, `vtkPointSet`, etc.)
+          - a description of each new data array:
+            - type, size, meaning
+            - if a new data are encodes with an integer code a specific classification (for instance, a region type), please clarify the mapping class/integer (e.g. the correspondence integer to region type).
+        - recall that the class can be used as any other VTK filter
+      - related publications (if applicable)
+      - a list of related classes, with the command `\sa`:
+        - other VTK filters commonly used in conjunction with the present filter
+      - a pointer to the corresponding base code class (if applicable), with the command `\sa`
+      - the list of **all** the entries from [TTK's Examples website](https://topology-tool-kit.github.io/examples/) including the filter.
+  - Each ParaView XML file should be organized as follows:
+    - an overview `<Documentation>` section, within the main `<SourceProxy>` section:
+      - this should be a copy of the overview description of the corresponding VTK class (see above).
+    - for each `<InputProperty>` section:
+      - include a `<Documentation>` section describing the corresponding input data, by specifying:
+        - its class (e.g. `vtkDataSet`, `vtkPointSet`, etc.)
+        - the required data arrays if any (type, size, meaning).
+    - for each other Property section (`<IntProperty>`, `<StringProperty>`, etc.), specify:
+      - the meaning of the input option and its possible values.
+  - Please check out the following examples for inspiration:
     - Examples for the base layer:
       - [Triangulation.h](https://github.com/topology-tool-kit/ttk/blob/dev/core/base/triangulation/Triangulation.h)
+      - [TopologicalSimplification.h](https://github.com/topology-tool-kit/ttk/blob/dev/core/base/topologicalSimplification/TopologicalSimplification.h)
       - [HelloWorld.h](https://github.com/topology-tool-kit/ttk/blob/dev/core/base/helloWorld/HelloWorld.h)
     - Examples for the VTK layer:
+      - [ttkTopologicalSimplification.h](https://github.com/topology-tool-kit/ttk/blob/dev/core/vtk/ttkTopologicalSimplification/ttkTopologicalSimplification.h)
       - [ttkHelloWorld.h](https://github.com/topology-tool-kit/ttk/blob/dev/core/vtk/ttkHelloWorld/ttkHelloWorld.h)
+    - Examples for the ParaView XML layer:
+      - [TopologicalSimplification](https://github.com/topology-tool-kit/ttk/blob/dev/paraview/xmls/TopologicalSimplification.xml)
 
-# 4. Continuous integration
+
+# 5. Continuous integration
   - TTK uses some basic continuous integration, which consists in testing for build and run success under Linux, Windows and MacOs upon each commit or pull request. **Your pull request will not be merged if it fails these tests**.
 
-
-# 5. Submitting code
+# 6. Submitting code
   - If you plan to submit a **new module**, we invite you to read our [Guidelines for Developing a New TTK Module](https://github.com/topology-tool-kit/ttk/wiki/Guidelines-for-Developing-a-New-TTK-Module). 
   - Prepare your pull-request to the **dev** branch of [TTK](https://github.com/topology-tool-kit/ttk/tree/dev). **Before** submitting it, please make sure that your fork is in sync with the latest version of TTK's source tree (typically by entering a command like <code>git pull ttk-public dev</code>, where <code>ttk-public</code> is the name of your remote pointing to TTK's public source tree). Please make sure that your new code runs fine with TTK's performance mode turned on <code>TTK\_ENABLE\_KAMIKAZE=ON</code> (OFF by default on the **dev** branch).
-  - Please submit a pull-request with an example to the **dev** branch of [ttk-data](https://github.com/topology-tool-kit/ttk-data/tree/dev):
-    - Provide a ParaView state file (*.pvsm) in the [<code>states/</code>](https://github.com/topology-tool-kit/ttk-data/tree/dev/states) directory which runs your new module. This example will be used to both test and demo your module.
-    - Provide new data sets if needed. For new data sets, please update the [README](https://github.com/topology-tool-kit/ttk-data/blob/dev/README) file to include the corresponding references.
-    - Make sure to remove all absolute paths from the state file example generated by ParaView (with a text editor). The state files are supposed to be run with ParaView from the root directory of [ttk-data](https://github.com/topology-tool-kit/ttk-data) (see [TTK's tutorial page](https://topology-tool-kit.github.io/tutorials.html) for examples).
-  - Please submit a pull-request to [topology-tool-kit.github.io](https://github.com/topology-tool-kit/topology-tool-kit.github.io):
-    - For this, generate a screenshot for the above ParaView state file example. Please include on the left of your screenshot a terminal with TTK's output (see examples on [TTK's gallery page](https://topology-tool-kit.github.io/gallery.html)). Please use a dark color theme if possible.
-    - Place that screenshot in [<code>img/gallery/</code>](https://github.com/topology-tool-kit/topology-tool-kit.github.io/tree/master/img/gallery)
+  - Please submit a pull-request with an example to [ttk-data](https://github.com/topology-tool-kit/ttk-data/tree/dev). See [ttk-data](https://github.com/topology-tool-kit/ttk-data)'s [CONTRIBUTOR Guide](https://github.com/topology-tool-kit/ttk-data/blob/dev/CONTRIBUTING.md) for detailed instructions.
   - Prepare, if possible, a video tutorial, similar to those available on [TTK's tutorial page](https://topology-tool-kit.github.io/tutorials.html). In this video, you should:
     - Open a terminal and load your state file demo to explain what it does and what it shows.
     - Re-open ParaView and re-create your state file pipeline **from scratch** (to show people how to put things together)
