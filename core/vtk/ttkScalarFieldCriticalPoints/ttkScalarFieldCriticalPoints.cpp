@@ -242,7 +242,7 @@ int ttkScalarFieldCriticalPoints::RequestData(
     vertexIds->SetName(ttk::VertexScalarFieldName);
 
     for(size_t i = 0; i < criticalPoints_.size(); i++) {
-      vertexIds->SetTuple1(i, criticalPoints_[i].first);
+      vertexIds->SetTuple1(i, this->GlobalIdsArray[criticalPoints_[i].first]);
     }
 
     output->GetPointData()->AddArray(vertexIds);
