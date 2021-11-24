@@ -130,6 +130,26 @@ namespace ttk {
       this->PointGhostArray = array;
     }
 
+    void setGlobalIdsArray(long int * array) {
+      this->GlobalIdsArray = array;
+    }
+
+    void setVertex2Process(double * array) {
+      this->Vertex2Process = array;
+    }    
+  
+    void setIsOnMPIBoundary(unsigned char * array) {
+      this->IsOnMPIBoundary = array;
+    }    
+
+    void setMyRank(int rank){
+      this->MyRank = rank;
+    }
+
+    void setNumberOfProcesses(int number){
+      this->NumberOfProcesses = number;
+    }
+
     void displayStats();
 
   protected:
@@ -149,6 +169,11 @@ namespace ttk {
     bool IsResumable{false};
     double TimeLimit{};
     unsigned char * PointGhostArray;
+    long int * GlobalIdsArray;
+    double * Vertex2Process;
+    unsigned char * IsOnMPIBoundary;
+    int NumberOfProcesses;
+    int MyRank;
   };
 } // namespace ttk
 
@@ -232,7 +257,19 @@ if (this->PointGhostArray) {
 #endif
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
       #if TTK_ENABLE_MPI
-      if (!(this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT))
+      bool isNotToCompute = false;
+      if (this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT) {
+        isNotToCompute = true;
+      }
+      else if (this->MyRank > 0 && this->IsOnMPIBoundary[i]){
+        for (int j = 0; j < this->MyRank; j++){
+          isNotToCompute = (this->Vertex2Process[i*(this->NumberOfProcesses)+j] == 1);
+          if (isNotToCompute){
+            break;
+          }
+        }
+      }
+      if (!isNotToCompute)
       #endif
         vertexTypes[i] = getCriticalType(i, offsets, triangulation);
     }
@@ -243,7 +280,19 @@ if (this->PointGhostArray) {
 #endif
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
       #if TTK_ENABLE_MPI
-      if (!(this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT))
+      bool isNotToCompute = false;
+      if (this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT) {
+        isNotToCompute = true;
+      }
+      else if (this->MyRank > 0 && this->IsOnMPIBoundary[i]){
+        for (int j = 0; j < this->MyRank; j++){
+          isNotToCompute = (this->Vertex2Process[i*(this->NumberOfProcesses)+j] == 1);
+          if (isNotToCompute){
+            break;
+          }
+        }
+      }
+      if (!isNotToCompute)
       #endif
         vertexTypes[i] = getCriticalType(i, offsets, (*vertexLinkEdgeLists_)[i]);
     }

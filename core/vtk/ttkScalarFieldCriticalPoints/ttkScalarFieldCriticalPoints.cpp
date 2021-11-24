@@ -88,53 +88,81 @@ int ttkScalarFieldCriticalPoints::RequestData(
 
   #if TTK_ENABLE_MPI
 
-    unsigned char *pointGhostArray = static_cast<unsigned char *>(ttkUtils::GetVoidPointer(input->GetPointGhostArray()));
+    // Retrieve neighbouring processes     
+    vtkMPIController* controller = vtkMPIController::SafeDownCast(vtkMultiProcessController::GetGlobalController());    
+    int myRank = controller->GetLocalProcessId();
+    int numberOfProcesses = controller->GetNumberOfProcesses();
+    this->setNumberOfProcesses(numberOfProcesses);
+    this->setMyRank(myRank);
+
     // Get BoundingBox
     const double* oriBounds = input->GetBounds();
     vtkBoundingBox myBoundingBox(oriBounds[0],oriBounds[1],oriBounds[2],oriBounds[3],oriBounds[4],oriBounds[5]);
-    //myBoundingBox.Inflate(-0.001);
+    myBoundingBox.Inflate();
     double bounds[6];
     myBoundingBox.GetBounds(bounds);
-    vtkMPIController* controller = vtkMPIController::SafeDownCast(vtkMultiProcessController::GetGlobalController());    
+
+    int vertexNumber = triangulation->getNumberOfVertices();
     // Send bounding boxes across all processes
     vtkSmartPointer<vtkDoubleArray> allBoundsArray = vtkSmartPointer<vtkDoubleArray>::New(); 
     allBoundsArray->SetNumberOfComponents(6); 
-    allBoundsArray->SetNumberOfTuples(controller->GetNumberOfProcesses());  
+    allBoundsArray->SetNumberOfTuples(numberOfProcesses);  
     controller->AllGather(bounds, reinterpret_cast<double*>(allBoundsArray->GetVoidPointer(0)), 6);    
-    // Retrieve neighbouring processes   
-    int myRank = controller->GetLocalProcessId();
-    std::vector<int> MySubNeighbors;
-    for (int p = 0; p < myRank; p++)
-    {
-      double potentialNeighborBounds[6];
-      allBoundsArray->GetTuple(p, potentialNeighborBounds);
-      vtkBoundingBox potentialNeighborBoundingBox(potentialNeighborBounds);
-      if (myBoundingBox.Intersects(potentialNeighborBoundingBox))
-      {
-        string str = "Add neighbour, rank:";
-        printMsg(str + std::to_string(myRank));
-        MySubNeighbors.push_back(p);
+
+    unsigned char *pointGhostArray = static_cast<unsigned char *>(ttkUtils::GetVoidPointer(input->GetPointGhostArray()));
+    long int * globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(input->GetPointData()->GetArray("GlobalPointIds")));
+    this->setGlobalIdsArray(globalPointsId);
+    vtkSmartPointer<vtkUnsignedCharArray> isOnMPIBoundary = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    isOnMPIBoundary->SetNumberOfComponents(1);
+    isOnMPIBoundary->SetNumberOfTuples(vertexNumber);
+    vtkSmartPointer<vtkDoubleArray> vertex2Process = vtkSmartPointer<vtkDoubleArray>::New();
+    vertex2Process->SetNumberOfComponents(numberOfProcesses);
+    vertex2Process->SetNumberOfTuples(vertexNumber);
+    vertex2Process->Fill(0);
+    unsigned char isNeighborGhost;
+    for (vtkIdType id = 0; id < vertexNumber; id++){
+      isNeighborGhost =  static_cast<unsigned char>(0);
+      if (!(pointGhostArray[id] & ttk::type::DUPLICATEPOINT)){
+        int neighborNumber = triangulation->getVertexNeighborNumber(id);
+        int i = 0;
+        while ((!isNeighborGhost) & (i < neighborNumber)){
+          SimplexId neighborId = 0;
+          triangulation->getVertexNeighbor(id, i, neighborId);
+          if (myRank == 1){
+            if (globalPointsId[id] == 1445){
+              }
+          }
+          if (pointGhostArray[neighborId] & ttk::type::DUPLICATEPOINT){
+            isNeighborGhost = static_cast<unsigned char>(1);
+          }
+          i++;
+        }
       }
+      isOnMPIBoundary->SetTuple1(id, isNeighborGhost);
     }
-    // Set points in boundary to Ghost
-    int n = MySubNeighbors.size();  
-    for (int p = 0; p < n; p++){
-      double bb[6];
-      allBoundsArray->GetTuple(MySubNeighbors[p], bb);
-      vtkBoundingBox neighborBB(bb[0], bb[1], bb[2], bb[3], bb[4], bb[5]);
-      for (vtkIdType id = 0; id < triangulation->getNumberOfVertices(); id++){
+    for (vtkIdType id = 0; id < vertexNumber; id++){
+      std::vector<double> neigh(numberOfProcesses, 0);
+      neigh[myRank] = 1;
+      if (isOnMPIBoundary->GetTuple(id)){
         float pt[3];
         triangulation->getVertexPoint(id, pt[0], pt[1], pt[2]);
         double dPt[3] = {(double)pt[0], (double)pt[1], (double)pt[2]};
-        if (neighborBB.ContainsPoint(dPt))
-        {
-          pointGhostArray[id] = (unsigned char) ttk::type::DUPLICATEPOINT;
-        }
+          for (int p = 0; p < numberOfProcesses; p++){
+            double bb[6];
+            allBoundsArray->GetTuple(p, bb);
+            vtkBoundingBox neighborBB(bb[0], bb[1], bb[2], bb[3], bb[4], bb[5]);
+            if (neighborBB.ContainsPoint(dPt))
+              {
+                neigh[p] = 1;
+              }
+          }
       }
-        
-    }
-
-  this->setPointGhostArray(pointGhostArray);
+       vertex2Process->SetTuple(id, neigh.data()); 
+     }     
+    
+  this->setVertex2Process(static_cast<double *>(ttkUtils::GetVoidPointer(vertex2Process)));
+  this->setIsOnMPIBoundary(static_cast<unsigned char *>(ttkUtils::GetVoidPointer(isOnMPIBoundary)));
+  this->setPointGhostArray(pointGhostArray);   
 
   #endif
 
