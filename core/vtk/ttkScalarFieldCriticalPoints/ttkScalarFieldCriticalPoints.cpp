@@ -95,26 +95,35 @@ int ttkScalarFieldCriticalPoints::RequestData(
     this->setNumberOfProcesses(numberOfProcesses);
     this->setMyRank(myRank);
 
-    // Get BoundingBox
-    const double* oriBounds = input->GetBounds();
-    vtkBoundingBox myBoundingBox(oriBounds[0],oriBounds[1],oriBounds[2],oriBounds[3],oriBounds[4],oriBounds[5]);
-    myBoundingBox.Inflate();
-    double bounds[6];
-    myBoundingBox.GetBounds(bounds);
+    // Set pointGhostArray and GlobalIdsArray    
+    unsigned char *pointGhostArray = static_cast<unsigned char *>(ttkUtils::GetVoidPointer(input->GetPointGhostArray()));
+    unsigned char *cellGhostArray = static_cast<unsigned char *>(ttkUtils::GetVoidPointer(input->GetCellGhostArray()));
+    this->setPointGhostArray(pointGhostArray);   
+    long int * globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(input->GetPointData()->GetArray("GlobalPointIds")));
+    this->setGlobalIdsArray(globalPointsId);    
 
     int vertexNumber = triangulation->getNumberOfVertices();
-    
+
+    // Construct bounding box
+    float pt[3];  
+    double bounds[6] = {0,0,0,0,0,0};
+    for (vtkIdType id = 0; id < vertexNumber; id++){
+      if (!(pointGhostArray[id] & ttk::type::DUPLICATEPOINT)){
+        triangulation->getVertexPoint(id, pt[0], pt[1], pt[2]);
+        bounds[0] = std::min(bounds[0], (double)pt[0]);
+        bounds[1] = std::max(bounds[1], (double)pt[0]);
+        bounds[2] = std::min(bounds[2], (double)pt[1]);
+        bounds[3] = std::max(bounds[3], (double)pt[1]);      
+        bounds[4] = std::min(bounds[4], (double)pt[2]);
+        bounds[5] = std::max(bounds[5], (double)pt[2]);     
+      } 
+    }
+
     // Send bounding boxes across all processes
     vtkSmartPointer<vtkDoubleArray> allBoundsArray = vtkSmartPointer<vtkDoubleArray>::New(); 
     allBoundsArray->SetNumberOfComponents(6); 
     allBoundsArray->SetNumberOfTuples(numberOfProcesses);  
     controller->AllGather(bounds, reinterpret_cast<double*>(allBoundsArray->GetVoidPointer(0)), 6);    
-
-    // Set pointGhostArray and GlobalIdsArray    
-    unsigned char *pointGhostArray = static_cast<unsigned char *>(ttkUtils::GetVoidPointer(input->GetPointGhostArray()));
-    this->setPointGhostArray(pointGhostArray);   
-    long int * globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(input->GetPointData()->GetArray("GlobalPointIds")));
-    this->setGlobalIdsArray(globalPointsId);
 
     // Stores whether a vertex is on the boundary (doesn't take ghost points into account)    
     vtkSmartPointer<vtkUnsignedCharArray> isOnMPIBoundary = vtkSmartPointer<vtkUnsignedCharArray>::New();
@@ -128,26 +137,28 @@ int ttkScalarFieldCriticalPoints::RequestData(
     vertex2Process->SetNumberOfTuples(vertexNumber);
 
     std::vector<double> neigh(numberOfProcesses, 0);
-    double bb[6];
-    float pt[3];  
+    double bb[6];  
     double dPt[3];  
+    int cellVertexNumber = 0;
+    int v_id;
 
-    // Construct isOnMPIBoundary and vertex2Process
-    for (vtkIdType id = 0; id < vertexNumber; id++){
-      if (!(pointGhostArray[id] & ttk::type::DUPLICATEPOINT)){
-        int neighborNumber = triangulation->getVertexNeighborNumber(id);
-        for (int i =0; i < neighborNumber; i++){
-          SimplexId neighborId = 0;
-          triangulation->getVertexNeighbor(id, i, neighborId);
-          if (pointGhostArray[neighborId] & ttk::type::DUPLICATEPOINT){
-            isOnMPIBoundary->SetTuple1(id, 1);
-            break;
+    // Construct isOnMPIBoundary
+    for (vtkIdType id = 0; id < triangulation->getNumberOfCells(); id ++){
+      if (cellGhostArray[id] & ttk::type::DUPLICATEPOINT){
+        cellVertexNumber = triangulation->getCellVertexNumber(id);
+        for (int vertex = 0; vertex < cellVertexNumber; vertex ++){
+          triangulation->getCellVertex(id, vertex, v_id);
+          if (!(pointGhostArray[v_id] & ttk::type::DUPLICATEPOINT)){
+            isOnMPIBoundary->SetTuple1(v_id, 1);
           }
         }
       }
+    }
+    // Construct vertex2Process
+    for (vtkIdType id = 0; id < vertexNumber; id++){
       std::fill(neigh.begin(), neigh.end(), 0);
       neigh[myRank] = 1;
-      if (isOnMPIBoundary->GetTuple(id)){
+      if ((*isOnMPIBoundary->GetTuple(id)) == 1){
         triangulation->getVertexPoint(id, pt[0], pt[1], pt[2]);
         for (int p = 0; p < numberOfProcesses; p++){
           allBoundsArray->GetTuple(p, bb);
