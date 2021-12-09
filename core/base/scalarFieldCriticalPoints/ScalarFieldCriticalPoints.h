@@ -134,10 +134,10 @@ namespace ttk {
       this->GlobalIdsArray = array;
     }
 
-    void setVertex2Process(double * array) {
+    void setVertex2Process(std::vector<std::vector<int>> array) {
       this->Vertex2Process = array;
-    }    
-  
+    }
+
     void setIsOnMPIBoundary(unsigned char * array) {
       this->IsOnMPIBoundary = array;
     }    
@@ -170,7 +170,7 @@ namespace ttk {
     double TimeLimit{};
     unsigned char * PointGhostArray;
     long int * GlobalIdsArray;
-    double * Vertex2Process;
+    std::vector<std::vector<int>> Vertex2Process;
     unsigned char * IsOnMPIBoundary;
     int NumberOfProcesses;
     int MyRank;
@@ -249,7 +249,7 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
   std::vector<char> vertexTypes(vertexNumber_, (char)(CriticalType::Regular));
 
 #if TTK_ENABLE_MPI
-if (this->PointGhostArray) {
+  if(this->PointGhostArray || (this->NumberOfProcesses == 1)) {
 #endif
   if(triangulation) {
 #ifdef TTK_ENABLE_OPENMP
@@ -258,15 +258,11 @@ if (this->PointGhostArray) {
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
       #if TTK_ENABLE_MPI
       bool isNotToCompute = false;
-      if (this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT) {
-        isNotToCompute = true;
-      }
-      else if (this->MyRank > 0 && this->IsOnMPIBoundary[i]){
-        for (int j = 0; j < this->MyRank; j++){
-          isNotToCompute = (this->Vertex2Process[i*(this->NumberOfProcesses)+j] == 1);
-          if (isNotToCompute){
-            break;
-          }
+      if(this->NumberOfProcesses > 1) {
+        if(this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT) {
+          isNotToCompute = true;
+        } else if(this->MyRank > 0 && this->IsOnMPIBoundary[i]) {
+          isNotToCompute = ((this->Vertex2Process)[i][0] < this->MyRank);
         }
       }
       if (!isNotToCompute)
@@ -281,15 +277,11 @@ if (this->PointGhostArray) {
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
       #if TTK_ENABLE_MPI
       bool isNotToCompute = false;
-      if (this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT) {
-        isNotToCompute = true;
-      }
-      else if (this->MyRank > 0 && this->IsOnMPIBoundary[i]){
-        for (int j = 0; j < this->MyRank; j++){
-          isNotToCompute = (this->Vertex2Process[i*(this->NumberOfProcesses)+j] == 1);
-          if (isNotToCompute){
-            break;
-          }
+      if(this->NumberOfProcesses > 1) {
+        if(this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT) {
+          isNotToCompute = true;
+        } else if(this->MyRank > 0 && this->IsOnMPIBoundary[i]) {
+          isNotToCompute = ((this->Vertex2Process)[i][0] < this->MyRank);
         }
       }
       if (!isNotToCompute)

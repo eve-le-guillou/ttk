@@ -58,7 +58,7 @@ int ttkScalarFieldCriticalPoints::RequestData(
   vtkInformation *ttkNotUsed(request),
   vtkInformationVector **inputVector,
   vtkInformationVector *outputVector) {
-
+  this->setThreadNumber(1);
   vtkDataSet *input = vtkDataSet::GetData(inputVector[0]);
 
   vtkPolyData *output = vtkPolyData::GetData(outputVector, 0);
@@ -87,94 +87,111 @@ int ttkScalarFieldCriticalPoints::RequestData(
   this->setOutput(&criticalPoints_);
 
   #if TTK_ENABLE_MPI
+  Timer t_mpi;
+  // Get processes information
+  vtkMPIController *controller = vtkMPIController::SafeDownCast(
+    vtkMultiProcessController::GetGlobalController());
+  int myRank = controller->GetLocalProcessId();
+  int numberOfProcesses = controller->GetNumberOfProcesses();
+  this->setNumberOfProcesses(numberOfProcesses);
+  this->setMyRank(myRank);
 
-    // Get processes information
-    vtkMPIController* controller = vtkMPIController::SafeDownCast(vtkMultiProcessController::GetGlobalController());    
-    int myRank = controller->GetLocalProcessId();
-    int numberOfProcesses = controller->GetNumberOfProcesses();
-    this->setNumberOfProcesses(numberOfProcesses);
-    this->setMyRank(myRank);
+  controller->Barrier();
+  if(myRank == 0) {
+    t_mpi.reStart();
+  }
+  // Set GlobalIdsArray
+  long int *globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(
+    input->GetPointData()->GetArray("GlobalPointIds")));
+  this->setGlobalIdsArray(globalPointsId);
 
-    // Set pointGhostArray and GlobalIdsArray    
-    unsigned char *pointGhostArray = static_cast<unsigned char *>(ttkUtils::GetVoidPointer(input->GetPointGhostArray()));
-    unsigned char *cellGhostArray = static_cast<unsigned char *>(ttkUtils::GetVoidPointer(input->GetCellGhostArray()));
-    this->setPointGhostArray(pointGhostArray);   
-    long int * globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(input->GetPointData()->GetArray("GlobalPointIds")));
-    this->setGlobalIdsArray(globalPointsId);    
+  if(numberOfProcesses > 1) {
+
+    // Set pointGhostArray
+    unsigned char *pointGhostArray = static_cast<unsigned char *>(
+      ttkUtils::GetVoidPointer(input->GetPointGhostArray()));
+    unsigned char *cellGhostArray = static_cast<unsigned char *>(
+      ttkUtils::GetVoidPointer(input->GetCellGhostArray()));
+    this->setPointGhostArray(pointGhostArray);
 
     int vertexNumber = triangulation->getNumberOfVertices();
 
     // Construct bounding box
-    float pt[3];  
-    double bounds[6] = {0,0,0,0,0,0};
-    for (vtkIdType id = 0; id < vertexNumber; id++){
-      if (!(pointGhostArray[id] & ttk::type::DUPLICATEPOINT)){
+    float pt[3];
+    double bounds[6] = {0, 0, 0, 0, 0, 0};
+    for(vtkIdType id = 0; id < vertexNumber; id++) {
+      if(!(pointGhostArray[id] & ttk::type::DUPLICATEPOINT)) {
         triangulation->getVertexPoint(id, pt[0], pt[1], pt[2]);
         bounds[0] = std::min(bounds[0], (double)pt[0]);
         bounds[1] = std::max(bounds[1], (double)pt[0]);
         bounds[2] = std::min(bounds[2], (double)pt[1]);
-        bounds[3] = std::max(bounds[3], (double)pt[1]);      
+        bounds[3] = std::max(bounds[3], (double)pt[1]);
         bounds[4] = std::min(bounds[4], (double)pt[2]);
-        bounds[5] = std::max(bounds[5], (double)pt[2]);     
-      } 
+        bounds[5] = std::max(bounds[5], (double)pt[2]);
+      }
     }
 
     // Send bounding boxes across all processes
-    vtkSmartPointer<vtkDoubleArray> allBoundsArray = vtkSmartPointer<vtkDoubleArray>::New(); 
-    allBoundsArray->SetNumberOfComponents(6); 
-    allBoundsArray->SetNumberOfTuples(numberOfProcesses);  
-    controller->AllGather(bounds, reinterpret_cast<double*>(allBoundsArray->GetVoidPointer(0)), 6);    
+    vtkSmartPointer<vtkDoubleArray> allBoundsArray
+      = vtkSmartPointer<vtkDoubleArray>::New();
+    allBoundsArray->SetNumberOfComponents(6);
+    allBoundsArray->SetNumberOfTuples(numberOfProcesses);
+    controller->AllGather(
+      bounds, reinterpret_cast<double *>(allBoundsArray->GetVoidPointer(0)), 6);
 
-    // Stores whether a vertex is on the boundary (doesn't take ghost points into account)    
-    vtkSmartPointer<vtkUnsignedCharArray> isOnMPIBoundary = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    // Stores whether a vertex is on the boundary (doesn't take ghost points
+    // into account)
+    vtkSmartPointer<vtkUnsignedCharArray> isOnMPIBoundary
+      = vtkSmartPointer<vtkUnsignedCharArray>::New();
     isOnMPIBoundary->SetNumberOfComponents(1);
     isOnMPIBoundary->SetNumberOfTuples(vertexNumber);
     isOnMPIBoundary->Fill(0);
 
     // Stores which process contains this vertex
-    vtkSmartPointer<vtkDoubleArray> vertex2Process = vtkSmartPointer<vtkDoubleArray>::New();
-    vertex2Process->SetNumberOfComponents(numberOfProcesses);
-    vertex2Process->SetNumberOfTuples(vertexNumber);
+    std::vector<std::vector<int>> vertex2Process(
+      vertexNumber, std::vector<int>(0));
 
-    std::vector<double> neigh(numberOfProcesses, 0);
-    double bb[6];  
-    double dPt[3];  
+    double bb[6];
+    double dPt[3];
     int cellVertexNumber = 0;
     int v_id;
 
     // Construct isOnMPIBoundary
-    for (vtkIdType id = 0; id < triangulation->getNumberOfCells(); id ++){
-      if (cellGhostArray[id] & ttk::type::DUPLICATEPOINT){
+    for(vtkIdType id = 0; id < triangulation->getNumberOfCells(); id++) {
+      if(cellGhostArray[id] & ttk::type::DUPLICATEPOINT) {
         cellVertexNumber = triangulation->getCellVertexNumber(id);
-        for (int vertex = 0; vertex < cellVertexNumber; vertex ++){
+        for(int vertex = 0; vertex < cellVertexNumber; vertex++) {
           triangulation->getCellVertex(id, vertex, v_id);
-          if (!(pointGhostArray[v_id] & ttk::type::DUPLICATEPOINT)){
+          if(!(pointGhostArray[v_id] & ttk::type::DUPLICATEPOINT)) {
             isOnMPIBoundary->SetTuple1(v_id, 1);
           }
         }
       }
     }
     // Construct vertex2Process
-    for (vtkIdType id = 0; id < vertexNumber; id++){
-      std::fill(neigh.begin(), neigh.end(), 0);
-      neigh[myRank] = 1;
-      if ((*isOnMPIBoundary->GetTuple(id)) == 1){
-        triangulation->getVertexPoint(id, pt[0], pt[1], pt[2]);
-        for (int p = 0; p < numberOfProcesses; p++){
-          allBoundsArray->GetTuple(p, bb);
-          dPt[0] = (double)pt[0]; dPt[1] = (double)pt[1]; dPt[2] = (double)pt[2];
-          vtkBoundingBox neighborBB(bb[0], bb[1], bb[2], bb[3], bb[4], bb[5]);
-          if (neighborBB.ContainsPoint(dPt))
-            neigh[p] = 1;
+    for(vtkIdType id = 0; id < vertexNumber; id++) {
+      for(int p = 0; p < numberOfProcesses; p++) {
+        if(p == myRank) {
+          vertex2Process[id].push_back(p);
+        } else {
+          if((*isOnMPIBoundary->GetTuple(id)) == 1) {
+            triangulation->getVertexPoint(id, pt[0], pt[1], pt[2]);
+            allBoundsArray->GetTuple(p, bb);
+            dPt[0] = (double)pt[0];
+            dPt[1] = (double)pt[1];
+            dPt[2] = (double)pt[2];
+            vtkBoundingBox neighborBB(bb[0], bb[1], bb[2], bb[3], bb[4], bb[5]);
+            if(neighborBB.ContainsPoint(dPt))
+              vertex2Process[id].push_back(p);
+          }
         }
       }
-      vertex2Process->SetTuple(id, neigh.data());       
-    }  
-    
-  this->setVertex2Process(static_cast<double *>(ttkUtils::GetVoidPointer(vertex2Process)));
-  this->setIsOnMPIBoundary(static_cast<unsigned char *>(ttkUtils::GetVoidPointer(isOnMPIBoundary)));
-
-  #endif
+    }
+    this->setVertex2Process(vertex2Process);
+    this->setIsOnMPIBoundary(
+      static_cast<unsigned char *>(ttkUtils::GetVoidPointer(isOnMPIBoundary)));
+  }
+#endif
 
   printMsg("Starting computation...");
   printMsg({{"  Scalar Array", inputScalarField->GetName()},
@@ -192,7 +209,14 @@ int ttkScalarFieldCriticalPoints::RequestData(
   }
   if(status < 0)
     return 0;
-
+#if TTK_ENABLE_MPI
+  controller->Barrier();
+  if(myRank == 0) {
+    printMsg("Computation performed using " + std::to_string(numberOfProcesses)
+               + " MPI processes",
+             1, t_mpi.getElapsedTime(), threadNumber_);
+  }
+#endif
   // allocate the output
   vtkNew<vtkSignedCharArray> vertexTypes{};
   vertexTypes->SetNumberOfComponents(1);
@@ -253,7 +277,11 @@ int ttkScalarFieldCriticalPoints::RequestData(
     vertexIds->SetName(ttk::VertexScalarFieldName);
 
     for(size_t i = 0; i < criticalPoints_.size(); i++) {
+#if TTK_ENABLE_MPI
       vertexIds->SetTuple1(i, this->GlobalIdsArray[criticalPoints_[i].first]);
+#else
+      vertexIds->SetTuple1(i, criticalPoints_[i].first);
+#endif
     }
 
     output->GetPointData()->AddArray(vertexIds);
