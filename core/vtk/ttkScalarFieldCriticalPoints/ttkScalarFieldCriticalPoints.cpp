@@ -2,19 +2,19 @@
 
 #include <vtkInformation.h>
 
+#include <vtkCellData.h>
 #include <vtkDoubleArray.h>
 #include <vtkFloatArray.h>
 #include <vtkIdTypeArray.h>
+#include <vtkInformationVector.h>
 #include <vtkIntArray.h>
+#include <vtkMPIController.h>
+#include <vtkMultiProcessController.h>
 #include <vtkNew.h>
 #include <vtkPointData.h>
 #include <vtkPolyData.h>
 #include <vtkSignedCharArray.h>
 #include <vtkUnsignedCharArray.h>
-#include <vtkInformationVector.h>
-#include <vtkMultiProcessController.h>
-#include <vtkMPIController.h>
-
 
 #include <ttkMacros.h>
 #include <ttkUtils.h>
@@ -103,6 +103,8 @@ int ttkScalarFieldCriticalPoints::RequestData(
   // Set GlobalIdsArray
   long int *globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(
     input->GetPointData()->GetArray("GlobalPointIds")));
+  int *processId = static_cast<int *>(
+    ttkUtils::GetVoidPointer(input->GetCellData()->GetArray("ProcessId")));
   this->setGlobalIdsArray(globalPointsId);
 
   if(numberOfProcesses > 1) {
@@ -116,29 +118,6 @@ int ttkScalarFieldCriticalPoints::RequestData(
 
     int vertexNumber = triangulation->getNumberOfVertices();
 
-    // Construct bounding box
-    float pt[3];
-    double bounds[6] = {0, 0, 0, 0, 0, 0};
-    for(vtkIdType id = 0; id < vertexNumber; id++) {
-      if(!(pointGhostArray[id] & ttk::type::DUPLICATEPOINT)) {
-        triangulation->getVertexPoint(id, pt[0], pt[1], pt[2]);
-        bounds[0] = std::min(bounds[0], (double)pt[0]);
-        bounds[1] = std::max(bounds[1], (double)pt[0]);
-        bounds[2] = std::min(bounds[2], (double)pt[1]);
-        bounds[3] = std::max(bounds[3], (double)pt[1]);
-        bounds[4] = std::min(bounds[4], (double)pt[2]);
-        bounds[5] = std::max(bounds[5], (double)pt[2]);
-      }
-    }
-
-    // Send bounding boxes across all processes
-    vtkSmartPointer<vtkDoubleArray> allBoundsArray
-      = vtkSmartPointer<vtkDoubleArray>::New();
-    allBoundsArray->SetNumberOfComponents(6);
-    allBoundsArray->SetNumberOfTuples(numberOfProcesses);
-    controller->AllGather(
-      bounds, reinterpret_cast<double *>(allBoundsArray->GetVoidPointer(0)), 6);
-
     // Stores whether a vertex is on the boundary (doesn't take ghost points
     // into account)
     vtkSmartPointer<vtkUnsignedCharArray> isOnMPIBoundary
@@ -149,14 +128,17 @@ int ttkScalarFieldCriticalPoints::RequestData(
 
     // Stores which process contains this vertex
     std::vector<std::vector<int>> vertex2Process(
-      vertexNumber, std::vector<int>(0));
+      vertexNumber, std::vector<int>(1, myRank));
 
     double bb[6];
     double dPt[3];
     int cellVertexNumber = 0;
     int v_id;
+    int localProcessId;
+    int counter;
+    int sizeVector;
 
-    // Construct isOnMPIBoundary
+    // Construct isOnMPIBoundary and vertex2Process
     for(vtkIdType id = 0; id < triangulation->getNumberOfCells(); id++) {
       if(cellGhostArray[id] & ttk::type::DUPLICATEPOINT) {
         cellVertexNumber = triangulation->getCellVertexNumber(id);
@@ -164,25 +146,21 @@ int ttkScalarFieldCriticalPoints::RequestData(
           triangulation->getCellVertex(id, vertex, v_id);
           if(!(pointGhostArray[v_id] & ttk::type::DUPLICATEPOINT)) {
             isOnMPIBoundary->SetTuple1(v_id, 1);
-          }
-        }
-      }
-    }
-    // Construct vertex2Process
-    for(vtkIdType id = 0; id < vertexNumber; id++) {
-      for(int p = 0; p < numberOfProcesses; p++) {
-        if(p == myRank) {
-          vertex2Process[id].push_back(p);
-        } else {
-          if((*isOnMPIBoundary->GetTuple(id)) == 1) {
-            triangulation->getVertexPoint(id, pt[0], pt[1], pt[2]);
-            allBoundsArray->GetTuple(p, bb);
-            dPt[0] = (double)pt[0];
-            dPt[1] = (double)pt[1];
-            dPt[2] = (double)pt[2];
-            vtkBoundingBox neighborBB(bb[0], bb[1], bb[2], bb[3], bb[4], bb[5]);
-            if(neighborBB.ContainsPoint(dPt))
-              vertex2Process[id].push_back(p);
+            localProcessId = processId[id];
+            counter = 0;
+            sizeVector = vertex2Process[v_id].size();
+            while((vertex2Process[v_id][counter] < localProcessId)
+                  && (sizeVector > counter)) {
+              counter++;
+            }
+            if(sizeVector == counter) {
+              vertex2Process[v_id].push_back(localProcessId);
+            } else {
+              if(localProcessId != vertex2Process[v_id][counter]) {
+                vertex2Process[v_id].insert(
+                  vertex2Process[v_id].begin() + counter, localProcessId);
+              }
+            }
           }
         }
       }
