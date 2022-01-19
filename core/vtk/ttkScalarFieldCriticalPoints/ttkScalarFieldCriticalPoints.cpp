@@ -120,8 +120,8 @@ int ttkScalarFieldCriticalPoints::RequestData(
 
     // Stores whether a vertex is on the boundary (doesn't take ghost points
     // into account)
-    vtkSmartPointer<vtkUnsignedCharArray> isOnMPIBoundary
-      = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    vtkSmartPointer<vtkIntArray> isOnMPIBoundary
+      = vtkSmartPointer<vtkIntArray>::New();
     isOnMPIBoundary->SetNumberOfComponents(1);
     isOnMPIBoundary->SetNumberOfTuples(vertexNumber);
     isOnMPIBoundary->Fill(0);
@@ -130,16 +130,14 @@ int ttkScalarFieldCriticalPoints::RequestData(
     std::vector<std::vector<int>> vertex2Process(
       vertexNumber, std::vector<int>(1, myRank));
 
-    double bb[6];
-    double dPt[3];
     int cellVertexNumber = 0;
     int v_id;
     int localProcessId;
     int counter;
     int sizeVector;
-
+    
     // Construct isOnMPIBoundary and vertex2Process
-    for(vtkIdType id = 0; id < triangulation->getNumberOfCells(); id++) {
+    for(int id = 0; id < triangulation->getNumberOfCells(); id++) {
       if(cellGhostArray[id] & ttk::type::DUPLICATEPOINT) {
         cellVertexNumber = triangulation->getCellVertexNumber(id);
         for(int vertex = 0; vertex < cellVertexNumber; vertex++) {
@@ -155,33 +153,43 @@ int ttkScalarFieldCriticalPoints::RequestData(
             }
             if(sizeVector == counter) {
               vertex2Process[v_id].push_back(localProcessId);
+		
             } else {
               if(localProcessId != vertex2Process[v_id][counter]) {
-                vertex2Process[v_id].insert(
-                  vertex2Process[v_id].begin() + counter, localProcessId);
-              }
+		vertex2Process[v_id].insert(vertex2Process[v_id].begin()+counter, localProcessId);
+		}
             }
           }
-        }
+	}
+	}
       }
-    }
+    
     this->setVertex2Process(vertex2Process);
     this->setIsOnMPIBoundary(
-      static_cast<unsigned char *>(ttkUtils::GetVoidPointer(isOnMPIBoundary)));
+      static_cast<int *>(ttkUtils::GetVoidPointer(isOnMPIBoundary)));
   }
-#endif
+  controller->Barrier();
+  if(myRank == 0) {
+    printMsg("Preparation performed using " + std::to_string(numberOfProcesses)
+               + " MPI processes lasted :"+ std::to_string(t_mpi.getElapsedTime()));
+  }
+  controller->Barrier();
+  if(myRank == 0) {
+	t_mpi.reStart();
+  }
 
+#endif
+  
   printMsg("Starting computation...");
   printMsg({{"  Scalar Array", inputScalarField->GetName()},
             {"  Offset Array", offsetField ? offsetField->GetName() : "None"}});
-
   int status = 0;
   ttkTemplateMacro(
     triangulation->getType(),
     (status = this->execute(
        static_cast<SimplexId *>(ttkUtils::GetVoidPointer(offsetField)),
        (TTK_TT *)triangulation->getData())));
-  
+
   if(status == -1) {
     vtkErrorMacro("Please use Ghost Arrays for parallel computation of critical points");
   }
@@ -189,12 +197,13 @@ int ttkScalarFieldCriticalPoints::RequestData(
     return 0;
 #if TTK_ENABLE_MPI
   controller->Barrier();
+
   if(myRank == 0) {
     printMsg("Computation performed using " + std::to_string(numberOfProcesses)
-               + " MPI processes",
-             1, t_mpi.getElapsedTime(), threadNumber_);
+              + " MPI processes lasted :"+ std::to_string(t_mpi.getElapsedTime()));
   }
 #endif
+
   // allocate the output
   vtkNew<vtkSignedCharArray> vertexTypes{};
   vertexTypes->SetNumberOfComponents(1);
@@ -247,7 +256,6 @@ int ttkScalarFieldCriticalPoints::RequestData(
   } else {
     output->GetPointData()->RemoveArray("IsOnBoundary");
   }
-
   if(VertexIds) {
     vtkNew<ttkSimplexIdTypeArray> vertexIds{};
     vertexIds->SetNumberOfComponents(1);
@@ -266,7 +274,6 @@ int ttkScalarFieldCriticalPoints::RequestData(
   } else {
     output->GetPointData()->RemoveArray(ttk::VertexScalarFieldName);
   }
-
   if(VertexScalars) {
     for(SimplexId i = 0; i < input->GetPointData()->GetNumberOfArrays(); i++) {
 
@@ -289,6 +296,5 @@ int ttkScalarFieldCriticalPoints::RequestData(
         input->GetPointData()->GetArray(i)->GetName());
     }
   }
-
   return 1;
 }

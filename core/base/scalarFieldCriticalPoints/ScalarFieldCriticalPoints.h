@@ -139,7 +139,7 @@ namespace ttk {
       this->Vertex2Process = array;
     }
 
-    void setIsOnMPIBoundary(unsigned char * array) {
+    void setIsOnMPIBoundary(int * array) {
       this->IsOnMPIBoundary = array;
     }    
 
@@ -172,7 +172,7 @@ namespace ttk {
     unsigned char * PointGhostArray;
     long int * GlobalIdsArray;
     std::vector<std::vector<int>> Vertex2Process;
-    unsigned char * IsOnMPIBoundary;
+    int * IsOnMPIBoundary;
     int NumberOfProcesses;
     int MyRank;
   };
@@ -260,7 +260,7 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
       #if TTK_ENABLE_MPI
       bool isNotToCompute = false;
       if(this->NumberOfProcesses > 1) {
-        if(this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT) {
+	if(this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT) {
           isNotToCompute = true;
         } else if(this->MyRank > 0 && this->IsOnMPIBoundary[i]) {
           isNotToCompute = ((this->Vertex2Process)[i][0] < this->MyRank);
