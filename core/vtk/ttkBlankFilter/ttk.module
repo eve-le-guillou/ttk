@@ -1,0 +1,9 @@
+NAME
+  ttkBlankFilter
+SOURCES
+  ttkBlankFilter.cpp
+HEADERS
+  ttkBlankFilter.h
+DEPENDS
+  blankFilter
+  ttkAlgorithm
