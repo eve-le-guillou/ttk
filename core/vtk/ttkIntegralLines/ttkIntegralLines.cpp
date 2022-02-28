@@ -44,6 +44,7 @@ int ttkIntegralLines::FillOutputPortInformation(int port,
 int ttkIntegralLines::getTrajectories(vtkDataSet *input,
                                       ttk::Triangulation *triangulation,
                                       vector<vector<SimplexId>> &trajectories,
+                                      vector<vector<double>> &distanceFromSeed,
                                       vtkUnstructuredGrid *output) {
   vtkSmartPointer<vtkUnstructuredGrid> ug
     = vtkSmartPointer<vtkUnstructuredGrid>::New();
@@ -70,29 +71,26 @@ int ttkIntegralLines::getTrajectories(vtkDataSet *input,
     inputScalars[k]->SetName(scalarArrays[k]->GetName());
   }
 
-  float p0[3];
-  float p1[3];
+  float p[3];
   vtkIdType ids[2];
   for(SimplexId i = 0; i < (SimplexId)trajectories.size(); ++i) {
     if(trajectories[i].size()) {
       SimplexId vertex = trajectories[i][0];
       // init
-      triangulation->getVertexPoint(vertex, p0[0], p0[1], p0[2]);
-      ids[0] = pts->InsertNextPoint(p0);
+      triangulation->getVertexPoint(vertex, p[0], p[1], p[2]);
+      ids[0] = pts->InsertNextPoint(p);
       // distanceScalars
-      float distanceFromSeed{};
-      dist->InsertNextTuple1(distanceFromSeed);
+      dist->InsertNextTuple1(distanceFromSeed[i][0]);
       // inputScalars
       for(unsigned int k = 0; k < scalarArrays.size(); ++k)
         inputScalars[k]->InsertNextTuple1(scalarArrays[k]->GetTuple1(vertex));
 
       for(SimplexId j = 1; j < (SimplexId)trajectories[i].size(); ++j) {
         vertex = trajectories[i][j];
-        triangulation->getVertexPoint(vertex, p1[0], p1[1], p1[2]);
-        ids[1] = pts->InsertNextPoint(p1);
+        triangulation->getVertexPoint(vertex, p[0], p[1], p[2]);
+        ids[1] = pts->InsertNextPoint(p);
         // distanceScalars
-        distanceFromSeed += Geometry::distance(p0, p1, 3);
-        dist->InsertNextTuple1(distanceFromSeed);
+        dist->InsertNextTuple1(distanceFromSeed[i][j]);
         // inputScalars
         for(unsigned int k = 0; k < scalarArrays.size(); ++k)
           inputScalars[k]->InsertNextTuple1(scalarArrays[k]->GetTuple1(vertex));
@@ -101,9 +99,6 @@ int ttkIntegralLines::getTrajectories(vtkDataSet *input,
 
         // iteration
         ids[0] = ids[1];
-        p0[0] = p1[0];
-        p0[1] = p1[1];
-        p0[2] = p1[2];
       }
     }
   }
@@ -173,6 +168,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
 
   vector<vector<SimplexId>> trajectories;
+  vector<vector<double>> distanceFromSeed;
 
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);
@@ -183,6 +179,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 
   this->setVertexIdentifierScalarField(inputIdentifiers);
   this->setOutputTrajectories(&trajectories);
+  this->setOutputDistanceFromSeed(&distanceFromSeed);
 
   this->preconditionTriangulation(triangulation);
 
@@ -201,7 +198,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
 
   // make the vtk trajectories
-  getTrajectories(domain, triangulation, trajectories, output);
+  getTrajectories(
+    domain, triangulation, trajectories, distanceFromSeed, output);
 
   return (int)(status == 0);
 }

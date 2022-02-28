@@ -102,6 +102,11 @@ namespace ttk {
       outputTrajectories_ = trajectories;
     }
 
+    inline void setOutputDistanceFromSeed(
+      std::vector<std::vector<double>> *distanceFromSeed) {
+      outputDistanceFromSeed_ = distanceFromSeed;
+    }
+
   protected:
     SimplexId vertexNumber_;
     SimplexId seedNumber_;
@@ -110,6 +115,7 @@ namespace ttk {
     const SimplexId *inputOffsets_;
     SimplexId *vertexIdentifierScalarField_;
     std::vector<std::vector<SimplexId>> *outputTrajectories_;
+    std::vector<std::vector<double>> *outputDistanceFromSeed_;
   };
 } // namespace ttk
 
@@ -119,8 +125,10 @@ int ttk::IntegralLines::execute(const triangulationType *triangulation) const {
   SimplexId *identifiers = vertexIdentifierScalarField_;
   dataType *scalars = static_cast<dataType *>(inputScalarField_);
   std::vector<std::vector<SimplexId>> *trajectories = outputTrajectories_;
-
+  std::vector<std::vector<double>> *distanceFromSeed = outputDistanceFromSeed_;
   Timer t;
+  float p0[3];
+  float p1[3];
 
   // get the seeds
   std::unordered_set<SimplexId> isSeed;
@@ -130,10 +138,14 @@ int ttk::IntegralLines::execute(const triangulationType *triangulation) const {
   isSeed.clear();
 
   trajectories->resize(seeds.size());
+  distanceFromSeed->resize(seeds.size());
+  double distance;
   for(SimplexId i = 0; i < (SimplexId)seeds.size(); ++i) {
     SimplexId v{seeds[i]};
     (*trajectories)[i].push_back(v);
-
+    (*distanceFromSeed)[i].push_back(0);
+    distance = 0;
+    triangulation->getVertexPoint(v, p0[0], p0[1], p0[2]);
     bool isMax{};
     while(!isMax) {
       SimplexId vnext{-1};
@@ -159,6 +171,13 @@ int ttk::IntegralLines::execute(const triangulationType *triangulation) const {
       else {
         v = vnext;
         (*trajectories)[i].push_back(v);
+
+        triangulation->getVertexPoint(v, p1[0], p1[1], p1[2]);
+        distance += Geometry::distance(p0, p1, 3);
+        p0[0] = p1[0];
+        p0[1] = p1[1];
+        p0[2] = p1[2];
+        (*distanceFromSeed)[i].push_back(distance);
       }
     }
   }
