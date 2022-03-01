@@ -72,6 +72,14 @@ namespace ttk {
       direction_ = direction;
     }
 
+    void setMyRank(int rank) {
+      this->MyRank = rank;
+    }
+
+    void setNumberOfProcesses(int number) {
+      this->NumberOfProcesses = number;
+    }
+
     int preconditionTriangulation(
       ttk::AbstractTriangulation *triangulation) const {
       return triangulation->preconditionVertexNeighbors();
@@ -116,6 +124,8 @@ namespace ttk {
     SimplexId *vertexIdentifierScalarField_;
     std::vector<std::vector<SimplexId>> *outputTrajectories_;
     std::vector<std::vector<double>> *outputDistanceFromSeed_;
+    int MyRank;
+    int NumberOfProcesses;
   };
 } // namespace ttk
 
