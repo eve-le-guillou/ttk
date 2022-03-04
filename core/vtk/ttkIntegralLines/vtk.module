@@ -2,3 +2,6 @@ NAME
  ttkIntegralLines
 DEPENDS
   ttkAlgorithm
+PRIVATE_DEPENDS
+  VTK::ParallelCore
+  VTK::ParallelMPI
