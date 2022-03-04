@@ -3,12 +3,15 @@
 #include <ttkUtils.h>
 
 #include <DataSetAttributes.h>
+#include <vtkCellData.h>
 #include <vtkCommunicator.h>
 #include <vtkDataObject.h>
 #include <vtkDataSet.h>
 #include <vtkDoubleArray.h>
 #include <vtkFloatArray.h>
 #include <vtkInformation.h>
+#include <vtkMPI.h>
+#include <vtkMPICommunicator.h>
 #include <vtkMPIController.h>
 #include <vtkMultiProcessController.h>
 #include <vtkObjectFactory.h>
@@ -25,6 +28,23 @@ vtkStandardNewMacro(ttkIntegralLines)
   this->SetNumberOfInputPorts(2);
   this->SetNumberOfOutputPorts(1);
 }
+
+#if TTK_ENABLE_MPI
+MPI_Comm MPIGetComm() {
+  MPI_Comm comm = MPI_COMM_NULL;
+  vtkMultiProcessController *controller
+    = vtkMultiProcessController::GetGlobalController();
+  vtkMPICommunicator *vtkComm
+    = vtkMPICommunicator::SafeDownCast(controller->GetCommunicator());
+  if(vtkComm) {
+    if(vtkComm->GetMPIComm()) {
+      comm = *(vtkComm->GetMPIComm()->GetHandle());
+    }
+  }
+
+  return comm;
+}
+#endif
 
 ttkIntegralLines::~ttkIntegralLines() = default;
 
@@ -138,10 +158,20 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     vtkMultiProcessController::GetGlobalController());
   int myRank = controller->GetLocalProcessId();
   int numberOfProcesses = controller->GetNumberOfProcesses();
+  MPI_Comm comm = MPI_COMM_NULL;
+  comm = MPIGetComm();
+  this->setMPIComm(comm);
   unsigned char *pointGhostArray = static_cast<unsigned char *>(
     ttkUtils::GetVoidPointer(domain->GetPointGhostArray()));
+  this->setPointGhostArray(pointGhostArray);
+  int *processId = static_cast<int *>(
+    ttkUtils::GetVoidPointer(domain->GetCellData()->GetArray("ProcessId")));
+  this->setProcessId(processId);
   this->setNumberOfProcesses(numberOfProcesses);
   this->setMyRank(myRank);
+  long int *globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(
+    domain->GetPointData()->GetArray("GlobalPointIds")));
+  this->setGlobalIdsArray(globalPointsId);
   int totalSeeds;
   controller->Reduce(
     &numberOfPointsInSeeds, &totalSeeds, 1, vtkCommunicator::SUM_OP, 0);
@@ -161,6 +191,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       globalSeedsId = vtkDataArray::CreateDataArray(VTK_ID_TYPE);
     }
     controller->Broadcast(&totalSeeds, 1, 0);
+    this->setGlobalElementToCompute(totalSeeds);
 
     if(myRank != 0) {
       globalSeedsId->SetNumberOfComponents(1);
