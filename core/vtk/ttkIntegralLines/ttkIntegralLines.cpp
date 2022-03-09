@@ -165,7 +165,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     ttkUtils::GetVoidPointer(domain->GetPointGhostArray()));
   this->setPointGhostArray(pointGhostArray);
   int *processId = static_cast<int *>(
-    ttkUtils::GetVoidPointer(domain->GetCellData()->GetArray("ProcessId")));
+    ttkUtils::GetVoidPointer(domain->GetPointData()->GetArray("ProcessId")));
   this->setProcessId(processId);
   this->setNumberOfProcesses(numberOfProcesses);
   this->setMyRank(myRank);
@@ -223,16 +223,24 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     }
 
     numberOfPointsInSeeds = tempInputIdentifier.size();
-    inputIdentifiers = tempInputIdentifier.data();
-    std::string str_global = "";
-    for(int i = 0; i < tempInputIdentifier.size(); i++) {
-      str_global
-        += std::to_string(globalDomainId[tempInputIdentifier[i]]) + " ";
-    }
-    printMsg("myrank: " + std::to_string(myRank)
-             + " global id seeds: " + str_global);
+    inputIdentifiers
+      = (SimplexId *)malloc(numberOfPointsInSeeds * sizeof(SimplexId));
+    std::copy(
+      tempInputIdentifier.begin(), tempInputIdentifier.end(), inputIdentifiers);
   } else {
+    this->setGlobalElementToCompute(totalSeeds);
     printMsg("isDistributed!");
+    std::vector<SimplexId> idSpareStorage{};
+    SimplexId *inputIdentifierGlobalId;
+    inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
+      ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
+      idSpareStorage);
+    inputIdentifiers
+      = (SimplexId *)malloc(numberOfPointsInSeeds * sizeof(SimplexId));
+    for(int i = 0; i < numberOfPointsInSeeds; i++) {
+      inputIdentifiers[i]
+        = this->getLocalIdFromGlobalId(inputIdentifierGlobalId[i]);
+    }
   }
 
 #else
@@ -278,6 +286,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 
   vector<vector<SimplexId>> trajectories;
   vector<vector<double>> distanceFromSeed;
+  vector<int> seedIdentifier;
 
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);
@@ -289,6 +298,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setVertexIdentifierScalarField(inputIdentifiers);
   this->setOutputTrajectories(&trajectories);
   this->setOutputDistanceFromSeed(&distanceFromSeed);
+  this->setOutputSeedIdentifier(&seedIdentifier);
 
   this->preconditionTriangulation(triangulation);
 
