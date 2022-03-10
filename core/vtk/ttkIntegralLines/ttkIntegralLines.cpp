@@ -69,13 +69,18 @@ int ttkIntegralLines::getTrajectories(vtkDataSet *input,
                                       ttk::Triangulation *triangulation,
                                       vector<vector<SimplexId>> &trajectories,
                                       vector<vector<double>> &distanceFromSeed,
+                                      vector<int> &seedIdentifier,
                                       vtkUnstructuredGrid *output) {
   vtkSmartPointer<vtkUnstructuredGrid> ug
     = vtkSmartPointer<vtkUnstructuredGrid>::New();
   vtkSmartPointer<vtkPoints> pts = vtkSmartPointer<vtkPoints>::New();
   vtkSmartPointer<vtkFloatArray> dist = vtkSmartPointer<vtkFloatArray>::New();
+  vtkSmartPointer<vtkFloatArray> identifier
+    = vtkSmartPointer<vtkFloatArray>::New();
   dist->SetNumberOfComponents(1);
   dist->SetName("DistanceFromSeed");
+  identifier->SetNumberOfComponents(1);
+  identifier->SetName("SeedIdentifier");
 
   // here, copy the original scalars
   int numberOfArrays = input->GetPointData()->GetNumberOfArrays();
@@ -105,6 +110,7 @@ int ttkIntegralLines::getTrajectories(vtkDataSet *input,
       ids[0] = pts->InsertNextPoint(p);
       // distanceScalars
       dist->InsertNextTuple1(distanceFromSeed[i][0]);
+      identifier->InsertNextTuple1(seedIdentifier[i]);
       // inputScalars
       for(unsigned int k = 0; k < scalarArrays.size(); ++k)
         inputScalars[k]->InsertNextTuple1(scalarArrays[k]->GetTuple1(vertex));
@@ -115,6 +121,8 @@ int ttkIntegralLines::getTrajectories(vtkDataSet *input,
         ids[1] = pts->InsertNextPoint(p);
         // distanceScalars
         dist->InsertNextTuple1(distanceFromSeed[i][j]);
+        identifier->InsertNextTuple1(seedIdentifier[i]);
+
         // inputScalars
         for(unsigned int k = 0; k < scalarArrays.size(); ++k)
           inputScalars[k]->InsertNextTuple1(scalarArrays[k]->GetTuple1(vertex));
@@ -128,6 +136,7 @@ int ttkIntegralLines::getTrajectories(vtkDataSet *input,
   }
   ug->SetPoints(pts);
   ug->GetPointData()->AddArray(dist);
+  ug->GetPointData()->AddArray(identifier);
   for(unsigned int k = 0; k < scalarArrays.size(); ++k)
     ug->GetPointData()->AddArray(inputScalars[k]);
 
@@ -317,8 +326,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
 
   // make the vtk trajectories
-  getTrajectories(
-    domain, triangulation, trajectories, distanceFromSeed, output);
+  getTrajectories(domain, triangulation, trajectories, distanceFromSeed,
+                  seedIdentifier, output);
 
   return (int)(status == 0);
 }

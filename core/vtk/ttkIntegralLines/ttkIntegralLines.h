@@ -88,6 +88,7 @@ public:
                       ttk::Triangulation *triangulation,
                       std::vector<std::vector<ttk::SimplexId>> &trajectories,
                       std::vector<std::vector<double>> &distanceFromSeed,
+                      std::vector<int> &seedIdentifier,
                       vtkUnstructuredGrid *output);
 
 protected:
