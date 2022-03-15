@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14) # see issue #532
+cmake_minimum_required(VERSION 3.21) # since paraview 5.10
 # The C is required to build with VTK when it has MPI
 project(ttk VERSION 1.1 LANGUAGES CXX C)
 
@@ -81,6 +81,9 @@ foreach(module ${TTK_BASECODES})
   elseif(${module} STREQUAL "KdTree")
     LIST(APPEND TTK_HEADER "#include <KDTree.h>\n")
   elseif(${module} STREQUAL "Skeleton")
+    continue()
+  elseif(${module} STREQUAL "WebSocketIO")
+    # avoid the public dependency to websocket++...
     continue()
   else()
     LIST(APPEND  TTK_HEADER "#include <${module}.h>\n")
