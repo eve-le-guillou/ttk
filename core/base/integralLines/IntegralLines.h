@@ -19,6 +19,8 @@
 #include <Triangulation.h>
 
 // std includes
+#include <algorithm>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <unordered_set>
@@ -84,11 +86,7 @@ namespace ttk {
 
                      const SimplexId *offsets,
                      dataType *scalars,
-                     std::vector<int> *seedIdentifier,
-                     int *finishedElement = nullptr,
-                     int *taskCounter = nullptr,
-                     int *globalElementToCompute = nullptr,
-                     bool *keepWorking = nullptr) const;
+                     std::vector<int> *seedIdentifier) const;
 
     inline void setVertexNumber(const SimplexId &vertexNumber) {
       vertexNumber_ = vertexNumber;
@@ -102,44 +100,8 @@ namespace ttk {
       direction_ = direction;
     }
 
-    void setMyRank(int rank) {
-      this->MyRank = rank;
-    }
-
-    void setNumberOfProcesses(int number) {
-      this->NumberOfProcesses = number;
-    }
 
 #if TTK_ENABLE_MPI
-    void setMPIComm(MPI_Comm comm) {
-      this->MPIComm = comm;
-    }
-
-    void setGlobalElementToCompute(int number) {
-      this->GlobalElementToCompute = number;
-    }
-
-    SimplexId getLocalIdFromGlobalId(int globalId) {
-      bool found = (this->GlobalIdsArray[0] == globalId);
-      int i = 0;
-      while(!found) {
-        i++;
-        found = (this->GlobalIdsArray[i] == globalId);
-      }
-      return (SimplexId)i;
-    }
-
-    void setGlobalIdsArray(long int *array) {
-      this->GlobalIdsArray = array;
-    }
-
-    void setPointGhostArray(unsigned char *array) {
-      this->PointGhostArray = array;
-    }
-
-    void setProcessId(int *processId) {
-      this->ProcessId = processId;
-    }
 
     void createMessageType() {
       MPI_Datatype types[3] = {MPI_INT, MPI_DOUBLE, MPI_INT};
@@ -150,6 +112,19 @@ namespace ttk {
       MPI_Type_create_struct(
         3, lengths, mpi_offsets, types, &(this->MessageType));
       MPI_Type_commit(&(this->MessageType));
+    }
+
+    int getLocalIdFromGlobalId(int globalId) {
+      bool found = (this->GlobalIdsArray[0] == globalId);
+      int i = 0;
+      while((!found) && (i < vertexNumber_)) {
+        i++;
+        found = (this->GlobalIdsArray[i] == globalId);
+      }
+      if(i >= vertexNumber && !found) {
+        std::cout << "Error in getLocalIdFromGlobalId" << std::endl;
+      }
+      return i;
     }
 #endif
 
@@ -203,16 +178,6 @@ namespace ttk {
     std::vector<std::vector<SimplexId>> *outputTrajectories_;
     std::vector<std::vector<double>> *outputDistanceFromSeed_;
     std::vector<SimplexId> *outputSeedIdentifier_;
-    int MyRank;
-    int NumberOfProcesses;
-#if TTK_ENABLE_MPI
-    MPI_Comm MPIComm;
-    int GlobalElementToCompute;
-    long int *GlobalIdsArray;
-    unsigned char *PointGhostArray;
-    int *ProcessId;
-    MPI_Datatype MessageType;
-#endif
   };
 } // namespace ttk
 
@@ -225,13 +190,10 @@ void ttk::IntegralLines::create_task(
   int index,
   const SimplexId *offsets,
   dataType *scalars,
-  std::vector<int> *seedIdentifier,
-  int *finishedElement,
-  int *taskCounter,
-  int *globalElementToCompute,
-  bool *keepWorking) const {
-  printMsg("Start create task for seed " + std::to_string(v));
-  struct Message m;
+  std::vector<int> *seedIdentifier) const {
+  // printMsg("Start create task for seed identifier " +
+  // std::to_string((*seedIdentifier)[index]));
+  struct Message m = {0, 0, 0};
   (*trajectories)[index].push_back(v);
   if((*seedIdentifier)[index] == -1) {
     (*distanceFromSeed)[index].push_back(0);
@@ -272,7 +234,7 @@ void ttk::IntegralLines::create_task(
       (*finishedElement)++;
 #pragma omp atomic read
       elt = (*finishedElement);
-      printMsg("finishedElement: " + std::to_string(elt));
+      // printMsg("finishedElement: " + std::to_string(elt));
 #endif
     } else {
       v = vnext;
@@ -280,18 +242,18 @@ void ttk::IntegralLines::create_task(
       distance += Geometry::distance(p0, p1, 3);
 #if TTK_ENABLE_MPI
       if(this->PointGhostArray[v] && ttk::type::DUPLICATEPOINT) {
-        printMsg("Sending element " + std::to_string(this->GlobalIdsArray[v])
-                 + " to process to process "
-                 + std::to_string(this->ProcessId[v]));
+        // printMsg("Sending element " + std::to_string(this->GlobalIdsArray[v])
+        //   + " to process to process "
+        //   + std::to_string(this->ProcessId[v]));
         isMax = true;
         m.Id = this->GlobalIdsArray[v];
         m.DistanceFromSeed = distance;
         m.SeedIdentifier = seedIdentifier->at(index);
         MPI_Send(&m, 1, this->MessageType, this->ProcessId[v],
                  IS_ELEMENT_TO_PROCESS, this->MPIComm);
-        printMsg("Sent element " + std::to_string(m.Id)
-                 + " to process to process "
-                 + std::to_string(this->ProcessId[v]));
+        // printMsg("Sent element " + std::to_string(m.Id)
+        //+ " to process to process "
+        //  + std::to_string(this->ProcessId[v]));
       } else {
 #endif
         (*trajectories)[index].push_back(v);
@@ -313,36 +275,36 @@ void ttk::IntegralLines::create_task(
   (*taskCounter)--;
 #pragma omp atomic read
   tempTask = (*taskCounter);
-  printMsg("TempTask: " + std::to_string(tempTask));
+  // printMsg("TempTask: " + std::to_string(tempTask));
   if(tempTask == 0) {
 #pragma omp atomic read
     seed = (*finishedElement);
     if(seed > 0) {
-      printMsg("Taskwait done, sending number of finished elements");
+      // printMsg("Taskwait done, sending number of finished elements");
       m.Id = seed;
       if(this->MyRank != 0) {
         MPI_Send(&m, 1, this->MessageType, 0, FINISHED_ELEMENT, this->MPIComm);
       } else {
 #pragma omp atomic update
-        (*globalElementToCompute) -= m.Id;
+        (*globalElementCounter) -= m.Id;
 #pragma omp atomic read
-        totalSeed = (*globalElementToCompute);
+        totalSeed = (*globalElementCounter);
         if(totalSeed == 0) {
-          printMsg("totalSeed: " + std::to_string(totalSeed));
+          // printMsg("totalSeed: " + std::to_string(totalSeed));
 #pragma omp atomic write
           (*keepWorking) = false;
-          for(int i = 1; i < this->NumberOfProcesses; i++) {
+          for(int i = 0; i < this->NumberOfProcesses; i++) {
             MPI_Send(&m, 1, this->MessageType, i, STOP_WORKING, this->MPIComm);
           }
         }
       }
 #pragma omp atomic update
       (*finishedElement) -= seed;
-      printMsg("Taskwait done, number of finished elements sent");
+      // printMsg("Taskwait done, number of finished elements sent");
     }
   }
-  printMsg("End create task for seed "
-           + std::to_string((*trajectories)[index][0]));
+  // printMsg("End create task for seed "
+  //+ std::to_string((*trajectories)[index][0]));
 #endif
 }
 
@@ -351,14 +313,18 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 
 #if TTK_ENABLE_MPI
   this->createMessageType();
-  int finishedElement = 0;
-  int taskCounter = seedNumber_;
-  int globalElementToCompute = this->GlobalElementToCompute;
-  printMsg("GlobalElementToCompute: "
-           + std::to_string(this->GlobalElementToCompute));
+  int finishedElementVar = 0;
+  this->setFinishedElement(&finishedElementVar);
+  int taskCounterVar = seedNumber_;
+  this->setTaskCounter(&taskCounterVar);
+  int globalElementCounterVar = this->GlobalElementToCompute;
+  // printMsg("GlobalElementToCompute: "
+  //         + std::to_string(this->GlobalElementToCompute));
+  this->setGlobalElementCounter(&globalElementCounterVar);
   int totalSeed;
-  bool keepWorking = true;
-  bool keepWorkingAux = keepWorking;
+  bool keepWorkingVar = true;
+  this->setKeepWorking(&keepWorkingVar);
+  bool keepWorkingAux = keepWorkingVar;
 #endif
 
   const SimplexId *offsets = inputOffsets_;
@@ -368,99 +334,106 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   std::vector<std::vector<double>> *distanceFromSeed = outputDistanceFromSeed_;
   std::vector<int> *seedIdentifier = outputSeedIdentifier_;
   Timer t;
-
   // get the seeds
   std::unordered_set<SimplexId> isSeed;
   std::string str = "";
   for(SimplexId k = 0; k < seedNumber_; ++k) {
     isSeed.insert(identifiers[k]);
-    // str += std::to_string(this->GlobalIdsArray[identifiers[k]]) + " ";
+    str += std::to_string(this->GlobalIdsArray[identifiers[k]]) + " ";
   }
-  // printMsg("Seeds: " + str);
+  printMsg("Seeds: " + str);
   std::vector<SimplexId> seeds(isSeed.begin(), isSeed.end());
   isSeed.clear();
 
   trajectories->resize(seeds.size());
   distanceFromSeed->resize(seeds.size());
   seedIdentifier->assign(seeds.size(), -1);
+  MPI_Barrier(this->MPIComm);
+  printMsg("Bouh0");
 #if TTK_ENABLE_MPI
-#pragma omp parallel shared(                                         \
-  finishedElement, keepWorking, globalElementToCompute, taskCounter) \
+#pragma omp parallel shared(                                                   \
+  finishedElementVar, keepWorkingVar, globalElementCounterVar, taskCounterVar, \
+  finishedElement, keepWorking, globalElementCounter, taskCounter)             \
   firstprivate(keepWorkingAux)
   {
-    struct Message m;
 #else
 #pragma omp parallel
   {
 #endif
 #pragma omp single nowait
     {
-#pragma omp task
-      {
-        printMsg("Creating tasks");
-        for(SimplexId i = 0; i < seedNumber_; ++i) {
-          SimplexId v{seeds[i]};
+      //#pragma omp task
+      //      {
+      for(SimplexId i = 0; i < seedNumber_; ++i) {
+        SimplexId v{seeds[i]};
 #pragma omp task firstprivate(v, i)
           {
 #if TTK_ENABLE_MPI
             this->create_task<dataType, triangulationType>(
               triangulation, trajectories, distanceFromSeed, v, i, offsets,
-              scalars, seedIdentifier, &finishedElement, &taskCounter,
-              &globalElementToCompute, &keepWorking);
+              scalars, seedIdentifier/*, &finishedElement, &taskCounter,
+              &globalElementToCompute, &keepWorking*/);
 #else
             this->create_task<dataType, triangulationType>(
               triangulation, trajectories, distanceFromSeed, v, i, offsets,
               scalars, seedIdentifier);
 #endif
           }
-          printMsg("Task created");
-        }
+          //        }
       }
+      // printMsg("Bouh1");
+      // MPI_Barrier(this->MPIComm);
 #if TTK_ENABLE_MPI
       MPI_Status status;
+      struct Message m = {0, 0, 0};
       while(keepWorkingAux) {
-        printMsg("Start receiving messages");
+        // MPI_Barrier(this->MPIComm);
+        // printMsg("Start receiving messages");
         MPI_Recv(&m, 3, this->MessageType, MPI_ANY_SOURCE, MPI_ANY_TAG,
                  this->MPIComm, &status);
-        printMsg("Message Received");
+        // MPI_Barrier(this->MPIComm);
+        // printMsg("Message Received");
         int stat = status.MPI_TAG;
         switch(stat) {
           case IS_ELEMENT_TO_PROCESS: {
-            printMsg("Message received: m.Id:" + std::to_string(m.Id)
-                     + ", m.SeedIdentifier:" + std::to_string(m.SeedIdentifier)
-                     + ", m.DistanceFromSeed:"
-                     + std::to_string(m.DistanceFromSeed));
-            int currentSize = seeds.size();
+            // printMsg("Message received: m.Id:" + std::to_string(m.Id)
+            //          + ", m.SeedIdentifier:" +
+            //          std::to_string(m.SeedIdentifier)
+            //          + ", m.DistanceFromSeed:"
+            //          + std::to_string(m.DistanceFromSeed));
+            int currentSize = trajectories->size();
             trajectories->resize(currentSize + 1);
             distanceFromSeed->resize(currentSize + 1);
             distanceFromSeed->at(currentSize).push_back(m.DistanceFromSeed);
             int elementId = m.Id;
             seedIdentifier->push_back(m.SeedIdentifier);
-            printMsg("Received element " + std::to_string(m.SeedIdentifier)
-                     + " to process");
+
 #pragma omp task firstprivate(elementId, currentSize)
             {
 #pragma omp atomic update
-              taskCounter++;
+              (*taskCounter)++;
+              // printMsg("Create task for:
+              // "+std::to_string(seedIdentifier->at(currentSize))+
+              // "currentSize:
+              // "+std::to_string(currentSize));
               this->create_task<dataType, triangulationType>(
                 triangulation, trajectories, distanceFromSeed,
                 this->getLocalIdFromGlobalId(m.Id), currentSize, offsets,
-                scalars, seedIdentifier, &finishedElement, &taskCounter,
-                &globalElementToCompute, &keepWorking);
+                scalars, seedIdentifier);
             }
-            printMsg("Task created from message");
+            // printMsg("Task created from message");
             break;
           }
           case FINISHED_ELEMENT: {
-            printMsg("Received finished element");
+            // printMsg("Received finished element");
 #pragma omp atomic update
-            globalElementToCompute -= m.Id;
+            (*globalElementCounter) -= m.Id;
 #pragma omp atomic read
-            totalSeed = globalElementToCompute;
+            totalSeed = (*globalElementCounter);
             if(totalSeed == 0) {
 #pragma omp atomic write
-              keepWorking = false;
-              printMsg("Proc 0 tells all processes to stop working");
+              (*keepWorking) = false;
+              // printMsg("Proc 0 tells all processes to stop working");
               for(int i = 1; i < this->NumberOfProcesses; i++) {
                 MPI_Send(
                   &m, 1, this->MessageType, i, STOP_WORKING, this->MPIComm);
@@ -469,16 +442,16 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             break;
           }
           case STOP_WORKING: {
-            printMsg("I was told to stop working");
+            // printMsg("I was told to stop working");
 #pragma omp atomic write
-            keepWorking = false;
+            (*keepWorking) = false;
             break;
           }
           default:
             break;
         }
 #pragma omp atomic read
-        keepWorkingAux = keepWorking;
+        keepWorkingAux = (*keepWorking);
       }
 
 #endif

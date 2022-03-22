@@ -58,7 +58,7 @@ int ttkScalarFieldCriticalPoints::RequestData(
   vtkInformation *ttkNotUsed(request),
   vtkInformationVector **inputVector,
   vtkInformationVector *outputVector) {
-  this->setThreadNumber(1);
+
   vtkDataSet *input = vtkDataSet::GetData(inputVector[0]);
 
   vtkPolyData *output = vtkPolyData::GetData(outputVector, 0);
@@ -103,8 +103,8 @@ int ttkScalarFieldCriticalPoints::RequestData(
   // Set GlobalIdsArray
   long int *globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(
     input->GetPointData()->GetArray("GlobalPointIds")));
-  int *processId = static_cast<int *>(
-    ttkUtils::GetVoidPointer(input->GetCellData()->GetArray("ProcessId")));
+  // int *processId = static_cast<int *>(
+  //   ttkUtils::GetVoidPointer(input->GetCellData()->GetArray("ProcessId")));
   this->setGlobalIdsArray(globalPointsId);
 
   if(numberOfProcesses > 1) {
@@ -112,61 +112,63 @@ int ttkScalarFieldCriticalPoints::RequestData(
     // Set pointGhostArray
     unsigned char *pointGhostArray = static_cast<unsigned char *>(
       ttkUtils::GetVoidPointer(input->GetPointGhostArray()));
-    unsigned char *cellGhostArray = static_cast<unsigned char *>(
-      ttkUtils::GetVoidPointer(input->GetCellGhostArray()));
+    // unsigned char *cellGhostArray = static_cast<unsigned char *>(
+    //   ttkUtils::GetVoidPointer(input->GetCellGhostArray()));
     this->setPointGhostArray(pointGhostArray);
 
-    int vertexNumber = triangulation->getNumberOfVertices();
+    // int vertexNumber = triangulation->getNumberOfVertices();
 
-    // Stores whether a vertex is on the boundary (doesn't take ghost points
-    // into account)
-    vtkSmartPointer<vtkIntArray> isOnMPIBoundary
-      = vtkSmartPointer<vtkIntArray>::New();
-    isOnMPIBoundary->SetNumberOfComponents(1);
-    isOnMPIBoundary->SetNumberOfTuples(vertexNumber);
-    isOnMPIBoundary->Fill(0);
+    //     // Stores whether a vertex is on the boundary (doesn't take ghost
+    //     points
+    //     // into account)
+    // vtkSmartPointer<vtkIntArray> isOnMPIBoundary
+    //   = vtkSmartPointer<vtkIntArray>::New();
+    // isOnMPIBoundary->SetNumberOfComponents(1);
+    // isOnMPIBoundary->SetNumberOfTuples(vertexNumber);
+    // isOnMPIBoundary->Fill(0);
 
-    // Stores which process contains this vertex
-    std::vector<std::vector<int>> vertex2Process(
-      vertexNumber, std::vector<int>(1, myRank));
+    // // Stores which process contains this vertex
+    // std::vector<std::vector<int>> vertex2Process(
+    // vertexNumber, std::vector<int>(1, myRank));
 
-    int cellVertexNumber = 0;
-    int v_id;
-    int localProcessId;
-    int counter;
-    int sizeVector;
-    
-    // Construct isOnMPIBoundary and vertex2Process
-    for(int id = 0; id < triangulation->getNumberOfCells(); id++) {
-      if(cellGhostArray[id] & ttk::type::DUPLICATEPOINT) {
-        cellVertexNumber = triangulation->getCellVertexNumber(id);
-        for(int vertex = 0; vertex < cellVertexNumber; vertex++) {
-          triangulation->getCellVertex(id, vertex, v_id);
-          if(!(pointGhostArray[v_id] & ttk::type::DUPLICATEPOINT)) {
-            isOnMPIBoundary->SetTuple1(v_id, 1);
-            localProcessId = processId[id];
-            counter = 0;
-            sizeVector = vertex2Process[v_id].size();
-            while((vertex2Process[v_id][counter] < localProcessId)
-                  && (sizeVector > counter)) {
-              counter++;
-            }
-            if(sizeVector == counter) {
-              vertex2Process[v_id].push_back(localProcessId);
-		
-            } else {
-              if(localProcessId != vertex2Process[v_id][counter]) {
-		vertex2Process[v_id].insert(vertex2Process[v_id].begin()+counter, localProcessId);
-		}
-            }
-          }
-	}
-	}
-      }
-    
-    this->setVertex2Process(vertex2Process);
-    this->setIsOnMPIBoundary(
-      static_cast<int *>(ttkUtils::GetVoidPointer(isOnMPIBoundary)));
+    // int cellVertexNumber = 0;
+    // int v_id;
+    // int localProcessId;
+    // int counter;
+    // int sizeVector;
+
+    // // Construct isOnMPIBoundary and vertex2Process
+    // for(int id = 0; id < triangulation->getNumberOfCells(); id++) {
+    //   if(cellGhostArray[id] && ttk::type::DUPLICATEPOINT) {
+    //       cellVertexNumber = triangulation->getCellVertexNumber(id);
+    //       for(int vertex = 0; vertex < cellVertexNumber; vertex++) {
+    //       triangulation->getCellVertex(id, vertex, v_id);
+    //       if(!(pointGhostArray[v_id] && ttk::type::DUPLICATEPOINT)) {
+    //         isOnMPIBoundary->SetTuple1(v_id, 1);
+    //         localProcessId = processId[id];
+    //         counter = 0;
+    //         sizeVector = vertex2Process[v_id].size();
+    //         while((vertex2Process[v_id][counter] < localProcessId)
+    //             && (sizeVector > counter)) {
+    //           counter++;
+    //         }
+    //         if(sizeVector == counter) {
+    //           vertex2Process[v_id].push_back(localProcessId);
+
+    //         } else {
+    //           if(localProcessId != vertex2Process[v_id][counter]) {
+    //     vertex2Process[v_id].insert(vertex2Process[v_id].begin()+counter,
+    //     localProcessId);
+    //           }
+    //         }
+    //       }
+    //     }
+    //   }
+    // }
+
+    // this->setVertex2Process(vertex2Process);
+    // this->setIsOnMPIBoundary(
+    //         static_cast<int *>(ttkUtils::GetVoidPointer(isOnMPIBoundary)));
   }
   controller->Barrier();
   if(myRank == 0) {

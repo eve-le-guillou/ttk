@@ -131,30 +131,6 @@ namespace ttk {
       forceNonManifoldCheck = b;
     }
 
-    void setPointGhostArray(unsigned char * array) {
-      this->PointGhostArray = array;
-    }
-
-    void setGlobalIdsArray(long int * array) {
-      this->GlobalIdsArray = array;
-    }
-
-    void setVertex2Process(std::vector<std::vector<int>> array) {
-      this->Vertex2Process = array;
-    }
-
-    void setIsOnMPIBoundary(int * array) {
-      this->IsOnMPIBoundary = array;
-    }    
-
-    void setMyRank(int rank){
-      this->MyRank = rank;
-    }
-
-    void setNumberOfProcesses(int number){
-      this->NumberOfProcesses = number;
-    }
-
     void displayStats();
 
   protected:
@@ -173,12 +149,6 @@ namespace ttk {
     int StoppingResolutionLevel{-1};
     bool IsResumable{false};
     double TimeLimit{};
-    unsigned char * PointGhostArray;
-    long int * GlobalIdsArray;
-    std::vector<std::vector<int>> Vertex2Process;
-    int * IsOnMPIBoundary;
-    int NumberOfProcesses;
-    int MyRank;
   };
 } // namespace ttk
 
@@ -264,10 +234,8 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
       #if TTK_ENABLE_MPI
       bool isNotToCompute = false;
       if(this->NumberOfProcesses > 1) {
-	if(this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT) {
+        if(this->PointGhostArray[i] && ttk::type::DUPLICATEPOINT) {
           isNotToCompute = true;
-        } else if(this->MyRank > 0 && this->IsOnMPIBoundary[i]) {
-          isNotToCompute = ((this->Vertex2Process)[i][0] < this->MyRank);
         }
       }
       if (!isNotToCompute)
@@ -283,10 +251,8 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
       #if TTK_ENABLE_MPI
       bool isNotToCompute = false;
       if(this->NumberOfProcesses > 1) {
-        if(this->PointGhostArray[i] & ttk::type::DUPLICATEPOINT) {
+        if(this->PointGhostArray[i] && ttk::type::DUPLICATEPOINT) {
           isNotToCompute = true;
-        } else if(this->MyRank > 0 && this->IsOnMPIBoundary[i]) {
-          isNotToCompute = ((this->Vertex2Process)[i][0] < this->MyRank);
         }
       }
       if (!isNotToCompute)
