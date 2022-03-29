@@ -183,13 +183,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setMyRank(myRank);
 #endif
 
-  vtkDataSet *domain = vtkPartitionedDataSet::GetData(inputVector[0], 0)
-                         ->GetPartition(this->MyRank);
-  printMsg("PartitionRetrieved");
-  vtkPointSet *seeds = vtkPointSet::SafeDownCast(
-    vtkPartitionedDataSet::GetData(inputVector[1], 0)
-      ->GetPartitionAsDataObject(this->MyRank));
-  controller->Barrier();
+  vtkDataSet *domain = vtkDataSet::GetData(inputVector[0], 0);
+  vtkPointSet *seeds = vtkPointSet::GetData(inputVector[1], 0);
   vtkUnstructuredGrid *output = vtkUnstructuredGrid::GetData(outputVector, 0);
 
   ttk::Triangulation *triangulation = ttkAlgorithm::GetTriangulation(domain);
@@ -203,11 +198,12 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   printMsg("number of points in domain"
            + std::to_string(numberOfPointsInDomain));
   SimplexId numberOfPointsInSeeds = seeds->GetNumberOfPoints();
-  vtkSmartPointer<vtkIntArray> inputIdentifiers
-    = vtkSmartPointer<vtkIntArray>::New();
-  inputIdentifiers->SetNumberOfComponents(1);
-  inputIdentifiers->SetNumberOfTuples(0);
+  SimplexId *inputIdentifiers;
 #if TTK_ENABLE_MPI
+  vtkSmartPointer<vtkIntArray> vtkInputIdentifiers
+    = vtkSmartPointer<vtkIntArray>::New();
+  vtkInputIdentifiers->SetNumberOfComponents(1);
+  vtkInputIdentifiers->SetNumberOfTuples(0);
   unsigned char *pointGhostArray = static_cast<unsigned char *>(
     ttkUtils::GetVoidPointer(domain->GetPointGhostArray()));
   this->setPointGhostArray(pointGhostArray);
@@ -261,11 +257,11 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         count++;
       }
       if(found && (pointGhostArray[count - 1] != ttk::type::DUPLICATEPOINT)) {
-        inputIdentifiers->InsertNextTuple1(count - 1);
+        vtkInputIdentifiers->InsertNextTuple1(count - 1);
       }
     }
 
-    numberOfPointsInSeeds = inputIdentifiers->GetNumberOfTuples();
+    numberOfPointsInSeeds = vtkInputIdentifiers->GetNumberOfTuples();
   } else {
     this->setGlobalElementToCompute(totalSeeds);
     printMsg("isDistributed!");
@@ -277,8 +273,10 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     int localId = 0;
     for(int i = 0; i < numberOfPointsInSeeds; i++) {
       localId = this->getLocalIdFromGlobalId(inputIdentifierGlobalId[i]);
-      inputIdentifiers->InsertNextTuple1(localId);
+      vtkInputIdentifiers->InsertNextTuple1(localId);
     }
+    inputIdentifiers
+      = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
   }
 
 #else
@@ -332,8 +330,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setInputOffsets(
     static_cast<SimplexId *>(inputOffsets->GetVoidPointer(0)));
 
-  this->setVertexIdentifierScalarField(
-    static_cast<int *>(ttkUtils::GetVoidPointer(inputIdentifiers)));
+  this->setVertexIdentifierScalarField(inputIdentifiers);
   this->setOutputTrajectories(&trajectories);
   this->setOutputDistancesFromSeed(&distancesFromSeed);
   this->setOutputSeedIdentifiers(&seedIdentifiers);
@@ -341,7 +338,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->preconditionTriangulation(triangulation);
   printMsg("Beginning computation");
   int status = 0;
-  controller->Barrier();
   ttkVtkTemplateMacro(inputScalars->GetDataType(), triangulation->getType(),
                       (status = this->execute<VTK_TT, TTK_TT>(
                          static_cast<TTK_TT *>(triangulation->getData()))));

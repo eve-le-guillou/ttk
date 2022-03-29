@@ -40,13 +40,12 @@ struct Message {
 
 namespace ttk {
 
+#if TTK_ENABLE_MPI
   static int finishedElement;
   static int taskCounter;
   static bool keepWorking;
   static int globalElementCounter;
-  static int sent;
-  static int received;
-  static int localyProcessed;
+#endif
 
   enum Direction { Forward = 0, Backward };
 
@@ -92,8 +91,6 @@ namespace ttk {
                      std::vector<SimplexId> *trajectory,
                      std::vector<double> *distanceFromSeed,
                      ttk::SimplexId v,
-                     int index,
-
                      const SimplexId *offsets,
                      dataType *scalars,
                      int seedIdentifier) const;
@@ -196,14 +193,12 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
                                      std::vector<SimplexId> *trajectory,
                                      std::vector<double> *distanceFromSeed,
                                      ttk::SimplexId v,
-                                     int index,
                                      const SimplexId *offsets,
                                      dataType *scalars,
                                      int seedIdentifier) const {
-  // printMsg("Start create task for seed identifier " +
-  // std::to_string((*seedIdentifier)[index]));
+#if TTK_ENABLE_MPI
   struct Message m = {0, 0, 0};
-  //(*trajectory).push_back(v);
+#endif
   double distance = (*distanceFromSeed)[0];
   float p0[3];
   float p1[3];
@@ -233,29 +228,6 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
 #if TTK_ENABLE_MPI
 #pragma omp atomic update
       (finishedElement)++;
-#pragma omp atomic update
-      localyProcessed++;
-// #pragma omp atomic update
-//       taskCounter--;
-// #pragma omp atomic read
-//       elt = (finishedElement);
-//       int counts;
-// #pragma omp atomic read
-//       counts = taskCounter;
-
-//       int sends, receiveds;
-// #pragma omp atomic read
-//       sends = sent;
-// #pragma omp atomic read
-//       receiveds = received;
-//       int sum = elt+counts+sends-receiveds;
-//       if (sum != 1395 && sum != 468){
-//         printMsg("finishedElement: " + std::to_string(elt)+ " taskCount:
-//         "+std::to_string(counts)+" sent: "+std::to_string(sends)+ " received:
-//         "+std::to_string(receiveds)); printMsg("The sum is:
-//         "+std::to_string(elt+counts+sends-receiveds));
-
-//       }
 #endif
     } else {
       v = vnext;
@@ -263,16 +235,9 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
       distance += Geometry::distance(p0, p1, 3);
 #if TTK_ENABLE_MPI
       if(this->PointGhostArray[v] && ttk::type::DUPLICATEPOINT) {
-        // #pragma atomic update
-        // taskCounter--;
-        // int count;
         int finished;
-// #pragma omp atomic read
-// count = taskCounter;
 #pragma atomic read
         finished = finishedElement;
-#pragma omp atomic update
-        sent++;
         printMsg("Sending element " + std::to_string(this->GlobalIdsArray[v])
                  + " to process to process "
                  + std::to_string(this->ProcessId[v])
@@ -307,7 +272,6 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
   {
     taskCounter--;
     tempTask = taskCounter;
-    // printMsg("TempTask: " + std::to_string(tempTask));
     if(tempTask == 0) {
 #pragma omp atomic read
       seed = (finishedElement);
@@ -319,16 +283,8 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
             &m, 1, this->MessageType, 0, FINISHED_ELEMENT, this->MPIComm);
           printMsg("finishedElement: " + std::to_string(seed));
         } else {
-          // #pragma omp critical
-          // {
           globalElementCounter -= m.Id;
           totalSeed = globalElementCounter;
-          // }
-          int counting;
-#pragma omp atomic read
-          counting = taskCounter;
-          printMsg("rank 0: totalSeed: " + std::to_string(totalSeed)
-                   + " taskCounter: " + std::to_string(counting));
           if(totalSeed == 0) {
 #pragma omp atomic write
             (keepWorking) = false;
@@ -340,33 +296,10 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
       }
 #pragma omp atomic update
       (finishedElement) -= seed;
-#pragma omp atomic read
-      seed = finishedElement;
-#pragma omp atomic read
-      tempTask = (taskCounter);
-      int elt;
-#pragma omp atomic read
-      elt = (finishedElement);
-      int counts;
-#pragma omp atomic read
-      counts = taskCounter;
 
-      int sends, receiveds;
-#pragma omp atomic read
-      sends = sent;
-#pragma omp atomic read
-      receiveds = received;
-      printMsg(
-        "Taskwait done, number of finished elements sent, new finishedElement: "
-        + std::to_string(seed) + " and taskCount:" + std::to_string(tempTask)
-        + " and localy processed: " + std::to_string(localyProcessed));
-      printMsg("finishedElement: " + std::to_string(elt) + " taskCount: "
-               + std::to_string(counts) + " sent: " + std::to_string(sends)
-               + " received: " + std::to_string(receiveds));
+      printMsg("Taskwait done, number of finished elements sent");
       }
     }
-    // printMsg("End create task for seed "
-    //+ std::to_string((*trajectories)[index][0]));
   }
 #endif
 }
@@ -378,9 +311,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   this->createMessageType();
   finishedElement = 0;
   taskCounter = seedNumber_;
-  sent = 0;
-  received = 0;
-  localyProcessed = 0;
   globalElementCounter = this->GlobalElementToCompute;
   if(this->MyRank == 0)
     printMsg("GlobalElementToCompute: "
@@ -410,13 +340,10 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   printMsg("Seed number: " + std::to_string(seedNumber_));
   std::vector<SimplexId> seeds(isSeed.begin(), isSeed.end());
   isSeed.clear();
-  int currentSize = seeds.size();
-  MPI_Barrier(this->MPIComm);
-  printMsg("Bouh0");
 #if TTK_ENABLE_MPI
-#pragma omp parallel shared(                                             \
-  finishedElement, keepWorking, globalElementCounter, taskCounter, sent, \
-  received, localyProcessed) firstprivate(keepWorkingAux, currentSize)
+#pragma omp parallel shared(                                       \
+  finishedElement, keepWorking, globalElementCounter, taskCounter) \
+  firstprivate(keepWorkingAux)
   {
 #else
 #pragma omp parallel
@@ -424,46 +351,33 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 #endif
 #pragma omp single nowait
     {
-      //#pragma omp task
-      //      {
       for(SimplexId i = 0; i < seedNumber_; ++i) {
         SimplexId v{seeds[i]};
         std::vector<int> *trajectory = new std::vector<int>(1, v);
         trajectories->addArrayElement(trajectory);
         std::vector<double> *distanceFromSeed = new std::vector<double>(1, 0);
         distancesFromSeed->addArrayElement(distanceFromSeed);
-        seedIdentifiers->addArrayElement(this->GlobalIdsArray[v]);
+        int seedIdentifier;
+#if TTK_ENABLE_MPI
+        seedIdentifier = this->GlobalIdsArray[v];
+#else
+        seedIdentifier = v;
+#endif
+        seedIdentifiers->addArrayElement(seedIdentifier);
 #pragma omp task firstprivate(v, i)
           {
-#if TTK_ENABLE_MPI
             this->create_task<dataType, triangulationType>(
-              triangulation, trajectory, distanceFromSeed, v, i, offsets,
-              scalars, this->GlobalIdsArray[v]/*, &finishedElement, &taskCounter,
-              &globalElementToCompute, &keepWorking*/);
-#else
-            this->create_task<dataType, triangulationType>(
-              triangulation, trajectory, distanceFromSeed, v, i, offsets,
-              scalars, seedIdentifier);
-#endif
+              triangulation, trajectory, distanceFromSeed, v, offsets, scalars,
+              seedIdentifier);
           }
-          //        }
       }
-      MPI_Barrier(this->MPIComm);
-      // printMsg("size of trajectory list:
-      // "+std::to_string(trajectories->sizeList)); printMsg("seed number:
-      // "+std::to_string(seedNumber_));
-
-      // printMsg("Bouh1");
-      // MPI_Barrier(this->MPIComm);
 #if TTK_ENABLE_MPI
       MPI_Status status;
       struct Message m = {0, 0, 0};
       while(keepWorkingAux) {
-        // MPI_Barrier(this->MPIComm);
         printMsg("Start receiving messages");
         MPI_Recv(&m, 3, this->MessageType, MPI_ANY_SOURCE, MPI_ANY_TAG,
                  this->MPIComm, &status);
-        // MPI_Barrier(this->MPIComm);
         printMsg("Message Received");
         int stat = status.MPI_TAG;
         switch(stat) {
@@ -472,10 +386,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
                      + ", m.SeedIdentifier:" + std::to_string(m.SeedIdentifier)
                      + ", m.DistanceFromSeed:"
                      + std::to_string(m.DistanceFromSeed));
-#pragma omp atomic update
-            received++;
-            // trajectories->resize(currentSize + 1);
-            // distancesFromSeed->resize(currentSize + 1);
             std::vector<int> *trajectory
               = new std::vector<int>(1, this->getLocalIdFromGlobalId(m.Id));
             trajectories->addArrayElement(trajectory);
@@ -488,20 +398,14 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             seedIdentifiers->addArrayElement(identifier);
 #pragma omp critical(communication)
             (taskCounter)++;
-#pragma omp task firstprivate(elementId, currentSize, identifier)
+#pragma omp task firstprivate(elementId, identifier)
             {
 
-              // printMsg("Create task for:
-              // "+std::to_string(seedIdentifiers->at(currentSize))+
-              // "currentSize:
-              // "+std::to_string(currentSize));
               this->create_task<dataType, triangulationType>(
                 triangulation, trajectory, distanceFromSeed,
-                this->getLocalIdFromGlobalId(m.Id), currentSize, offsets,
-                scalars, identifier);
+                this->getLocalIdFromGlobalId(m.Id), offsets, scalars,
+                identifier);
             }
-            // printMsg("Task created from message");
-            currentSize++;
             break;
           }
           case FINISHED_ELEMENT: {
@@ -546,7 +450,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
       }
     }
   }
-  MPI_Barrier(this->MPIComm);
   return 0;
 }
 

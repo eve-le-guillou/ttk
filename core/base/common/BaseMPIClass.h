@@ -1,9 +1,10 @@
 #include <BaseClass.h>
 #include <iostream>
-#include <mpi.h>
 #include <vector>
-
 #pragma once
+
+#if TTK_ENABLE_MPI
+#include <mpi.h>
 
 namespace ttk {
 
@@ -84,3 +85,5 @@ namespace ttk {
     // }
   };
 } // namespace ttk
+
+#endif
