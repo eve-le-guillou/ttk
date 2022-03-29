@@ -21,11 +21,7 @@ namespace ttk {
     int NumberOfProcesses;
     std::vector<std::vector<int>> Vertex2Process;
     int *IsOnMPIBoundary;
-    int *finishedElement;
-    int *taskCounter;
-    bool *keepWorking;
     int vertexNumber;
-    int *globalElementCounter;
 
     BaseMPIClass();
 
@@ -71,20 +67,20 @@ namespace ttk {
       this->IsOnMPIBoundary = array;
     }
 
-    void setFinishedElement(int *ptr) {
-      this->finishedElement = ptr;
-    }
+    // void setFinishedElement(int number) {
+    //   this->finishedElement = number;
+    // }
 
-    void setKeepWorking(bool *ptr) {
-      this->keepWorking = ptr;
-    }
+    // void setKeepWorking(bool number) {
+    //   this->keepWorking = number;
+    // }
 
-    void setTaskCounter(int *ptr) {
-      this->taskCounter = ptr;
-    }
+    // void setTaskCounter(int number) {
+    //   this->taskCounter = number;
+    // }
 
-    void setGlobalElementCounter(int *ptr) {
-      this->globalElementCounter = ptr;
-    }
+    // void setGlobalElementCounter(int number) {
+    //   this->globalElementCounter = number;
+    // }
   };
 } // namespace ttk

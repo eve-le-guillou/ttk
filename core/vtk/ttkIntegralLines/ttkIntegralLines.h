@@ -84,12 +84,13 @@ public:
   vtkSetMacro(ForceInputOffsetScalarField, bool);
   vtkGetMacro(ForceInputOffsetScalarField, bool);
 
-  int getTrajectories(vtkDataSet *input,
-                      ttk::Triangulation *triangulation,
-                      std::vector<std::vector<ttk::SimplexId>> &trajectories,
-                      std::vector<std::vector<double>> &distanceFromSeed,
-                      std::vector<int> &seedIdentifier,
-                      vtkUnstructuredGrid *output);
+  int getTrajectories(
+    vtkDataSet *input,
+    ttk::Triangulation *triangulation,
+    ttk::LinkedList<std::vector<ttk::SimplexId> *, TABULAR_SIZE> &trajectories,
+    ttk::LinkedList<std::vector<double> *, TABULAR_SIZE> &distancesFromSeed,
+    ttk::LinkedList<int, TABULAR_SIZE> &seedIdentifiers,
+    vtkUnstructuredGrid *output);
 
 protected:
   ttkIntegralLines();
