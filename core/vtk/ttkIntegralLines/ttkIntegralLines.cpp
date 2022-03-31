@@ -214,57 +214,75 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     domain->GetPointData()->GetArray("GlobalPointIds")));
   this->setGlobalIdsArray(globalPointsId);
   this->setProcessId(processId);
-  int totalSeeds;
-  controller->Reduce(
-    &numberOfPointsInSeeds, &totalSeeds, 1, vtkCommunicator::SUM_OP, 0);
-  int isDistributed;
 
-  if(myRank == 0) {
-    isDistributed = numberOfPointsInSeeds != totalSeeds;
-  }
+  if(this->NumberOfProcesses > 1) {
+    int totalSeeds;
+    controller->Reduce(
+      &numberOfPointsInSeeds, &totalSeeds, 1, vtkCommunicator::SUM_OP, 0);
+    int isDistributed;
 
-  controller->Broadcast(&isDistributed, 1, 0);
-
-  if(!isDistributed) {
-    vtkDataArray *globalSeedsId;
     if(myRank == 0) {
-      globalSeedsId = seeds->GetPointData()->GetArray("GlobalPointIds");
+      isDistributed = numberOfPointsInSeeds != totalSeeds;
+    }
+
+    controller->Broadcast(&isDistributed, 1, 0);
+
+    if(!isDistributed) {
+      vtkDataArray *globalSeedsId;
+      if(myRank == 0) {
+        globalSeedsId = seeds->GetPointData()->GetArray("GlobalPointIds");
+      } else {
+        globalSeedsId = vtkDataArray::CreateDataArray(VTK_ID_TYPE);
+      }
+      controller->Broadcast(&totalSeeds, 1, 0);
+      this->setGlobalElementToCompute(totalSeeds);
+
+      if(myRank != 0) {
+        globalSeedsId->SetNumberOfComponents(1);
+        globalSeedsId->SetNumberOfTuples(totalSeeds);
+      }
+
+      controller->Broadcast(globalSeedsId, 0);
+
+      long int *globalDomainId
+        = static_cast<long int *>(ttkUtils::GetVoidPointer(
+          domain->GetPointData()->GetArray("GlobalPointIds")));
+
+      int count;
+      bool found;
+      bool isToCompute;
+      for(int i = 0; i < totalSeeds; i++) {
+        count = 0;
+        found = false;
+        isToCompute = false;
+        while(count < numberOfPointsInDomain and !found) {
+          found = (globalSeedsId->GetTuple1(i) == globalDomainId[count]);
+          count++;
+        }
+        if(found && (pointGhostArray[count - 1] != ttk::type::DUPLICATEPOINT)) {
+          vtkInputIdentifiers->InsertNextTuple1(count - 1);
+        }
+      }
+
+      numberOfPointsInSeeds = vtkInputIdentifiers->GetNumberOfTuples();
     } else {
-      globalSeedsId = vtkDataArray::CreateDataArray(VTK_ID_TYPE);
-    }
-    controller->Broadcast(&totalSeeds, 1, 0);
-    this->setGlobalElementToCompute(totalSeeds);
-
-    if(myRank != 0) {
-      globalSeedsId->SetNumberOfComponents(1);
-      globalSeedsId->SetNumberOfTuples(totalSeeds);
-    }
-
-    controller->Broadcast(globalSeedsId, 0);
-
-    long int *globalDomainId = static_cast<long int *>(ttkUtils::GetVoidPointer(
-      domain->GetPointData()->GetArray("GlobalPointIds")));
-
-    int count;
-    bool found;
-    bool isToCompute;
-    for(int i = 0; i < totalSeeds; i++) {
-      count = 0;
-      found = false;
-      isToCompute = false;
-      while(count < numberOfPointsInDomain and !found) {
-        found = (globalSeedsId->GetTuple1(i) == globalDomainId[count]);
-        count++;
+      this->setGlobalElementToCompute(totalSeeds);
+      printMsg("isDistributed!");
+      std::vector<SimplexId> idSpareStorage{};
+      SimplexId *inputIdentifierGlobalId;
+      inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
+        ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
+        idSpareStorage);
+      int localId = 0;
+      for(int i = 0; i < numberOfPointsInSeeds; i++) {
+        localId = this->getLocalIdFromGlobalId(inputIdentifierGlobalId[i]);
+        vtkInputIdentifiers->InsertNextTuple1(localId);
       }
-      if(found && (pointGhostArray[count - 1] != ttk::type::DUPLICATEPOINT)) {
-        vtkInputIdentifiers->InsertNextTuple1(count - 1);
-      }
+      inputIdentifiers
+        = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
     }
-
-    numberOfPointsInSeeds = vtkInputIdentifiers->GetNumberOfTuples();
   } else {
-    this->setGlobalElementToCompute(totalSeeds);
-    printMsg("isDistributed!");
+    this->setGlobalElementToCompute(numberOfPointsInSeeds);
     std::vector<SimplexId> idSpareStorage{};
     SimplexId *inputIdentifierGlobalId;
     inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
