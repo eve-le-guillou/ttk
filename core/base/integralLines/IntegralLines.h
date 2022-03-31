@@ -268,11 +268,11 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
   int tempTask;
   int seed;
   int totalSeed;
-#pragma omp critical(communication)
-  {
-    taskCounter--;
-    tempTask = taskCounter;
-    if(tempTask == 0) {
+#pragma omp atomic update
+  taskCounter--;
+#pragma omp atomic read
+  tempTask = taskCounter;
+  if(tempTask == 0) {
 #pragma omp atomic read
       seed = (finishedElement);
       if(seed > 0) {
@@ -281,9 +281,11 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
         if(this->MyRank != 0) {
           MPI_Send(
             &m, 1, this->MessageType, 0, FINISHED_ELEMENT, this->MPIComm);
-          printMsg("finishedElement: " + std::to_string(seed));
+          // printMsg("finishedElement: " + std::to_string(seed));
         } else {
+#pragma omp atomic update
           globalElementCounter -= m.Id;
+#pragma omp atomic read
           totalSeed = globalElementCounter;
           if(totalSeed == 0) {
 #pragma omp atomic write
@@ -293,14 +295,14 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
                 &m, 1, this->MessageType, i, STOP_WORKING, this->MPIComm);
           }
         }
-      }
+        }
 #pragma omp atomic update
       (finishedElement) -= seed;
 
       printMsg("Taskwait done, number of finished elements sent");
       }
     }
-  }
+
 #endif
 }
 
@@ -394,9 +396,8 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             distancesFromSeed->addArrayElement(distanceFromSeed);
             int elementId = m.Id;
             int identifier = m.SeedIdentifier;
-            // seedIdentifier->push_back(m.SeedIdentifier);
             seedIdentifiers->addArrayElement(identifier);
-#pragma omp critical(communication)
+#pragma omp atomic update
             (taskCounter)++;
 #pragma omp task firstprivate(elementId, identifier)
             {
@@ -409,8 +410,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             break;
           }
           case FINISHED_ELEMENT: {
-#pragma omp critical(communication)
-            {
               printMsg("Received finished element");
 #pragma omp atomic update
               (globalElementCounter) -= m.Id;
@@ -425,7 +424,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
                   MPI_Send(
                     &m, 1, this->MessageType, i, STOP_WORKING, this->MPIComm);
               }
-            }
             }
             break;
           }
