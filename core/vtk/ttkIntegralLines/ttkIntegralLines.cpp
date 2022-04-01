@@ -149,6 +149,7 @@ int ttkIntegralLines::getTrajectories(
           ids[0] = ids[1];
         }
         delete(trajectory->tab->at(i));
+        delete(distanceFromSeed->tab->at(i));
       }
     }
     trajectory = trajectory->nextTab;
@@ -282,21 +283,26 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
     }
   } else {
+    printMsg("Da0");
     this->setGlobalElementToCompute(numberOfPointsInSeeds);
     std::vector<SimplexId> idSpareStorage{};
     SimplexId *inputIdentifierGlobalId;
+    printMsg("Da1");
     inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
       ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
       idSpareStorage);
+    printMsg("Da2");
     int localId = 0;
     for(int i = 0; i < numberOfPointsInSeeds; i++) {
       localId = this->getLocalIdFromGlobalId(inputIdentifierGlobalId[i]);
       vtkInputIdentifiers->InsertNextTuple1(localId);
+      printMsg("Bla" + std::to_string(i));
     }
+    printMsg("Da3");
     inputIdentifiers
       = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
   }
-
+  printMsg("Da4");
 #else
   std::vector<SimplexId> idSpareStorage{};
   inputIdentifiers = this->GetIdentifierArrayPtr(ForceInputVertexScalarField, 2,
