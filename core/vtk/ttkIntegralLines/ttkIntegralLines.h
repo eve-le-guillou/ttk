@@ -87,9 +87,10 @@ public:
   int getTrajectories(
     vtkDataSet *input,
     ttk::Triangulation *triangulation,
-    ttk::LinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> &trajectories,
-    ttk::LinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
-    ttk::LinkedList<int, TABULAR_SIZE> &seedIdentifiers,
+    ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>
+      &trajectories,
+    ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
+    ttk::ArrayLinkedList<int, TABULAR_SIZE> &seedIdentifiers,
     vtkUnstructuredGrid *output);
 
 protected:

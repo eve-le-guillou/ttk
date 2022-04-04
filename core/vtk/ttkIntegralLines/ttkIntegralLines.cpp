@@ -69,9 +69,9 @@ int ttkIntegralLines::FillOutputPortInformation(int port,
 int ttkIntegralLines::getTrajectories(
   vtkDataSet *input,
   ttk::Triangulation *triangulation,
-  LinkedList<std::vector<SimplexId>, TABULAR_SIZE> &trajectories,
-  LinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
-  LinkedList<int, TABULAR_SIZE> &seedIdentifiers,
+  ArrayLinkedList<std::vector<SimplexId>, TABULAR_SIZE> &trajectories,
+  ArrayLinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
+  ArrayLinkedList<int, TABULAR_SIZE> &seedIdentifiers,
   vtkUnstructuredGrid *output) {
   vtkSmartPointer<vtkUnstructuredGrid> ug
     = vtkSmartPointer<vtkUnstructuredGrid>::New();
@@ -336,9 +336,9 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   //   return -1;
   // }
 #endif
-  LinkedList<vector<SimplexId>, TABULAR_SIZE> trajectories;
-  LinkedList<vector<double>, TABULAR_SIZE> distancesFromSeed;
-  LinkedList<int, TABULAR_SIZE> seedIdentifiers;
+  ArrayLinkedList<vector<SimplexId>, TABULAR_SIZE> trajectories;
+  ArrayLinkedList<vector<double>, TABULAR_SIZE> distancesFromSeed;
+  ArrayLinkedList<int, TABULAR_SIZE> seedIdentifiers;
 
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);

@@ -1,5 +1,5 @@
 /// \ingroup base
-/// \class ttk::LinkedList
+/// \class ttk::ArrayLinkedList
 /// \author Eve Le Guillou <eve.le-guillou@lip6.fr>
 /// \date Mars 2022.
 
@@ -10,12 +10,12 @@
 
 namespace ttk {
   template <typename datatype, int size>
-  class LinkedList {
+  class ArrayLinkedList {
   public:
     std::list<std::array<datatype, size>> list;
     int numberOfElement;
 
-    LinkedList()
+    ArrayLinkedList()
       : list(std::list<std::array<datatype, size>>({})), numberOfElement(0) {
     }
 

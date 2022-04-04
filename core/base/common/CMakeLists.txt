@@ -19,7 +19,7 @@ ttk_add_base_library(common
         Timer.h
         VisitedMask.h
         Wrapper.h  
-        LinkedList.h   
+        ArrayLinkedList.h   
         )
 
 if(TTK_REDUCE_TEMPLATE_INSTANTIATIONS)

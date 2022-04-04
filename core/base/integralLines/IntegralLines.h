@@ -14,9 +14,9 @@
 #pragma once
 
 // base code includes
+#include <ArrayLinkedList.h>
 #include <DataSetAttributes.h>
 #include <Geometry.h>
-#include <LinkedList.h>
 #include <Triangulation.h>
 // std includes
 #include <algorithm>
@@ -161,17 +161,17 @@ namespace ttk {
     }
 
     inline void setOutputTrajectories(
-      LinkedList<std::vector<SimplexId>, TABULAR_SIZE> *trajectories) {
+      ArrayLinkedList<std::vector<SimplexId>, TABULAR_SIZE> *trajectories) {
       outputTrajectories_ = trajectories;
     }
 
     inline void setOutputDistancesFromSeed(
-      LinkedList<std::vector<double>, TABULAR_SIZE> *distancesFromSeed) {
+      ArrayLinkedList<std::vector<double>, TABULAR_SIZE> *distancesFromSeed) {
       outputDistancesFromSeed_ = distancesFromSeed;
     }
 
-    inline void
-      setOutputSeedIdentifiers(LinkedList<int, TABULAR_SIZE> *seedIdentifiers) {
+    inline void setOutputSeedIdentifiers(
+      ArrayLinkedList<int, TABULAR_SIZE> *seedIdentifiers) {
       outputSeedIdentifiers_ = seedIdentifiers;
     }
 
@@ -182,9 +182,10 @@ namespace ttk {
     void *inputScalarField_;
     const SimplexId *inputOffsets_;
     SimplexId *vertexIdentifierScalarField_;
-    LinkedList<std::vector<SimplexId>, TABULAR_SIZE> *outputTrajectories_;
-    LinkedList<std::vector<double>, TABULAR_SIZE> *outputDistancesFromSeed_;
-    LinkedList<int, TABULAR_SIZE> *outputSeedIdentifiers_;
+    ArrayLinkedList<std::vector<SimplexId>, TABULAR_SIZE> *outputTrajectories_;
+    ArrayLinkedList<std::vector<double>, TABULAR_SIZE>
+      *outputDistancesFromSeed_;
+    ArrayLinkedList<int, TABULAR_SIZE> *outputSeedIdentifiers_;
   };
 } // namespace ttk
 
@@ -334,11 +335,11 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   const SimplexId *offsets = inputOffsets_;
   SimplexId *identifiers = vertexIdentifierScalarField_;
   dataType *scalars = static_cast<dataType *>(inputScalarField_);
-  LinkedList<std::vector<SimplexId>, TABULAR_SIZE> *trajectories
+  ArrayLinkedList<std::vector<SimplexId>, TABULAR_SIZE> *trajectories
     = outputTrajectories_;
-  LinkedList<std::vector<double>, TABULAR_SIZE> *distancesFromSeed
+  ArrayLinkedList<std::vector<double>, TABULAR_SIZE> *distancesFromSeed
     = outputDistancesFromSeed_;
-  LinkedList<int, TABULAR_SIZE> *seedIdentifiers = outputSeedIdentifiers_;
+  ArrayLinkedList<int, TABULAR_SIZE> *seedIdentifiers = outputSeedIdentifiers_;
   Timer t;
   // get the seeds
   std::unordered_set<SimplexId> isSeed;
