@@ -121,15 +121,17 @@ namespace ttk {
       MPI_Type_commit(&(this->MessageType));
     }
 
-    int getLocalIdFromGlobalId(int globalId) {
-      bool found = (this->GlobalIdsArray[0] == globalId);
-      int i = 0;
-      while((!found) && (i < vertexNumber_)) {
-        i++;
-        found = (this->GlobalIdsArray[i] == globalId);
-      }
-      if(i >= vertexNumber && !found) {
-        std::cout << "Error in getLocalIdFromGlobalId" << std::endl;
+    int getLocalIdFromGlobalId(int globalId, bool isPresent = true) {
+      int i = -1;
+      auto it = std::find(
+        this->GlobalIdsArray, this->GlobalIdsArray + vertexNumber_, globalId);
+      if(it != this->GlobalIdsArray + vertexNumber_) {
+        i = it - this->GlobalIdsArray;
+      } else {
+        if(isPresent) {
+          printErr("Error in getLocalIdFromGlobalId: point of global id "
+                   + std::to_string(globalId) + " not found");
+        }
       }
       return i;
     }

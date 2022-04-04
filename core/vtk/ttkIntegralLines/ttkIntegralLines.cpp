@@ -167,7 +167,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   // Get processes information
   vtkMPIController *controller = vtkMPIController::SafeDownCast(
     vtkMultiProcessController::GetGlobalController());
-  controller->Barrier();
   int myRank = controller->GetLocalProcessId();
   int numberOfProcesses = controller->GetNumberOfProcesses();
   MPI_Comm comm = MPI_COMM_NULL;
@@ -242,23 +241,18 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         = static_cast<long int *>(ttkUtils::GetVoidPointer(
           domain->GetPointData()->GetArray("GlobalPointIds")));
 
-      int count;
-      bool found;
-      bool isToCompute;
+      int localId = -1;
       for(int i = 0; i < totalSeeds; i++) {
-        count = 0;
-        found = false;
-        isToCompute = false;
-        while(count < numberOfPointsInDomain and !found) {
-          found = (globalSeedsId->GetTuple1(i) == globalDomainId[count]);
-          count++;
-        }
-        if(found && (pointGhostArray[count - 1] != ttk::type::DUPLICATEPOINT)) {
-          vtkInputIdentifiers->InsertNextTuple1(count - 1);
+        localId
+          = this->getLocalIdFromGlobalId(globalSeedsId->GetTuple1(i), false);
+        if((localId != -1)
+           && (pointGhostArray[localId] != ttk::type::DUPLICATEPOINT)) {
+          vtkInputIdentifiers->InsertNextTuple1(localId);
         }
       }
-
       numberOfPointsInSeeds = vtkInputIdentifiers->GetNumberOfTuples();
+      inputIdentifiers
+        = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
     } else {
       this->setGlobalElementToCompute(totalSeeds);
       printMsg("isDistributed!");
@@ -267,35 +261,33 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
         ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
         idSpareStorage);
+      vtkInputIdentifiers->SetNumberOfTuples(numberOfPointsInSeeds);
       int localId = 0;
+#pragma omp parallel for
       for(int i = 0; i < numberOfPointsInSeeds; i++) {
         localId = this->getLocalIdFromGlobalId(inputIdentifierGlobalId[i]);
-        vtkInputIdentifiers->InsertNextTuple1(localId);
+        vtkInputIdentifiers->SetTuple1(i, localId);
       }
       inputIdentifiers
         = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
     }
   } else {
-    printMsg("Da0");
     this->setGlobalElementToCompute(numberOfPointsInSeeds);
+    vtkInputIdentifiers->SetNumberOfTuples(numberOfPointsInSeeds);
     std::vector<SimplexId> idSpareStorage{};
     SimplexId *inputIdentifierGlobalId;
-    printMsg("Da1");
     inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
       ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
       idSpareStorage);
-    printMsg("Da2");
     int localId = 0;
+#pragma omp parallel for
     for(int i = 0; i < numberOfPointsInSeeds; i++) {
       localId = this->getLocalIdFromGlobalId(inputIdentifierGlobalId[i]);
-      vtkInputIdentifiers->InsertNextTuple1(localId);
-      printMsg("Bla" + std::to_string(i));
+      vtkInputIdentifiers->SetTuple1(i, localId);
     }
-    printMsg("Da3");
     inputIdentifiers
       = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
   }
-  printMsg("Da4");
 #else
   std::vector<SimplexId> idSpareStorage{};
   inputIdentifiers = this->GetIdentifierArrayPtr(ForceInputVertexScalarField, 2,
