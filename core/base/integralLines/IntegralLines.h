@@ -161,12 +161,12 @@ namespace ttk {
     }
 
     inline void setOutputTrajectories(
-      LinkedList<std::vector<SimplexId> *, TABULAR_SIZE> *trajectories) {
+      LinkedList<std::vector<SimplexId>, TABULAR_SIZE> *trajectories) {
       outputTrajectories_ = trajectories;
     }
 
     inline void setOutputDistancesFromSeed(
-      LinkedList<std::vector<double> *, TABULAR_SIZE> *distancesFromSeed) {
+      LinkedList<std::vector<double>, TABULAR_SIZE> *distancesFromSeed) {
       outputDistancesFromSeed_ = distancesFromSeed;
     }
 
@@ -182,8 +182,8 @@ namespace ttk {
     void *inputScalarField_;
     const SimplexId *inputOffsets_;
     SimplexId *vertexIdentifierScalarField_;
-    LinkedList<std::vector<SimplexId> *, TABULAR_SIZE> *outputTrajectories_;
-    LinkedList<std::vector<double> *, TABULAR_SIZE> *outputDistancesFromSeed_;
+    LinkedList<std::vector<SimplexId>, TABULAR_SIZE> *outputTrajectories_;
+    LinkedList<std::vector<double>, TABULAR_SIZE> *outputDistancesFromSeed_;
     LinkedList<int, TABULAR_SIZE> *outputSeedIdentifiers_;
   };
 } // namespace ttk
@@ -233,6 +233,12 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
       v = vnext;
       triangulation->getVertexPoint(v, p1[0], p1[1], p1[2]);
       distance += Geometry::distance(p0, p1, 3);
+      // (*trajectory).push_back(v);
+
+      // p0[0] = p1[0];
+      // p0[1] = p1[1];
+      // p0[2] = p1[2];
+      // (*distanceFromSeed).push_back(distance);
 #if TTK_ENABLE_MPI
       if(this->PointGhostArray[v] && ttk::type::DUPLICATEPOINT) {
         int finished;
@@ -328,9 +334,9 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   const SimplexId *offsets = inputOffsets_;
   SimplexId *identifiers = vertexIdentifierScalarField_;
   dataType *scalars = static_cast<dataType *>(inputScalarField_);
-  LinkedList<std::vector<SimplexId> *, TABULAR_SIZE> *trajectories
+  LinkedList<std::vector<SimplexId>, TABULAR_SIZE> *trajectories
     = outputTrajectories_;
-  LinkedList<std::vector<double> *, TABULAR_SIZE> *distancesFromSeed
+  LinkedList<std::vector<double>, TABULAR_SIZE> *distancesFromSeed
     = outputDistancesFromSeed_;
   LinkedList<int, TABULAR_SIZE> *seedIdentifiers = outputSeedIdentifiers_;
   Timer t;
@@ -355,10 +361,10 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
     {
       for(SimplexId i = 0; i < seedNumber_; ++i) {
         SimplexId v{seeds[i]};
-        std::vector<int> *trajectory = new std::vector<int>(1, v);
-        trajectories->addArrayElement(trajectory);
-        std::vector<double> *distanceFromSeed = new std::vector<double>(1, 0);
-        distancesFromSeed->addArrayElement(distanceFromSeed);
+        std::vector<int> *trajectory
+          = trajectories->addArrayElement(std::vector<int>(1, v));
+        std::vector<double> *distanceFromSeed
+          = distancesFromSeed->addArrayElement(std::vector<double>(1, 0));
         int seedIdentifier;
 #if TTK_ENABLE_MPI
         seedIdentifier = this->GlobalIdsArray[v];
@@ -388,12 +394,11 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
                      + ", m.SeedIdentifier:" + std::to_string(m.SeedIdentifier)
                      + ", m.DistanceFromSeed:"
                      + std::to_string(m.DistanceFromSeed));
-            std::vector<int> *trajectory
-              = new std::vector<int>(1, this->getLocalIdFromGlobalId(m.Id));
-            trajectories->addArrayElement(trajectory);
+            std::vector<int> *trajectory = trajectories->addArrayElement(
+              std::vector<int>(1, this->getLocalIdFromGlobalId(m.Id)));
             std::vector<double> *distanceFromSeed
-              = new std::vector<double>(1, m.DistanceFromSeed);
-            distancesFromSeed->addArrayElement(distanceFromSeed);
+              = distancesFromSeed->addArrayElement(
+                std::vector<double>(1, m.DistanceFromSeed));
             int elementId = m.Id;
             int identifier = m.SeedIdentifier;
             seedIdentifiers->addArrayElement(identifier);

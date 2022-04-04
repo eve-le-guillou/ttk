@@ -4,64 +4,29 @@
 /// \date Mars 2022.
 
 #include <array>
+#include <list>
 
 #pragma once
 
 namespace ttk {
   template <typename datatype, int size>
-  class ListNode {
-  public:
-    std::array<datatype, size> *tab;
-    ListNode *nextTab;
-
-    ListNode(std::array<datatype, size> *array) : tab{array}, nextTab{NULL} {
-    }
-    ~ListNode() {
-      delete(this->tab);
-    }
-  };
-
-  template <typename datatype, int size>
   class LinkedList {
   public:
-    ListNode<datatype, size> *firstTab;
-    ListNode<datatype, size> *lastTab;
+    std::list<std::array<datatype, size>> list;
     int numberOfElement;
 
-    LinkedList(ListNode<datatype, size> *node) : firstTab(node), lastTab(node) {
+    LinkedList()
+      : list(std::list<std::array<datatype, size>>({})), numberOfElement(0) {
     }
 
-    LinkedList() : firstTab(NULL), lastTab(NULL), numberOfElement(0) {
-    }
-
-    void addNode() {
-      std::array<datatype, size> *array = new std::array<datatype, size>({});
-      ListNode<datatype, size> *newNode = new ListNode<datatype, size>(array);
-      if(this->firstTab == NULL) {
-        this->firstTab = newNode;
-      } else {
-        this->lastTab->nextTab = newNode;
+    datatype *addArrayElement(datatype element) {
+      numberOfElement = numberOfElement % size;
+      if(numberOfElement == 0) {
+        this->list.push_back(std::array<datatype, size>({}));
       }
-      this->lastTab = newNode;
-    }
-
-    void addArrayElement(datatype element) {
-      int index = numberOfElement % size;
-      if(index == 0) {
-        this->addNode();
-      }
-      this->lastTab->tab->at(index) = element;
+      this->list.back().at(numberOfElement) = element;
       this->numberOfElement++;
-    }
-
-    ~LinkedList() {
-      ListNode<datatype, size> *currentPtr = this->firstTab;
-      ListNode<datatype, size> *nextPtr = this->lastTab;
-      while(currentPtr != NULL) {
-        nextPtr = currentPtr->nextTab;
-        delete(currentPtr);
-        currentPtr = nextPtr;
-      }
+      return &(this->list.back().at(numberOfElement - 1));
     }
   };
 } // namespace ttk
