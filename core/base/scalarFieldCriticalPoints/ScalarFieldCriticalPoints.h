@@ -514,7 +514,18 @@ char ttk::ScalarFieldCriticalPoints::getCriticalType(
   getNumberOfLowerUpperComponents(vertexId, offsets, triangulation,
                                   lowerComponentNumber, upperComponentNumber,
                                   isLowerOnBoundary, isUpperOnBoundary);
-
+  // if (this->GlobalIdsArray[vertexId] == 5 || this->GlobalIdsArray[vertexId]
+  // == 6){
+  //   printMsg("globalId: "+std::to_string(this->GlobalIdsArray[vertexId]));
+  //   printMsg("myrank: "+std::to_string(this->MyRank)+ " lowerComponentNumber:
+  //   "+std::to_string(lowerComponentNumber)); printMsg("myrank:
+  //   "+std::to_string(this->MyRank)+ " upperComponentNumber:
+  //   "+std::to_string(upperComponentNumber)); printMsg("myrank:
+  //   "+std::to_string(this->MyRank)+ " isLowerOnBoundary:
+  //   "+std::to_string(isLowerOnBoundary)); printMsg("myrank:
+  //   "+std::to_string(this->MyRank)+ " isUpperOnBoundary:
+  //   "+std::to_string(isUpperOnBoundary));
+  // }
   if(lowerComponentNumber == 0 && upperComponentNumber == 1) {
     return (char)(CriticalType::Local_minimum);
   } else if(lowerComponentNumber == 1 && upperComponentNumber == 0) {

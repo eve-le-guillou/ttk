@@ -103,15 +103,43 @@ int ttkScalarFieldCriticalPoints::RequestData(
   // Set GlobalIdsArray
   long int *globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(
     input->GetPointData()->GetArray("GlobalPointIds")));
+  // vtkDataArray* global = input->GetPointData()->GetArray("GlobalPointIds");
+  // std::string s = global->GetClassName();
+  //   vtkSmartPointer<vtkIdTypeArray> global_temp
+  //   = vtkSmartPointer<vtkIdTypeArray>::New();
+  // global_temp->SetNumberOfComponents(global->GetNumberOfComponents());
+  // global_temp->SetNumberOfTuples(global->GetNumberOfTuples());
+  // if (s == "vtkDoubleArray"){
+  //   for (int i= 0; i<global->GetNumberOfTuples(); i++){
+  //     global_temp->SetTuple1(i, (long int)global->GetTuple1(i));
+  //   }
+  //   globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(
+  //   global_temp));
+  //   printMsg("Da");
+  // }
+  // else{
+
+  // }
+
+  // printMsg("global id: number of components:
+  // "+std::to_string(global->GetNumberOfComponents())); printMsg("global id:
+  // number of tuples: "+std::to_string(global->GetNumberOfTuples()));
+  // printMsg("global id: element 1 from VTK:
+  // "+std::to_string(global->GetTuple1(0))); printMsg("global id: element 1
+  // from VTK: "+std::to_string(global_temp->GetTuple1(0))); printMsg("global
+  // id: element 1 from C++: "+std::to_string(globalPointsId[0]));
+  // printMsg("global id: array type "+std::to_string(global->GetArrayType()));
+  // printMsg("global id: class name "+s);
+  this->setGlobalIdsArray(globalPointsId);
+
   // int *processId = static_cast<int *>(
   //   ttkUtils::GetVoidPointer(input->GetCellData()->GetArray("ProcessId")));
-  this->setGlobalIdsArray(globalPointsId);
 
   if(numberOfProcesses > 1) {
 
     // Set pointGhostArray
     unsigned char *pointGhostArray = static_cast<unsigned char *>(
-      ttkUtils::GetVoidPointer(input->GetPointGhostArray()));
+      ttkUtils::GetVoidPointer(input->GetGhostArray(vtkDataObject::POINT)));
     // unsigned char *cellGhostArray = static_cast<unsigned char *>(
     //   ttkUtils::GetVoidPointer(input->GetCellGhostArray()));
     this->setPointGhostArray(pointGhostArray);
