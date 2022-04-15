@@ -121,20 +121,6 @@ namespace ttk {
       MPI_Type_commit(&(this->MessageType));
     }
 
-    int getLocalIdFromGlobalId(int globalId, bool isPresent = true) {
-      int i = -1;
-      auto it = std::find(
-        this->GlobalIdsArray, this->GlobalIdsArray + vertexNumber_, globalId);
-      if(it != this->GlobalIdsArray + vertexNumber_) {
-        i = it - this->GlobalIdsArray;
-      } else {
-        if(isPresent) {
-          printErr("Error in getLocalIdFromGlobalId: point of global id "
-                   + std::to_string(globalId) + " not found");
-        }
-      }
-      return i;
-    }
 #endif
 
     int preconditionTriangulation(
@@ -177,6 +163,10 @@ namespace ttk {
       outputSeedIdentifiers_ = seedIdentifiers;
     }
 
+    inline void setGlobalToLocal(std::map<SimplexId, SimplexId> map) {
+      this->globalToLocal = map;
+    }
+
   protected:
     SimplexId vertexNumber_;
     SimplexId seedNumber_;
@@ -188,6 +178,7 @@ namespace ttk {
     ArrayLinkedList<std::vector<double>, TABULAR_SIZE>
       *outputDistancesFromSeed_;
     ArrayLinkedList<int, TABULAR_SIZE> *outputSeedIdentifiers_;
+    std::map<SimplexId, SimplexId> globalToLocal;
   };
 } // namespace ttk
 
@@ -245,7 +236,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
 #if TTK_ENABLE_MPI
       if(this->PointGhostArray[v] && ttk::type::DUPLICATEPOINT) {
         int finished;
-#pragma atomic read
+#pragma omp atomic read
         finished = finishedElement;
         // if (this->MyRank == this->ProcessId[v]){
         // printMsg("Sending element " + std::to_string(this->GlobalIdsArray[v])
@@ -285,16 +276,20 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
 #pragma omp atomic read
   tempTask = taskCounter;
   if(tempTask == 0) {
+#pragma omp critical
+    {
 #pragma omp atomic read
       seed = (finishedElement);
-      if(seed > 0) {
-        // printMsg("Taskwait done, sending number of finished elements");
-        m.Id = seed;
-        if(this->MyRank != 0) {
-          MPI_Send(
-            &m, 1, this->MessageType, 0, FINISHED_ELEMENT, this->MPIComm);
-          // printMsg("finishedElement: " + std::to_string(seed));
-        } else {
+#pragma omp atomic update
+      (finishedElement) -= seed;
+    }
+    if(seed > 0) {
+      // printMsg("Taskwait done, sending number of finished elements");
+      m.Id = seed;
+      if(this->MyRank != 0) {
+        MPI_Send(&m, 1, this->MessageType, 0, FINISHED_ELEMENT, this->MPIComm);
+        // printMsg("finishedElement: " + std::to_string(seed));
+      } else {
 #pragma omp atomic update
           globalElementCounter -= m.Id;
 #pragma omp atomic read
@@ -308,8 +303,6 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
           }
         }
         }
-#pragma omp atomic update
-      (finishedElement) -= seed;
 
       // printMsg("Taskwait done, number of finished elements sent");
       }
@@ -426,7 +419,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             //          + ", m.DistanceFromSeed:"
             //          + std::to_string(m.DistanceFromSeed));
             std::vector<int> *trajectory = trajectories->addArrayElement(
-              std::vector<int>(1, this->getLocalIdFromGlobalId(m.Id)));
+              std::vector<int>(1, this->globalToLocal[m.Id]));
             std::vector<double> *distanceFromSeed
               = distancesFromSeed->addArrayElement(
                 std::vector<double>(1, m.DistanceFromSeed));
@@ -440,8 +433,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 
               this->create_task<dataType, triangulationType>(
                 triangulation, trajectory, distanceFromSeed,
-                this->getLocalIdFromGlobalId(m.Id), offsets, scalars,
-                identifier);
+                this->globalToLocal[elementId], offsets, scalars, identifier);
             }
             break;
           }

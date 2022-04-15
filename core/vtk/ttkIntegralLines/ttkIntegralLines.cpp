@@ -237,6 +237,11 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     domain->GetPointData()->GetArray("GlobalPointIds")));
   this->setGlobalIdsArray(globalPointsId);
   this->setProcessId(processId);
+  std::map<SimplexId, SimplexId> global2Local{};
+  for(int i = 0; i < numberOfPointsInDomain; i++) {
+    global2Local[this->GlobalIdsArray[i]] = i;
+  }
+  this->setGlobalToLocal(global2Local);
 
   if(this->NumberOfProcesses > 1) {
     int totalSeeds;
@@ -273,11 +278,12 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 
       int localId = -1;
       for(int i = 0; i < totalSeeds; i++) {
-        localId
-          = this->getLocalIdFromGlobalId(globalSeedsId->GetTuple1(i), false);
-        if((localId != -1)
-           && (pointGhostArray[localId] != ttk::type::DUPLICATEPOINT)) {
-          vtkInputIdentifiers->InsertNextTuple1(localId);
+        auto search = global2Local.find(globalSeedsId->GetTuple1(i));
+        if(search != global2Local.end()) {
+          localId = search->second;
+          if(pointGhostArray[localId] != ttk::type::DUPLICATEPOINT) {
+            vtkInputIdentifiers->InsertNextTuple1(localId);
+          }
         }
       }
       numberOfPointsInSeeds = vtkInputIdentifiers->GetNumberOfTuples();
@@ -293,10 +299,10 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         idSpareStorage);
       vtkInputIdentifiers->SetNumberOfTuples(numberOfPointsInSeeds);
       int localId = 0;
-#pragma omp parallel for num_threads(threadNumber_)
+#pragma omp parallel for
       for(int i = 0; i < numberOfPointsInSeeds; i++) {
-        localId = this->getLocalIdFromGlobalId(inputIdentifierGlobalId[i]);
-        vtkInputIdentifiers->SetTuple1(i, localId);
+        vtkInputIdentifiers->SetTuple1(
+          i, global2Local[inputIdentifierGlobalId[i]]);
       }
       inputIdentifiers
         = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
@@ -310,14 +316,10 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
       idSpareStorage);
     int localId = 0;
-#pragma omp parallel for num_threads(threadNumber_)
+#pragma omp parallel for
     for(int i = 0; i < numberOfPointsInSeeds; i++) {
-      localId = this->getLocalIdFromGlobalId(inputIdentifierGlobalId[i]);
-      vtkInputIdentifiers->SetTuple1(i, localId);
-      if(inputIdentifierGlobalId[i] == 81
-         || inputIdentifierGlobalId[i] == 273) {
-        printMsg("Seed 81 added");
-      }
+      vtkInputIdentifiers->SetTuple1(
+        i, global2Local[inputIdentifierGlobalId[i]]);
     }
     inputIdentifiers
       = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
