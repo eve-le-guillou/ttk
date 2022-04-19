@@ -2,12 +2,13 @@
 #include <ttkMacros.h>
 #include <ttkUtils.h>
 
+#include <ArrayLinkedList.h>
 #include <DataSetAttributes.h>
 #include <vtkCellData.h>
 #include <vtkCommunicator.h>
+#include <vtkDataArray.h>
 #include <vtkDataObject.h>
 #include <vtkDataSet.h>
-#include <vtkDoubleArray.h>
 #include <vtkFloatArray.h>
 #include <vtkInformation.h>
 #include <vtkMPI.h>
@@ -20,12 +21,11 @@
 #include <vtkPointSet.h>
 #include <vtkUnstructuredGrid.h>
 
-using namespace std;
-using namespace ttk;
+#include <array>
 
-vtkStandardNewMacro(ttkIntegralLines)
+vtkStandardNewMacro(ttkIntegralLines);
 
-  ttkIntegralLines::ttkIntegralLines() {
+ttkIntegralLines::ttkIntegralLines() {
   this->SetNumberOfInputPorts(2);
   this->SetNumberOfOutputPorts(1);
 }
@@ -69,85 +69,74 @@ int ttkIntegralLines::FillOutputPortInformation(int port,
 int ttkIntegralLines::getTrajectories(
   vtkDataSet *input,
   ttk::Triangulation *triangulation,
-  ArrayLinkedList<std::vector<SimplexId>, TABULAR_SIZE> &trajectories,
-  ArrayLinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
-  ArrayLinkedList<int, TABULAR_SIZE> &seedIdentifiers,
+  ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> &trajectories,
+  ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
+  ttk::ArrayLinkedList<int, TABULAR_SIZE> &seedIdentifiers,
   vtkUnstructuredGrid *output) {
-  vtkSmartPointer<vtkUnstructuredGrid> ug
-    = vtkSmartPointer<vtkUnstructuredGrid>::New();
-  vtkSmartPointer<vtkPoints> pts = vtkSmartPointer<vtkPoints>::New();
-  vtkSmartPointer<vtkFloatArray> dist = vtkSmartPointer<vtkFloatArray>::New();
-  vtkSmartPointer<vtkFloatArray> identifier
-    = vtkSmartPointer<vtkFloatArray>::New();
+
+  if(input == nullptr || output == nullptr
+     || input->GetPointData() == nullptr) {
+    this->printErr("Null pointers in getTrajectories parameters");
+    return 0;
+  }
+
+  vtkNew<vtkUnstructuredGrid> ug{};
+  vtkNew<vtkPoints> pts{};
+  vtkNew<vtkFloatArray> dist{};
+  vtkNew<vtkIdTypeArray> identifier{};
+
+  vtkNew<vtkFloatArray> dist{};
   dist->SetNumberOfComponents(1);
   dist->SetName("DistanceFromSeed");
   identifier->SetNumberOfComponents(1);
   identifier->SetName("SeedIdentifier");
 
-  // here, copy the original scalars
-  int numberOfArrays = input->GetPointData()->GetNumberOfArrays();
+  const auto numberOfArrays = input->GetPointData()->GetNumberOfArrays();
 
-  vector<vtkDataArray *> scalarArrays;
+  std::vector<vtkDataArray *> scalarArrays{};
+  scalarArrays.reserve(numberOfArrays);
   for(int k = 0; k < numberOfArrays; ++k) {
-    auto a = input->GetPointData()->GetArray(k);
-
-    if(a->GetNumberOfComponents() == 1)
+    const auto a = input->GetPointData()->GetArray(k);
+    if(a->GetNumberOfComponents() == 1) {
+      // only keep scalar arrays
       scalarArrays.push_back(a);
+    }
   }
-  // not efficient, implicit conversion to double
-  vector<vtkSmartPointer<vtkDataArray>> inputScalars(scalarArrays.size());
-  for(unsigned int k = 0; k < scalarArrays.size(); ++k) {
-    std::string s1 = scalarArrays[k]->GetName();
-    std::string s2 = scalarArrays[k]->GetClassName();
-    if(this->MyRank == 0) {
-      printMsg("array " + s1 + " is of class " + s2);
-    }
-    if(s1 == "GlobalPointIds") {
-      printMsg("HERE'S YOUR PROBLEM");
-      inputScalars[k] = vtkSmartPointer<vtkIdTypeArray>::New();
-    } else {
-      if(s1 == "vtkGhostType") {
-        inputScalars[k] = vtkSmartPointer<vtkUnsignedCharArray>::New();
-      } else {
-        if(s1.find("_Order") != std::string::npos) {
-          inputScalars[k] = vtkSmartPointer<vtkIntArray>::New();
-        } else {
-          inputScalars[k] = vtkSmartPointer<vtkDoubleArray>::New();
-        }
-      }
-    }
+
+  std::vector<vtkSmartPointer<vtkDataArray>> inputScalars(scalarArrays.size());
+  for(size_t k = 0; k < scalarArrays.size(); ++k) {
+    inputScalars[k]
+      = vtkSmartPointer<vtkDataArray>::Take(scalarArrays[k]->NewInstance());
     inputScalars[k]->SetNumberOfComponents(1);
     inputScalars[k]->SetName(scalarArrays[k]->GetName());
   }
 
-  float p[3];
-  vtkIdType ids[2];
-  list<array<std::vector<SimplexId>, TABULAR_SIZE>>::iterator trajectory
+  std::array<float, 3> p;
+  std::array<vtkIdType, 2> ids;
+  std::list<std::array<std::vector<ttk::SimplexId>, TABULAR_SIZE>>::iterator trajectory
     = trajectories.list.begin();
-  list<array<std::vector<double>, TABULAR_SIZE>>::iterator distanceFromSeed
+  std::list<std::array<std::vector<double>, TABULAR_SIZE>>::iterator distanceFromSeed
     = distancesFromSeed.list.begin();
-  list<array<int, TABULAR_SIZE>>::iterator seedIdentifier
+  std::list<std::array<int, TABULAR_SIZE>>::iterator seedIdentifier
     = seedIdentifiers.list.begin();
-  int total_points = 0;
   while(trajectory != trajectories.list.end()) {
     for(int i = 0; i < TABULAR_SIZE; i++) {
       if((*trajectory)[i].size() > 0) {
-        SimplexId vertex = (*trajectory)[i].at(0);
+        ttk::SimplexId vertex = (*trajectory)[i].at(0);
         // init
         triangulation->getVertexPoint(vertex, p[0], p[1], p[2]);
-        ids[0] = pts->InsertNextPoint(p);
+        ids[0] = pts->InsertNextPoint(p.data());
         // distanceScalars
         dist->InsertNextTuple1((*distanceFromSeed)[i].at(0));
         identifier->InsertNextTuple1((*seedIdentifier)[i]);
-        total_points++;
         // inputScalars
-        for(unsigned int k = 0; k < scalarArrays.size(); ++k)
+        for(size_t k = 0; k < scalarArrays.size(); ++k) {
           inputScalars[k]->InsertNextTuple1(scalarArrays[k]->GetTuple1(vertex));
-        for(SimplexId j = 1; j < (SimplexId)(*trajectory)[i].size(); ++j) {
-          total_points++;
+        }
+        for(size_t j = 1; j < (*trajectory)[i].size(); ++j) {
           vertex = (*trajectory)[i].at(j);
           triangulation->getVertexPoint(vertex, p[0], p[1], p[2]);
-          ids[1] = pts->InsertNextPoint(p);
+          ids[1] = pts->InsertNextPoint(p.data());
           // distanceScalars
           dist->InsertNextTuple1((*distanceFromSeed)[i].at(j));
           identifier->InsertNextTuple1((*seedIdentifier)[i]);
@@ -157,7 +146,7 @@ int ttkIntegralLines::getTrajectories(
             inputScalars[k]->InsertNextTuple1(
               scalarArrays[k]->GetTuple1(vertex));
 
-          ug->InsertNextCell(VTK_LINE, 2, ids);
+          ug->InsertNextCell(VTK_LINE, 2, ids.data());
 
           // iteration
           ids[0] = ids[1];
@@ -176,12 +165,13 @@ int ttkIntegralLines::getTrajectories(
   ug->SetPoints(pts);
   ug->GetPointData()->AddArray(dist);
   ug->GetPointData()->AddArray(identifier);
-  for(unsigned int k = 0; k < scalarArrays.size(); ++k)
+  for(unsigned int k = 0; k < scalarArrays.size(); ++k) {
     ug->GetPointData()->AddArray(inputScalars[k]);
+  }
 
   output->ShallowCopy(ug);
 
-  return 0;
+  return 1;
 }
 
 int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
@@ -210,15 +200,15 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   vtkDataArray *inputOffsets
     = this->GetOrderArray(domain, 0, 1, ForceInputOffsetScalarField);
 
-  const SimplexId numberOfPointsInDomain = domain->GetNumberOfPoints();
+  const ttk::SimplexId numberOfPointsInDomain = domain->GetNumberOfPoints();
   this->setVertexNumber(numberOfPointsInDomain);
   printMsg("number of points in domain"
            + std::to_string(numberOfPointsInDomain));
-  SimplexId numberOfPointsInSeeds = seeds->GetNumberOfPoints();
+  ttk::SimplexId numberOfPointsInSeeds = seeds->GetNumberOfPoints();
   printMsg("number of points in seeds" + std::to_string(numberOfPointsInSeeds));
-  SimplexId *inputIdentifiers;
+  ttk::SimplexId *inputIdentifiers;
 #if TTK_ENABLE_MPI
-  Timer t_mpi;
+  ttk::Timer t_mpi;
   controller->Barrier();
   if(myRank == 0) {
     t_mpi.reStart();
@@ -237,7 +227,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     domain->GetPointData()->GetArray("GlobalPointIds")));
   this->setGlobalIdsArray(globalPointsId);
   this->setProcessId(processId);
-  std::map<SimplexId, SimplexId> global2Local{};
+  std::map<ttk::SimplexId, ttk::SimplexId> global2Local{};
   for(int i = 0; i < numberOfPointsInDomain; i++) {
     global2Local[this->GlobalIdsArray[i]] = i;
   }
@@ -288,12 +278,12 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       }
       numberOfPointsInSeeds = vtkInputIdentifiers->GetNumberOfTuples();
       inputIdentifiers
-        = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
+        = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
     } else {
       this->setGlobalElementToCompute(totalSeeds);
       printMsg("isDistributed!");
-      std::vector<SimplexId> idSpareStorage{};
-      SimplexId *inputIdentifierGlobalId;
+      std::vector<ttk::SimplexId> idSpareStorage{};
+      ttk::SimplexId *inputIdentifierGlobalId;
       inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
         ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
         idSpareStorage);
@@ -305,13 +295,13 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
           i, global2Local[inputIdentifierGlobalId[i]]);
       }
       inputIdentifiers
-        = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
+        = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
     }
   } else {
     this->setGlobalElementToCompute(numberOfPointsInSeeds);
     vtkInputIdentifiers->SetNumberOfTuples(numberOfPointsInSeeds);
-    std::vector<SimplexId> idSpareStorage{};
-    SimplexId *inputIdentifierGlobalId;
+    std::vector<ttk::SimplexId> idSpareStorage{};
+    ttk::SimplexId *inputIdentifierGlobalId;
     inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
       ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
       idSpareStorage);
@@ -322,7 +312,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         i, global2Local[inputIdentifierGlobalId[i]]);
     }
     inputIdentifiers
-      = static_cast<SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
+      = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
   }
   controller->Barrier();
   if(myRank == 0) {
@@ -370,17 +360,15 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   //   return -1;
   // }
 #endif
-  ArrayLinkedList<vector<SimplexId>, TABULAR_SIZE> trajectories;
-  ArrayLinkedList<vector<double>, TABULAR_SIZE> distancesFromSeed;
-  ArrayLinkedList<int, TABULAR_SIZE> seedIdentifiers;
+  ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> trajectories;
+  ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> distancesFromSeed;
+  ttk::ArrayLinkedList<int, TABULAR_SIZE> seedIdentifiers;
 
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);
   this->setDirection(Direction);
   this->setInputScalarField(inputScalars->GetVoidPointer(0));
-  this->setInputOffsets(
-    static_cast<SimplexId *>(inputOffsets->GetVoidPointer(0)));
-
+  this->setInputOffsets(ttkUtils::GetPointer<ttk::SimplexId>(inputOffsets));
   this->setVertexIdentifierScalarField(inputIdentifiers);
   this->setOutputTrajectories(&trajectories);
   this->setOutputDistancesFromSeed(&distancesFromSeed);
@@ -409,11 +397,10 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
 #ifndef TTK_ENABLE_KAMIKAZE
   // something wrong in baseCode
-  if(status) {
-    std::stringstream msg;
-    msg << "IntegralLines.execute() error code : " << status;
-    this->printErr(msg.str());
-    return -1;
+  if(status != 0) {
+    this->printErr("IntegralLines.execute() error code : "
+                   + std::to_string(status));
+    return 0;
   }
 #endif
 

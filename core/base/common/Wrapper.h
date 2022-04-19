@@ -5,8 +5,7 @@
 ///
 /// \brief Wrapper class to wrap ttk code.
 
-#ifndef _WRAPPER_H
-#define _WRAPPER_H
+#pragma once
 
 #include <BaseMPIClass.h>
 #include <Debug.h>
@@ -20,7 +19,7 @@ namespace ttk {
       processingProgress_ = 0;
     }
 
-    virtual ~Wrapper() = default;
+    ~Wrapper() override = default;
 
     virtual bool needsToAbort() = 0;
 
@@ -30,5 +29,3 @@ namespace ttk {
     float processingProgress_;
   };
 } // namespace ttk
-
-#endif
