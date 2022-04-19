@@ -85,7 +85,6 @@ int ttkIntegralLines::getTrajectories(
   vtkNew<vtkFloatArray> dist{};
   vtkNew<vtkIdTypeArray> identifier{};
 
-  vtkNew<vtkFloatArray> dist{};
   dist->SetNumberOfComponents(1);
   dist->SetName("DistanceFromSeed");
   identifier->SetNumberOfComponents(1);
@@ -262,10 +261,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 
       controller->Broadcast(globalSeedsId, 0);
 
-      long int *globalDomainId
-        = static_cast<long int *>(ttkUtils::GetVoidPointer(
-          domain->GetPointData()->GetArray("GlobalPointIds")));
-
       int localId = -1;
       for(int i = 0; i < totalSeeds; i++) {
         auto search = global2Local.find(globalSeedsId->GetTuple1(i));
@@ -288,7 +283,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
         idSpareStorage);
       vtkInputIdentifiers->SetNumberOfTuples(numberOfPointsInSeeds);
-      int localId = 0;
 #pragma omp parallel for
       for(int i = 0; i < numberOfPointsInSeeds; i++) {
         vtkInputIdentifiers->SetTuple1(
