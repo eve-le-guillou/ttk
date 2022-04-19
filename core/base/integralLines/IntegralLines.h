@@ -33,8 +33,10 @@
 #endif
 
 struct Message {
-  int Id;
-  double DistanceFromSeed;
+  int Id1;
+  int Id2;
+  double DistanceFromSeed1;
+  double DistanceFromSeed2;
   int SeedIdentifier;
 };
 
@@ -111,13 +113,16 @@ namespace ttk {
 #if TTK_ENABLE_MPI
 
     void createMessageType() {
-      MPI_Datatype types[3] = {MPI_INT, MPI_DOUBLE, MPI_INT};
-      int lengths[] = {1, 1, 1};
+      MPI_Datatype types[]
+        = {MPI_INT, MPI_INT, MPI_DOUBLE, MPI_DOUBLE, MPI_INT};
+      int lengths[] = {1, 1, 1, 1, 1};
       const long int mpi_offsets[]
-        = {offsetof(Message, Id), offsetof(Message, DistanceFromSeed),
+        = {offsetof(Message, Id1), offsetof(Message, Id2),
+           offsetof(Message, DistanceFromSeed1),
+           offsetof(Message, DistanceFromSeed2),
            offsetof(Message, SeedIdentifier)};
       MPI_Type_create_struct(
-        3, lengths, mpi_offsets, types, &(this->MessageType));
+        5, lengths, mpi_offsets, types, &(this->MessageType));
       MPI_Type_commit(&(this->MessageType));
     }
 
@@ -227,12 +232,6 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
       v = vnext;
       triangulation->getVertexPoint(v, p1[0], p1[1], p1[2]);
       distance += Geometry::distance(p0, p1, 3);
-      (*trajectory).push_back(v);
-
-      p0[0] = p1[0];
-      p0[1] = p1[1];
-      p0[2] = p1[2];
-      (*distanceFromSeed).push_back(distance);
 #if TTK_ENABLE_MPI
       if(this->PointGhostArray[v] && ttk::type::DUPLICATEPOINT) {
         int finished;
@@ -246,9 +245,11 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
         // }
 
         isMax = true;
-        m.Id = this->GlobalIdsArray[v];
-        m.DistanceFromSeed = distance;
+        m.Id2 = this->GlobalIdsArray[v];
+        m.Id1 = this->GlobalIdsArray[trajectory->back()];
+        m.DistanceFromSeed2 = distance;
         m.SeedIdentifier = seedIdentifier;
+        m.DistanceFromSeed1 = distanceFromSeed->back();
         MPI_Send(&m, 1, this->MessageType, this->ProcessId[v],
                  IS_ELEMENT_TO_PROCESS, this->MPIComm);
         // printMsg("Sent element " + std::to_string(m.Id)
@@ -264,6 +265,12 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
         // (*distanceFromSeed).push_back(distance);
 #if TTK_ENABLE_MPI
       }
+      (*trajectory).push_back(v);
+
+      p0[0] = p1[0];
+      p0[1] = p1[1];
+      p0[2] = p1[2];
+      (*distanceFromSeed).push_back(distance);
 #endif
     }
   }
@@ -285,13 +292,13 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
     }
     if(seed > 0) {
       // printMsg("Taskwait done, sending number of finished elements");
-      m.Id = seed;
+      m.Id1 = seed;
       if(this->MyRank != 0) {
         MPI_Send(&m, 1, this->MessageType, 0, FINISHED_ELEMENT, this->MPIComm);
         // printMsg("finishedElement: " + std::to_string(seed));
       } else {
 #pragma omp atomic update
-          globalElementCounter -= m.Id;
+        globalElementCounter -= m.Id1;
 #pragma omp atomic read
           totalSeed = globalElementCounter;
           if(totalSeed == 0) {
@@ -418,12 +425,13 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             //          std::to_string(m.SeedIdentifier)
             //          + ", m.DistanceFromSeed:"
             //          + std::to_string(m.DistanceFromSeed));
-            std::vector<int> *trajectory = trajectories->addArrayElement(
-              std::vector<int>(1, this->globalToLocal[m.Id]));
+            std::vector<int> *trajectory
+              = trajectories->addArrayElement(std::vector<int>{
+                this->globalToLocal[m.Id1], this->globalToLocal[m.Id2]});
             std::vector<double> *distanceFromSeed
               = distancesFromSeed->addArrayElement(
-                std::vector<double>(1, m.DistanceFromSeed));
-            int elementId = m.Id;
+                std::vector<double>{m.DistanceFromSeed1, m.DistanceFromSeed2});
+            int elementId = m.Id2;
             int identifier = m.SeedIdentifier;
             seedIdentifiers->addArrayElement(identifier);
 #pragma omp atomic update
@@ -440,7 +448,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
           case FINISHED_ELEMENT: {
             // printMsg("Received finished element");
 #pragma omp atomic update
-              (globalElementCounter) -= m.Id;
+            (globalElementCounter) -= m.Id1;
 #pragma omp atomic read
               totalSeed = (globalElementCounter);
               // printMsg("totalSeed: " + std::to_string(totalSeed));
