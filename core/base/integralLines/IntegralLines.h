@@ -35,8 +35,10 @@
 struct Message {
   int Id1;
   int Id2;
+  int Id3;
   double DistanceFromSeed1;
   double DistanceFromSeed2;
+  double DistanceFromSeed3;
   int SeedIdentifier;
 };
 
@@ -113,14 +115,16 @@ namespace ttk {
 #if TTK_ENABLE_MPI
 
     void createMessageType() {
-      MPI_Datatype types[]
-        = {MPI_INT, MPI_INT, MPI_DOUBLE, MPI_DOUBLE, MPI_INT};
-      int lengths[] = {1, 1, 1, 1, 1};
-      const long int mpi_offsets[]
-        = {offsetof(Message, Id1), offsetof(Message, Id2),
-           offsetof(Message, DistanceFromSeed1),
-           offsetof(Message, DistanceFromSeed2),
-           offsetof(Message, SeedIdentifier)};
+      MPI_Datatype types[] = {
+        MPI_INT, MPI_INT, MPI_INT, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_INT};
+      int lengths[] = {1, 1, 1, 1, 1, 1, 1};
+      const long int mpi_offsets[] = {offsetof(Message, Id1),
+                                      offsetof(Message, Id2),
+                                      offsetof(Message, Id3),
+                                      offsetof(Message, DistanceFromSeed1),
+                                      offsetof(Message, DistanceFromSeed2),
+                                      offsetof(Message, DistanceFromSeed3),
+                                      offsetof(Message, SeedIdentifier)};
       MPI_Type_create_struct(
         5, lengths, mpi_offsets, types, &(this->MessageType));
       MPI_Type_commit(&(this->MessageType));
@@ -201,6 +205,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
   double distance = (*distanceFromSeed)[0];
   float p0[3];
   float p1[3];
+  int size;
   triangulation->getVertexPoint(v, p0[0], p0[1], p0[2]);
   bool isMax{};
   while(!isMax) {
@@ -233,7 +238,9 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
       triangulation->getVertexPoint(v, p1[0], p1[1], p1[2]);
       distance += Geometry::distance(p0, p1, 3);
 #if TTK_ENABLE_MPI
-      if(this->PointGhostArray[v] && ttk::type::DUPLICATEPOINT) {
+      if((this->PointGhostArray[v] && ttk::type::DUPLICATEPOINT)
+         && (this->PointGhostArray[trajectory->back()]
+             && ttk::type::DUPLICATEPOINT)) {
         int finished;
 #pragma omp atomic read
         finished = finishedElement;
@@ -245,11 +252,14 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
         // }
 
         isMax = true;
-        m.Id2 = this->GlobalIdsArray[v];
-        m.Id1 = this->GlobalIdsArray[trajectory->back()];
-        m.DistanceFromSeed2 = distance;
+        size = trajectory->size();
+        m.Id3 = this->GlobalIdsArray[v];
+        m.Id2 = this->GlobalIdsArray[trajectory->back()];
+        m.Id1 = this->GlobalIdsArray[trajectory->at(size - 2)];
+        m.DistanceFromSeed3 = distance;
+        m.DistanceFromSeed2 = distanceFromSeed->back();
+        m.DistanceFromSeed1 = distanceFromSeed->at(size - 2);
         m.SeedIdentifier = seedIdentifier;
-        m.DistanceFromSeed1 = distanceFromSeed->back();
         MPI_Send(&m, 1, this->MessageType, this->ProcessId[v],
                  IS_ELEMENT_TO_PROCESS, this->MPIComm);
         // printMsg("Sent element " + std::to_string(m.Id)
@@ -427,11 +437,12 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             //          + std::to_string(m.DistanceFromSeed));
             std::vector<int> *trajectory
               = trajectories->addArrayElement(std::vector<int>{
-                this->globalToLocal[m.Id1], this->globalToLocal[m.Id2]});
+                this->globalToLocal[m.Id1], this->globalToLocal[m.Id2],
+                this->globalToLocal[m.Id3]});
             std::vector<double> *distanceFromSeed
-              = distancesFromSeed->addArrayElement(
-                std::vector<double>{m.DistanceFromSeed1, m.DistanceFromSeed2});
-            int elementId = m.Id2;
+              = distancesFromSeed->addArrayElement(std::vector<double>{
+                m.DistanceFromSeed1, m.DistanceFromSeed2, m.DistanceFromSeed3});
+            int elementId = m.Id3;
             int identifier = m.SeedIdentifier;
             seedIdentifiers->addArrayElement(identifier);
 #pragma omp atomic update
