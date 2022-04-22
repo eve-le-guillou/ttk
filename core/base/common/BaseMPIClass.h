@@ -7,6 +7,7 @@
 #include <mpi.h>
 
 namespace ttk {
+  COMMON_EXPORTS extern int MPIrank_;
 
   class BaseMPIClass : public BaseClass {
 
@@ -68,21 +69,6 @@ namespace ttk {
       this->IsOnMPIBoundary = array;
     }
 
-    // void setFinishedElement(int number) {
-    //   this->finishedElement = number;
-    // }
-
-    // void setKeepWorking(bool number) {
-    //   this->keepWorking = number;
-    // }
-
-    // void setTaskCounter(int number) {
-    //   this->taskCounter = number;
-    // }
-
-    // void setGlobalElementCounter(int number) {
-    //   this->globalElementCounter = number;
-    // }
   };
 } // namespace ttk
 

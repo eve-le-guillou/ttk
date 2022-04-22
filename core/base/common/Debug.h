@@ -41,7 +41,7 @@ namespace ttk {
   COMMON_EXPORTS extern bool welcomeMsg_;
   COMMON_EXPORTS extern bool goodbyeMsg_;
   COMMON_EXPORTS extern int globalDebugLevel_;
-  COMMON_EXPORTS extern int rank_;
+  COMMON_EXPORTS extern int MPIrank_;
 
   namespace debug {
     enum class Priority : int {
@@ -368,8 +368,11 @@ namespace ttk {
      */
     inline void setDebugMsgPrefix(const std::string &prefix) {
       #if TTK_ENABLE_MPI
-      this->debugMsgPrefix_ = prefix.length() > 0 ? "[" + prefix + "-" + std::to_string(rank_) + "] " : "";
-      #else
+      this->debugMsgPrefix_
+        = prefix.length() > 0
+            ? "[" + prefix + "-" + std::to_string(MPIrank_) + "] "
+            : "";
+#else
       this->debugMsgPrefix_ = prefix.length() > 0 ? "[" + prefix + "] " : "";
       #endif
     }
