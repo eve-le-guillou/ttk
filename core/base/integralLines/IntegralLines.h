@@ -126,7 +126,7 @@ namespace ttk {
                                       offsetof(Message, DistanceFromSeed3),
                                       offsetof(Message, SeedIdentifier)};
       MPI_Type_create_struct(
-        5, lengths, mpi_offsets, types, &(this->MessageType));
+        7, lengths, mpi_offsets, types, &(this->MessageType));
       MPI_Type_commit(&(this->MessageType));
     }
 
@@ -200,7 +200,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
                                      dataType *scalars,
                                      int seedIdentifier) const {
 #if TTK_ENABLE_MPI
-  struct Message m = {0, 0, 0, 0};
+  struct Message m;
 #endif
   double distance = (*distanceFromSeed)[0];
   float p0[3];
@@ -421,10 +421,10 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
       }
 #if TTK_ENABLE_MPI
       MPI_Status status;
-      struct Message m = {0, 0, 0, 0};
+      struct Message m;
       while(keepWorkingAux) {
         // printMsg("Start receiving messages");
-        MPI_Recv(&m, 3, this->MessageType, MPI_ANY_SOURCE, MPI_ANY_TAG,
+        MPI_Recv(&m, 1, this->MessageType, MPI_ANY_SOURCE, MPI_ANY_TAG,
                  this->MPIComm, &status);
         // printMsg("Message Received");
         int stat = status.MPI_TAG;

@@ -220,7 +220,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     ttkUtils::GetVoidPointer(domain->GetGhostArray(vtkDataObject::POINT)));
   this->setPointGhostArray(pointGhostArray);
   int *processId = static_cast<int *>(
-    ttkUtils::GetVoidPointer(domain->GetPointData()->GetArray("ProcessId")));
+    ttkUtils::GetVoidPointer(domain->GetPointData()->GetArray("RankArray")));
 
   long int *globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(
     domain->GetPointData()->GetArray("GlobalPointIds")));
