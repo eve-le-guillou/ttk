@@ -253,15 +253,6 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
        && ((this->PointGhostArray[trajectory->at(size - 2)]
             && ttk::type::DUPLICATEPOINT)
            || isMax)) {
-      int finished;
-#pragma omp atomic read
-        finished = finishedElement;
-        // if (this->MyRank == this->ProcessId[v]){
-        // printMsg("Sending element " + std::to_string(this->GlobalIdsArray[v])
-        //          + " to process to process "
-        //          + std::to_string(this->ProcessId[v])
-        //          + " finishedElement: " + std::to_string(finished));
-        // }
 
         m.Id3 = this->GlobalIdsArray[v];
         m.Id2 = this->GlobalIdsArray[trajectory->at(size - 2)];
@@ -468,7 +459,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             break;
           }
           case FINISHED_ELEMENT: {
-            // printMsg("Received finished element");
 #pragma omp atomic update
             (globalElementCounter) -= m.Id1;
 #pragma omp atomic read

@@ -158,9 +158,7 @@ int ttkIntegralLines::getTrajectories(
     distanceFromSeed++;
     seedIdentifier++;
   }
-  // if (total_points != 143342){
-  //   printMsg("ERRRRORRRR: "+std::to_string(total_points));
-  // }
+
   ug->SetPoints(pts);
   ug->GetPointData()->AddArray(dist);
   ug->GetPointData()->AddArray(identifier);
@@ -201,10 +199,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 
   const ttk::SimplexId numberOfPointsInDomain = domain->GetNumberOfPoints();
   this->setVertexNumber(numberOfPointsInDomain);
-  printMsg("number of points in domain"
-           + std::to_string(numberOfPointsInDomain));
   ttk::SimplexId numberOfPointsInSeeds = seeds->GetNumberOfPoints();
-  printMsg("number of points in seeds" + std::to_string(numberOfPointsInSeeds));
   ttk::SimplexId *inputIdentifiers;
 #if TTK_ENABLE_MPI
   ttk::Timer t_mpi;
@@ -276,7 +271,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
     } else {
       this->setGlobalElementToCompute(totalSeeds);
-      printMsg("isDistributed!");
       std::vector<ttk::SimplexId> idSpareStorage{};
       ttk::SimplexId *inputIdentifierGlobalId;
       inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
@@ -299,7 +293,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
       ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
       idSpareStorage);
-    int localId = 0;
 #pragma omp parallel for
     for(int i = 0; i < numberOfPointsInSeeds; i++) {
       vtkInputIdentifiers->SetTuple1(
@@ -369,7 +362,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setOutputSeedIdentifiers(&seedIdentifiers);
 
   this->preconditionTriangulation(triangulation);
-  printMsg("Beginning computation");
   int status = 0;
 #if TTK_ENABLE_MPI
   controller->Barrier();
