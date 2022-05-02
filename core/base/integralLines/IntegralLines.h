@@ -202,7 +202,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
 #if TTK_ENABLE_MPI
   struct Message m;
 #endif
-  double distance = (*distanceFromSeed)[0];
+  double distance = (*distanceFromSeed).back();
   float p0[3];
   float p1[3];
   int size;
@@ -230,18 +230,30 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
     if(vnext == -1) {
       isMax = true;
 #if TTK_ENABLE_MPI
+      if(!(this->PointGhostArray[v] && ttk::type::DUPLICATEPOINT)) {
 #pragma omp atomic update
-      (finishedElement)++;
+        (finishedElement)++;
+      }
 #endif
     } else {
       v = vnext;
       triangulation->getVertexPoint(v, p1[0], p1[1], p1[2]);
       distance += Geometry::distance(p0, p1, 3);
+      (*trajectory).push_back(v);
+
+      p0[0] = p1[0];
+      p0[1] = p1[1];
+      p0[2] = p1[2];
+      (*distanceFromSeed).push_back(distance);
+    }
+    size = trajectory->size();
+
 #if TTK_ENABLE_MPI
-      if((this->PointGhostArray[v] && ttk::type::DUPLICATEPOINT)
-         && (this->PointGhostArray[trajectory->back()]
-             && ttk::type::DUPLICATEPOINT)) {
-        int finished;
+    if((this->PointGhostArray[v] && ttk::type::DUPLICATEPOINT)
+       && ((this->PointGhostArray[trajectory->at(size - 2)]
+            && ttk::type::DUPLICATEPOINT)
+           || isMax)) {
+      int finished;
 #pragma omp atomic read
         finished = finishedElement;
         // if (this->MyRank == this->ProcessId[v]){
@@ -251,38 +263,27 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
         //          + " finishedElement: " + std::to_string(finished));
         // }
 
-        isMax = true;
-        size = trajectory->size();
         m.Id3 = this->GlobalIdsArray[v];
-        m.Id2 = this->GlobalIdsArray[trajectory->back()];
-        m.Id1 = this->GlobalIdsArray[trajectory->at(size - 2)];
+        m.Id2 = this->GlobalIdsArray[trajectory->at(size - 2)];
+        if(!isMax) {
+          m.Id1 = this->GlobalIdsArray[trajectory->at(size - 3)];
+          m.DistanceFromSeed1 = distanceFromSeed->at(size - 3);
+        } else {
+          m.Id1 = -1;
+          m.DistanceFromSeed1 = 0;
+        }
         m.DistanceFromSeed3 = distance;
-        m.DistanceFromSeed2 = distanceFromSeed->back();
-        m.DistanceFromSeed1 = distanceFromSeed->at(size - 2);
+        m.DistanceFromSeed2 = distanceFromSeed->at(size - 2);
         m.SeedIdentifier = seedIdentifier;
         MPI_Send(&m, 1, this->MessageType, this->ProcessId[v],
                  IS_ELEMENT_TO_PROCESS, this->MPIComm);
         // printMsg("Sent element " + std::to_string(m.Id)
         //          + " to process to process "
         //          + std::to_string(this->ProcessId[v]));
-      } else {
-#endif
-        // (*trajectory).push_back(v);
-
-        // p0[0] = p1[0];
-        // p0[1] = p1[1];
-        // p0[2] = p1[2];
-        // (*distanceFromSeed).push_back(distance);
-#if TTK_ENABLE_MPI
-      }
-      (*trajectory).push_back(v);
-
-      p0[0] = p1[0];
-      p0[1] = p1[1];
-      p0[2] = p1[2];
-      (*distanceFromSeed).push_back(distance);
-#endif
+        isMax = true;
     }
+
+#endif
   }
 #if TTK_ENABLE_MPI
   int tempTask;
@@ -435,13 +436,23 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             //          std::to_string(m.SeedIdentifier)
             //          + ", m.DistanceFromSeed:"
             //          + std::to_string(m.DistanceFromSeed));
+            std::vector<int> init_traj;
+            std::vector<double> init_dist;
+            if(m.Id1 != -1) {
+              init_traj
+                = {this->globalToLocal[m.Id1], this->globalToLocal[m.Id2],
+                   this->globalToLocal[m.Id3]};
+              init_dist = {
+                m.DistanceFromSeed1, m.DistanceFromSeed2, m.DistanceFromSeed3};
+            } else {
+              init_traj
+                = {this->globalToLocal[m.Id2], this->globalToLocal[m.Id3]};
+              init_dist = {m.DistanceFromSeed2, m.DistanceFromSeed3};
+            }
             std::vector<int> *trajectory
-              = trajectories->addArrayElement(std::vector<int>{
-                this->globalToLocal[m.Id1], this->globalToLocal[m.Id2],
-                this->globalToLocal[m.Id3]});
+              = trajectories->addArrayElement(init_traj);
             std::vector<double> *distanceFromSeed
-              = distancesFromSeed->addArrayElement(std::vector<double>{
-                m.DistanceFromSeed1, m.DistanceFromSeed2, m.DistanceFromSeed3});
+              = distancesFromSeed->addArrayElement(init_dist);
             int elementId = m.Id3;
             int identifier = m.SeedIdentifier;
             seedIdentifiers->addArrayElement(identifier);
