@@ -225,10 +225,11 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
 
 #if TTK_ENABLE_MPI
   if(this->PointGhostArray || (this->NumberOfProcesses == 1)) {
+  int chunkSize = std::max(1000, vertexNumber_/(threadNumber_*100));
 #endif
   if(triangulation) {
 #ifdef TTK_ENABLE_OPENMP
-#pragma omp parallel for num_threads(threadNumber_)
+#pragma omp parallel for schedule(dynamic,chunkSize) num_threads(threadNumber_)
 #endif
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
       #if TTK_ENABLE_MPI
@@ -245,7 +246,7 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
   } else if(vertexLinkEdgeLists_) {
     // legacy implementation
 #ifdef TTK_ENABLE_OPENMP
-#pragma omp parallel for num_threads(threadNumber_)
+#pragma omp parallel for schedule(dynamic,chunkSize) num_threads(threadNumber_)
 #endif
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
       #if TTK_ENABLE_MPI
