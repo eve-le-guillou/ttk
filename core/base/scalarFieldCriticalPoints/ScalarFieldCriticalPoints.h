@@ -225,9 +225,9 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
 
 #if TTK_ENABLE_MPI
   if(this->PointGhostArray || (this->NumberOfProcesses == 1)) {
-  int chunkSize = std::max(1000, vertexNumber_/(threadNumber_*100));
 #endif
-  if(triangulation) {
+    int chunkSize = std::max(1000, vertexNumber_ / (threadNumber_ * 100));
+    if(triangulation) {
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp parallel for schedule(dynamic,chunkSize) num_threads(threadNumber_)
 #endif

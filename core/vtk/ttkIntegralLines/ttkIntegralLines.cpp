@@ -308,7 +308,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
              + std::to_string(t_mpi.getElapsedTime()));
   }
 #else
-  std::vector<SimplexId> idSpareStorage{};
+  std::vector<ttk::SimplexId> idSpareStorage{};
   inputIdentifiers = this->GetIdentifierArrayPtr(ForceInputVertexScalarField, 2,
                                                  ttk::VertexScalarFieldName,
                                                  seeds, idSpareStorage);

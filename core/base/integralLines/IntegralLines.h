@@ -24,14 +24,15 @@
 #include <iterator>
 #include <limits>
 #include <unordered_set>
+#define TABULAR_SIZE 50
+#if TTK_ENABLE_MPI
 #define IS_ELEMENT_TO_PROCESS 0
 #define FINISHED_ELEMENT 1
 #define STOP_WORKING 2
-#define TABULAR_SIZE 50
-#if TTK_ENABLE_MPI
 #include <mpi.h>
 #endif
 
+#if TTK_ENABLE_MPI
 struct Message {
   int Id1;
   int Id2;
@@ -43,6 +44,7 @@ struct Message {
   double DistanceFromSeed4;
   int SeedIdentifier;
 };
+#endif
 
 namespace ttk {
 
@@ -99,7 +101,6 @@ namespace ttk {
     void create_task(const triangulationType *triangulation,
                      std::vector<SimplexId> *trajectory,
                      std::vector<double> *distanceFromSeed,
-                     ttk::SimplexId v,
                      const SimplexId *offsets,
                      dataType *scalars,
                      int seedIdentifier) const;
@@ -239,17 +240,17 @@ template <typename dataType, class triangulationType>
 void ttk::IntegralLines::create_task(const triangulationType *triangulation,
                                      std::vector<SimplexId> *trajectory,
                                      std::vector<double> *distanceFromSeed,
-                                     ttk::SimplexId v,
                                      const SimplexId *offsets,
                                      dataType *scalars,
                                      int seedIdentifier) const {
 #if TTK_ENABLE_MPI
   struct Message m;
+  int size;
 #endif
   double distance = (*distanceFromSeed).back();
+  ttk::SimplexId v = (*trajectory).back();
   float p0[3];
   float p1[3];
-  int size;
   triangulation->getVertexPoint(v, p0[0], p0[1], p0[2]);
   bool isMax{};
   while(!isMax) {
@@ -290,8 +291,8 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
       p0[2] = p1[2];
       (*distanceFromSeed).push_back(distance);
     }
-    size = trajectory->size();
 #if TTK_ENABLE_MPI
+    size = trajectory->size();
     if(size > 1) {
       if(seedIdentifier == 512362) {
       }
@@ -424,7 +425,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 #pragma omp task firstprivate(v, i)
           {
             this->create_task<dataType, triangulationType>(
-              triangulation, trajectory, distanceFromSeed, v, offsets, scalars,
+              triangulation, trajectory, distanceFromSeed, offsets, scalars,
               seedIdentifier);
           }
       }
@@ -490,8 +491,8 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 #pragma omp task firstprivate(elementId, identifier)
               {
                 this->create_task<dataType, triangulationType>(
-                  triangulation, trajectory, distanceFromSeed, elementId,
-                  offsets, scalars, identifier);
+                  triangulation, trajectory, distanceFromSeed, offsets, scalars,
+                  identifier);
               }
             } else {
 #pragma omp atomic update
