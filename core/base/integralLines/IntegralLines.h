@@ -143,25 +143,31 @@ namespace ttk {
       Message m;
       int tempTask;
       int seed;
+      int temp;
       int totalSeed;
 #pragma omp atomic read
       tempTask = taskCounter;
-
       if(tempTask == 0) {
 #pragma omp atomic read
-        seed = (finishedElement);
+        seed = finishedElement;
 #pragma omp atomic update
-        (finishedElement) -= seed;
+        finishedElement -= seed;
         if(seed > 0) {
           m.Id1 = seed;
           if(this->MyRank != 0) {
             MPI_Send(
               &m, 1, this->MessageType, 0, FINISHED_ELEMENT, this->MPIComm);
+            // printMsg("Send "+std::to_string(m.Id1)+ " finished element to
+            // 0");
           } else {
 #pragma omp atomic update
             globalElementCounter -= m.Id1;
+            // printMsg("Send "+std::to_string(m.Id1)+ " finished element to
+            // myself");
 #pragma omp atomic read
             totalSeed = globalElementCounter;
+            // printMsg("totalSeed: "+std::to_string(totalSeed)+", received
+            // "+std::to_string(m.Id1)+" from myself");
             if(totalSeed == 0) {
 #pragma omp atomic write
               (keepWorking) = false;
@@ -172,6 +178,8 @@ namespace ttk {
             }
           }
         }
+        // printMsg("Old finishedElement: "+std::to_string(seed)+" New
+        // finishedElement: "+std::to_string(temp));
       }
     }
 
@@ -276,8 +284,13 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
       isMax = true;
 #if TTK_ENABLE_MPI
       if(!(this->PointGhostArray[v] && ttk::type::DUPLICATEPOINT)) {
+        int temp;
 #pragma omp atomic update
-        (finishedElement)++;
+        finishedElement++;
+        // #pragma omp atomic read
+        // temp = finishedElement;
+        // if (this->MyRank == 2)
+        // printMsg("finishedElement: "+std::to_string(temp));
       }
 #endif
     } else {
@@ -294,8 +307,6 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
 #if TTK_ENABLE_MPI
     size = trajectory->size();
     if(size > 1) {
-      if(seedIdentifier == 512362) {
-      }
       int processId;
       if(!(isMax && size == 3
            && (!(this->PointGhostArray[trajectory->at(size - 1)]
@@ -360,9 +371,12 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
 #endif
   }
 #if TTK_ENABLE_MPI
+#pragma omp critical(finished)
+  {
 #pragma omp atomic update
   taskCounter--;
   this->checkEndOfComputation();
+  }
 #endif
 }
 
@@ -422,12 +436,12 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
         seedIdentifier = v;
 #endif
         seedIdentifiers->addArrayElement(seedIdentifier);
-#pragma omp task firstprivate(v, i)
-          {
-            this->create_task<dataType, triangulationType>(
-              triangulation, trajectory, distanceFromSeed, offsets, scalars,
-              seedIdentifier);
-          }
+#pragma omp task firstprivate(seedIdentifier)
+        {
+          this->create_task<dataType, triangulationType>(
+            triangulation, trajectory, distanceFromSeed, offsets, scalars,
+            seedIdentifier);
+        }
       }
 #if TTK_ENABLE_MPI
       MPI_Status status;
@@ -449,8 +463,8 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
                 isUnfinished = true;
 #pragma omp critical(unfinishedTrajectories)
                 {
+                  int localId3 = this->globalToLocal[m.Id3];
                   for(int i = 0; i < (int)unfinishedSeed.size(); i++) {
-                    int localId3 = this->globalToLocal[m.Id3];
                     if(unfinishedSeed[i] == m.SeedIdentifier
                        && (unfinishedTraj[i])->back() == localId3) {
                       trajectory = unfinishedTraj[i];
@@ -485,27 +499,38 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             if(m.Id4 != -1) {
               trajectory->push_back(this->globalToLocal[m.Id4]);
               distanceFromSeed->push_back(m.DistanceFromSeed4);
-              int elementId = trajectory->back();
 #pragma omp atomic update
               (taskCounter)++;
-#pragma omp task firstprivate(elementId, identifier)
+#pragma omp task firstprivate(identifier)
               {
                 this->create_task<dataType, triangulationType>(
                   triangulation, trajectory, distanceFromSeed, offsets, scalars,
                   identifier);
               }
             } else {
+
+#pragma omp critical(finished)
+              {
+                int temp;
 #pragma omp atomic update
-                (finishedElement)++;
+                finishedElement++;
+                // #pragma omp atomic read
+                // temp = finishedElement;
+                // if (this->MyRank == 2)
+                // printMsg("finishedElement: "+std::to_string(temp));
+                this->checkEndOfComputation();
               }
-              this->checkEndOfComputation();
-              break;
+            }
+            break;
           }
           case FINISHED_ELEMENT: {
 #pragma omp atomic update
             (globalElementCounter) -= m.Id1;
 #pragma omp atomic read
               totalSeed = (globalElementCounter);
+              // printMsg("totalSeed: "+std::to_string(totalSeed)+", received
+              // "+std::to_string(m.Id1)+" from
+              // "+std::to_string(status.MPI_SOURCE));
               if(totalSeed == 0) {
 #pragma omp atomic write
                 (keepWorking) = false;

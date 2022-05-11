@@ -360,7 +360,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setOutputTrajectories(&trajectories);
   this->setOutputDistancesFromSeed(&distancesFromSeed);
   this->setOutputSeedIdentifiers(&seedIdentifiers);
-
+  printMsg("Number of seeds: " + std::to_string(numberOfPointsInSeeds));
   this->preconditionTriangulation(triangulation);
   int status = 0;
 #if TTK_ENABLE_MPI
