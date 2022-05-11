@@ -5,6 +5,8 @@
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
 #include <vtkInformation.h>
+#include <vtkMPIController.h>
+#include <vtkMultiProcessController.h>
 #include <vtkObjectFactory.h>
 #include <vtkPointData.h>
 
@@ -52,6 +54,10 @@ int ttkScalarFieldNormalizer::normalize(vtkDataArray *input,
     return -2;
 
   double min = 0, max = 0;
+#pragma omp parallel for reduction(max                     \
+                                   : max) reduction(min    \
+                                                    : min) \
+  num_threads(threadNumber_)
   for(SimplexId i = 0; i < input->GetNumberOfTuples(); i++) {
 
     double value = input->GetTuple1(i);
@@ -63,7 +69,16 @@ int ttkScalarFieldNormalizer::normalize(vtkDataArray *input,
       max = value;
     }
   }
-
+#if TTK_ENABLE_MPI
+  vtkMPIController *controller = vtkMPIController::SafeDownCast(
+    vtkMultiProcessController::GetGlobalController());
+  double min_buf;
+  double max_buf;
+  controller->AllReduce(&min, &min_buf, 1, vtkCommunicator::MIN_OP);
+  controller->AllReduce(&max, &max_buf, 1, vtkCommunicator::MAX_OP);
+  min = min_buf;
+  max = max_buf;
+#endif
   for(SimplexId i = 0; i < input->GetNumberOfTuples(); i++) {
     double value = input->GetTuple1(i);
 
@@ -95,8 +110,32 @@ int ttkScalarFieldNormalizer::RequestData(vtkInformation *ttkNotUsed(request),
   outputArray->SetNumberOfComponents(1);
   outputArray->SetNumberOfTuples(inputArray->GetNumberOfTuples());
 
+#if TTK_ENABLE_MPI
+  vtkMPIController *controller = vtkMPIController::SafeDownCast(
+    vtkMultiProcessController::GetGlobalController());
+
+  int myRank = controller->GetLocalProcessId();
+  int numberOfProcesses = controller->GetNumberOfProcesses();
+  this->setNumberOfProcesses(numberOfProcesses);
+  this->setMyRank(myRank);
+  ttk::Timer t_mpi;
+  controller->Barrier();
+  if(this->MyRank == 0) {
+    t_mpi.reStart();
+  }
+#endif
+
   // calling the executing package
   normalize(inputArray, outputArray);
+
+#if TTK_ENABLE_MPI
+  controller->Barrier();
+  if(this->MyRank == 0) {
+    printMsg("Computation performed using " + std::to_string(numberOfProcesses)
+             + " MPI processes lasted :"
+             + std::to_string(t_mpi.getElapsedTime()));
+  }
+#endif
 
   // prepare the output
   output->ShallowCopy(input);

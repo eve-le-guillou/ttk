@@ -2,3 +2,5 @@ NAME
   ttkScalarFieldNormalizer
 DEPENDS
   ttkAlgorithm
+PRIVATE_DEPENDS
+  VTK::ParallelCore  
