@@ -139,7 +139,7 @@ namespace ttk {
       MPI_Type_commit(&(this->MessageType));
     }
 
-    void checkEndOfComputation() const {
+void checkEndOfComputation() const {
       Message m;
       int tempTask;
       int seed;
@@ -148,17 +148,18 @@ namespace ttk {
 #pragma omp atomic read
       tempTask = taskCounter;
       if(tempTask == 0) {
+#pragma omp critical(resetFinishedElement)
+{
 #pragma omp atomic read
         seed = finishedElement;
 #pragma omp atomic update
         finishedElement -= seed;
+}
         if(seed > 0) {
           m.Id1 = seed;
           if(this->MyRank != 0) {
             MPI_Send(
               &m, 1, this->MessageType, 0, FINISHED_ELEMENT, this->MPIComm);
-            // printMsg("Send "+std::to_string(m.Id1)+ " finished element to
-            // 0");
           } else {
 #pragma omp atomic update
             globalElementCounter -= m.Id1;
@@ -166,8 +167,8 @@ namespace ttk {
             // myself");
 #pragma omp atomic read
             totalSeed = globalElementCounter;
-            // printMsg("totalSeed: "+std::to_string(totalSeed)+", received
-            // "+std::to_string(m.Id1)+" from myself");
+            if (totalSeed <=0)
+		printMsg("totalSeed: "+std::to_string(totalSeed)+", received "+std::to_string(m.Id1)+" from myself");
             if(totalSeed == 0) {
 #pragma omp atomic write
               (keepWorking) = false;
@@ -181,8 +182,7 @@ namespace ttk {
         // printMsg("Old finishedElement: "+std::to_string(seed)+" New
         // finishedElement: "+std::to_string(temp));
       }
-    }
-
+   }
 #endif
 
     int preconditionTriangulation(
@@ -371,12 +371,12 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
 #endif
   }
 #if TTK_ENABLE_MPI
-#pragma omp critical(finished)
-  {
+//#pragma omp critical(finished)
+//  {
 #pragma omp atomic update
   taskCounter--;
   this->checkEndOfComputation();
-  }
+//  }
 #endif
 }
 
@@ -509,8 +509,8 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
               }
             } else {
 
-#pragma omp critical(finished)
-              {
+//#pragma omp critical(finished)
+//              {
                 int temp;
 #pragma omp atomic update
                 finishedElement++;
@@ -519,7 +519,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
                 // if (this->MyRank == 2)
                 // printMsg("finishedElement: "+std::to_string(temp));
                 this->checkEndOfComputation();
-              }
+              //}
             }
             break;
           }
@@ -528,9 +528,8 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             (globalElementCounter) -= m.Id1;
 #pragma omp atomic read
               totalSeed = (globalElementCounter);
-              // printMsg("totalSeed: "+std::to_string(totalSeed)+", received
-              // "+std::to_string(m.Id1)+" from
-              // "+std::to_string(status.MPI_SOURCE));
+		if (totalSeed <= 0)
+               printMsg("totalSeed: "+std::to_string(totalSeed)+", received "+std::to_string(m.Id1)+" from "+std::to_string(status.MPI_SOURCE));
               if(totalSeed == 0) {
 #pragma omp atomic write
                 (keepWorking) = false;
