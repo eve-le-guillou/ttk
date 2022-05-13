@@ -216,6 +216,9 @@ int ttkMergeTreeClustering::runCompute(
   EpsilonTree2 = EpsilonTree1;
   Epsilon2Tree2 = Epsilon2Tree1;
   Epsilon3Tree2 = Epsilon3Tree1;
+  printMsg("BranchDecomposition: " + std::to_string(BranchDecomposition));
+  printMsg("NormalizedWasserstein: " + std::to_string(NormalizedWasserstein));
+  printMsg("KeepSubtree: " + std::to_string(KeepSubtree));
 
   // Call base
   if(not ComputeBarycenter) {
@@ -267,6 +270,8 @@ int ttkMergeTreeClustering::runCompute(
       mergeTreeBarycenter.setTol(Tol);
       mergeTreeBarycenter.setAddNodes(AddNodes);
       mergeTreeBarycenter.setDeterministic(Deterministic);
+      mergeTreeBarycenter.setBarycenterSizeLimitPercent(
+        BarycenterSizeLimitPercent);
       mergeTreeBarycenter.setProgressiveBarycenter(ProgressiveBarycenter);
       mergeTreeBarycenter.setProgressiveSpeedDivisor(ProgressiveSpeedDivisor);
       mergeTreeBarycenter.setAlpha(Alpha);
@@ -302,6 +307,8 @@ int ttkMergeTreeClustering::runCompute(
       mergeTreeClustering.setAddNodes(AddNodes);
       mergeTreeClustering.setDeterministic(Deterministic);
       mergeTreeClustering.setNoCentroids(NumberOfBarycenters);
+      mergeTreeClustering.setBarycenterSizeLimitPercent(
+        BarycenterSizeLimitPercent);
       mergeTreeClustering.setProgressiveBarycenter(ProgressiveBarycenter);
       mergeTreeClustering.setProgressiveSpeedDivisor(ProgressiveSpeedDivisor);
       mergeTreeClustering.setPostprocess(OutputTrees);
@@ -404,11 +411,14 @@ int ttkMergeTreeClustering::runOutput(
       visuMaker.setImportantPairsSpacing(ImportantPairsSpacing);
       visuMaker.setNonImportantPairsSpacing(NonImportantPairsSpacing);
       visuMaker.setNonImportantPairsProximity(NonImportantPairsProximity);
+      visuMaker.setExcludeImportantPairsHigher(ExcludeImportantPairsHigher);
+      visuMaker.setExcludeImportantPairsLower(ExcludeImportantPairsLower);
 
       nodeCorr.clear();
       // First tree
       visuMaker.setNoSampleOffset(1);
       visuMaker.setTreesNodes(treesNodes[0]);
+      visuMaker.copyPointData(treesNodes[0], trees1NodeCorrMesh[0]);
       visuMaker.setTreesNodeCorrMesh(trees1NodeCorrMesh[0]);
       visuMaker.setTreesSegmentation(treesSegmentation[0]);
       visuMaker.setVtkOutputNode(vtkOutputNode1);
@@ -422,6 +432,8 @@ int ttkMergeTreeClustering::runOutput(
       // Second tree
       visuMaker.setISampleOffset(1);
       visuMaker.setTreesNodes(treesNodes[1]);
+      visuMaker.clearAllCustomArrays();
+      visuMaker.copyPointData(treesNodes[1], trees1NodeCorrMesh[1]);
       visuMaker.setTreesNodeCorrMesh(trees1NodeCorrMesh[1]);
       visuMaker.setTreesSegmentation(treesSegmentation[1]);
       visuMaker.setVtkOutputNode(vtkOutputNode2);
@@ -498,6 +510,9 @@ int ttkMergeTreeClustering::runOutput(
       // ------------------------------------------
       output_clusters->SetNumberOfBlocks(numInputs);
       for(unsigned int c = 0; c < NumberOfBarycenters; ++c) {
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp parallel for schedule(dynamic) num_threads(this->threadNumber_)
+#endif
         for(int i = 0; i < numInputs; ++i) {
           if(clusteringAssignment[i] != (int)c)
             continue;
@@ -528,7 +543,10 @@ int ttkMergeTreeClustering::runOutput(
           visuMaker.setImportantPairsSpacing(ImportantPairsSpacing);
           visuMaker.setNonImportantPairsSpacing(NonImportantPairsSpacing);
           visuMaker.setNonImportantPairsProximity(NonImportantPairsProximity);
+          visuMaker.setExcludeImportantPairsHigher(ExcludeImportantPairsHigher);
+          visuMaker.setExcludeImportantPairsLower(ExcludeImportantPairsLower);
           visuMaker.setTreesNodes(treesNodes);
+          visuMaker.copyPointData(treesNodes[i], trees1NodeCorrMesh[i]);
           visuMaker.setTreesNodeCorrMesh(trees1NodeCorrMesh);
           visuMaker.setTreesSegmentation(treesSegmentation);
           visuMaker.setVtkOutputNode(vtkOutputNode1);
@@ -586,7 +604,7 @@ int ttkMergeTreeClustering::runOutput(
           BranchDecompositionPlanarLayout);
         visuMakerBary.setBranchSpacing(BranchSpacing);
         visuMakerBary.setRescaleTreesIndividually(RescaleTreesIndividually);
-        visuMakerBary.setOutputSegmentation(OutputSegmentation);
+        visuMakerBary.setOutputSegmentation(false);
         visuMakerBary.setDimensionSpacing(DimensionSpacing);
         visuMakerBary.setDimensionToShift(DimensionToShift);
         visuMakerBary.setImportantPairs(ImportantPairs);
@@ -595,6 +613,9 @@ int ttkMergeTreeClustering::runOutput(
         visuMakerBary.setImportantPairsSpacing(ImportantPairsSpacing);
         visuMakerBary.setNonImportantPairsSpacing(NonImportantPairsSpacing);
         visuMakerBary.setNonImportantPairsProximity(NonImportantPairsProximity);
+        visuMakerBary.setExcludeImportantPairsHigher(
+          ExcludeImportantPairsHigher);
+        visuMakerBary.setExcludeImportantPairsLower(ExcludeImportantPairsLower);
         visuMakerBary.setShiftMode(1); // Star Barycenter
         visuMakerBary.setTreesNodes(treesNodes);
         visuMakerBary.setTreesNodeCorrMesh(trees1NodeCorrMesh);

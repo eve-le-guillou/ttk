@@ -12,8 +12,6 @@
 // ttk common includes
 #include <Debug.h>
 
-#include <MPI.h>
-
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
@@ -324,7 +322,7 @@ namespace ttk {
           while(finalValues.size() < totalSize) {
             // take the current maximum scalar over all ranks
             int rankIdOfMaxScalar = -1;
-            DT maxScalar = std::numeric_limits<DT>::min();
+            DT maxScalar = std::numeric_limits<DT>::lowest();
             IT maxGId = -1;
             for(int i = 0; i < numProcs; i++) {
               if(unsortedReceivedValues[i].size() > 0) {

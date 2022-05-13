@@ -80,6 +80,7 @@ private:
   double JoinSplitMixtureCoefficient = 0.5;
   bool ComputeBarycenter = false;
   unsigned int NumberOfBarycenters = 1;
+  double BarycenterSizeLimitPercent = 0.0;
   bool Deterministic = false;
 
   // Output Options
@@ -98,6 +99,8 @@ private:
   double NonImportantPairsSpacing = 1.;
   double NonImportantPairsProximity = 0.05;
   bool BarycenterPositionAlpha = false;
+  std::string ExcludeImportantPairsLower = "";
+  std::string ExcludeImportantPairsHigher = "";
 
   // Old options
   bool ProgressiveComputation = false;
@@ -306,6 +309,13 @@ public:
   }
   vtkGetMacro(NumberOfBarycenters, unsigned int);
 
+  void SetBarycenterSizeLimitPercent(double percent) {
+    BarycenterSizeLimitPercent = percent;
+    Modified();
+    resetDataVisualization();
+  }
+  vtkGetMacro(BarycenterSizeLimitPercent, double);
+
   // Output Options
   vtkSetMacro(BarycenterPositionAlpha, bool);
   vtkGetMacro(BarycenterPositionAlpha, bool);
@@ -351,6 +361,12 @@ public:
 
   vtkSetMacro(NonImportantPairsProximity, double);
   vtkGetMacro(NonImportantPairsProximity, double);
+
+  vtkSetMacro(ExcludeImportantPairsLower, const std::string &);
+  vtkGetMacro(ExcludeImportantPairsLower, std::string);
+
+  vtkSetMacro(ExcludeImportantPairsHigher, const std::string &);
+  vtkGetMacro(ExcludeImportantPairsHigher, std::string);
 
   // Old options
   vtkSetMacro(ProgressiveComputation, bool);
