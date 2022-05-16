@@ -23,7 +23,6 @@
 #pragma once
 
 #include <BaseClass.h>
-#include <BaseMPIClass.h>
 #include <algorithm>
 #include <cerrno>
 #include <fstream>
@@ -88,11 +87,7 @@ namespace ttk {
 
     const int LINEWIDTH = 80;
   } // namespace debug
-#if TTK_ENABLE_MPI
-  class Debug : public BaseMPIClass {
-#else
   class Debug : public BaseClass {
-#endif
 
   public:
     // 1) constructors, destructors, operators, etc.

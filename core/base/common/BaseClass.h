@@ -55,17 +55,55 @@
 namespace ttk {
 
   COMMON_EXPORTS extern int globalThreadNumber_;
+  COMMON_EXPORTS extern int MPIrank_;
+  COMMON_EXPORTS extern int MPIsize_;
 
   class Wrapper;
 
   class BaseClass {
   public:
+    MPI_Comm MPIComm;
+    int GlobalElementToCompute;
+    long int *GlobalIdsArray;
+    unsigned char *PointGhostArray;
+    int *ProcessId;
+    MPI_Datatype MessageType;
+    int MyRank;
+    int NumberOfProcesses;
     BaseClass();
 
     virtual ~BaseClass() = default;
 
     int getThreadNumber() const {
       return threadNumber_;
+    }
+
+    void setMyRank(int rank) {
+      this->MyRank = rank;
+    }
+
+    void setNumberOfProcesses(int number) {
+      this->NumberOfProcesses = number;
+    }
+
+    void setMPIComm(MPI_Comm comm) {
+      this->MPIComm = comm;
+    }
+
+    void setGlobalElementToCompute(int number) {
+      this->GlobalElementToCompute = number;
+    }
+
+    void setGlobalIdsArray(long int *array) {
+      this->GlobalIdsArray = array;
+    }
+
+    void setPointGhostArray(unsigned char *array) {
+      this->PointGhostArray = array;
+    }
+
+    void setProcessId(int *processId) {
+      this->ProcessId = processId;
     }
 
     virtual int setThreadNumber(const int threadNumber) {
@@ -88,3 +126,5 @@ namespace ttk {
     Wrapper *wrapper_;
   };
 } // namespace ttk
+
+#include <MPIUtils.h>
