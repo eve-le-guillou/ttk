@@ -394,5 +394,26 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   getTrajectories(domain, triangulation, trajectories, distancesFromSeed,
                   seedIdentifiers, output);
 
+  // Write data to csv
+
+  std::ofstream myfile;
+  myfile.open("/home/eveleguillou/experiment/IntegralLines/Correctness/"
+              "points_on_integralLines/cells/"
+              + std::to_string(numberOfProcesses) + "_proc_integraLines_"
+              + std::to_string(myRank) + ".csv");
+  myfile << "DistanceFromSeed,SeedIdentifier,GlobalPointIds,vtkGhostType\n";
+  vtkDataArray *ghostArray = output->GetPointData()->GetArray("vtkGhostType");
+  vtkDataArray *seedIdentifier
+    = output->GetPointData()->GetArray("SeedIdentifier");
+  vtkDataArray *globalIds = output->GetPointData()->GetArray("GlobalPointIds");
+  vtkDataArray *distance = output->GetPointData()->GetArray("DistanceFromSeed");
+  for(int i = 0; i < ghostArray->GetNumberOfTuples(); i++) {
+    myfile << std::to_string(distance->GetTuple1(i)) + ","
+                + std::to_string(seedIdentifier->GetTuple1(i)) + ","
+                + std::to_string(globalIds->GetTuple1(i)) + ","
+                + std::to_string(ghostArray->GetTuple1(i)) + "\n";
+  }
+  myfile.close();
+
   return (int)(status == 0);
 }
