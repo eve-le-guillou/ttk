@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <BaseMPIClass.h>
+#include <BaseClass.h>
 #include <Debug.h>
 
 namespace ttk {

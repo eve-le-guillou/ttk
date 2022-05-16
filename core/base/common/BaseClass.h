@@ -51,6 +51,9 @@
  * `#else` blocks. It can be inserted anywhere in the function body.
  */
 #define TTK_FORCE_USE(x) (void)(x)
+#ifdef TTK_ENABLE_MPI
+#include <mpi.h>
+#endif
 
 namespace ttk {
 
