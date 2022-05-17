@@ -90,121 +90,20 @@ int ttkScalarFieldCriticalPoints::RequestData(
   // Get processes information
   vtkMPIController *controller = vtkMPIController::SafeDownCast(
     vtkMultiProcessController::GetGlobalController());
-  int myRank = controller->GetLocalProcessId();
-  int numberOfProcesses = controller->GetNumberOfProcesses();
-  this->setNumberOfProcesses(numberOfProcesses);
-  this->setMyRank(myRank);
 
   controller->Barrier();
-  if(myRank == 0) {
+  if(ttk::MPIrank_ == 0) {
     t_mpi.reStart();
   }
-  // Set GlobalIdsArray
-  long int *globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(
-    input->GetPointData()->GetArray("GlobalPointIds")));
-  // vtkDataArray* global = input->GetPointData()->GetArray("GlobalPointIds");
-  // std::string s = global->GetClassName();
-  //   vtkSmartPointer<vtkIdTypeArray> global_temp
-  //   = vtkSmartPointer<vtkIdTypeArray>::New();
-  // global_temp->SetNumberOfComponents(global->GetNumberOfComponents());
-  // global_temp->SetNumberOfTuples(global->GetNumberOfTuples());
-  // if (s == "vtkDoubleArray"){
-  //   for (int i= 0; i<global->GetNumberOfTuples(); i++){
-  //     global_temp->SetTuple1(i, (long int)global->GetTuple1(i));
-  //   }
-  //   globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(
-  //   global_temp));
-  //   printMsg("Da");
-  // }
-  // else{
-
-  // }
-
-  // printMsg("global id: number of components:
-  // "+std::to_string(global->GetNumberOfComponents())); printMsg("global id:
-  // number of tuples: "+std::to_string(global->GetNumberOfTuples()));
-  // printMsg("global id: element 1 from VTK:
-  // "+std::to_string(global->GetTuple1(0))); printMsg("global id: element 1
-  // from VTK: "+std::to_string(global_temp->GetTuple1(0))); printMsg("global
-  // id: element 1 from C++: "+std::to_string(globalPointsId[0]));
-  // printMsg("global id: array type "+std::to_string(global->GetArrayType()));
-  // printMsg("global id: class name "+s);
-  this->setGlobalIdsArray(globalPointsId);
-
-  // int *processId = static_cast<int *>(
-  //   ttkUtils::GetVoidPointer(input->GetCellData()->GetArray("ProcessId")));
-
-  if(numberOfProcesses > 1) {
-
-    // Set pointGhostArray
-    unsigned char *pointGhostArray = static_cast<unsigned char *>(
-      ttkUtils::GetVoidPointer(input->GetGhostArray(vtkDataObject::POINT)));
-    // unsigned char *cellGhostArray = static_cast<unsigned char *>(
-    //   ttkUtils::GetVoidPointer(input->GetCellGhostArray()));
-    this->setPointGhostArray(pointGhostArray);
-
-    // int vertexNumber = triangulation->getNumberOfVertices();
-
-    //     // Stores whether a vertex is on the boundary (doesn't take ghost
-    //     points
-    //     // into account)
-    // vtkSmartPointer<vtkIntArray> isOnMPIBoundary
-    //   = vtkSmartPointer<vtkIntArray>::New();
-    // isOnMPIBoundary->SetNumberOfComponents(1);
-    // isOnMPIBoundary->SetNumberOfTuples(vertexNumber);
-    // isOnMPIBoundary->Fill(0);
-
-    // // Stores which process contains this vertex
-    // std::vector<std::vector<int>> vertex2Process(
-    // vertexNumber, std::vector<int>(1, myRank));
-
-    // int cellVertexNumber = 0;
-    // int v_id;
-    // int localProcessId;
-    // int counter;
-    // int sizeVector;
-
-    // // Construct isOnMPIBoundary and vertex2Process
-    // for(int id = 0; id < triangulation->getNumberOfCells(); id++) {
-    //   if(cellGhostArray[id] && ttk::type::DUPLICATEPOINT) {
-    //       cellVertexNumber = triangulation->getCellVertexNumber(id);
-    //       for(int vertex = 0; vertex < cellVertexNumber; vertex++) {
-    //       triangulation->getCellVertex(id, vertex, v_id);
-    //       if(!(pointGhostArray[v_id] && ttk::type::DUPLICATEPOINT)) {
-    //         isOnMPIBoundary->SetTuple1(v_id, 1);
-    //         localProcessId = processId[id];
-    //         counter = 0;
-    //         sizeVector = vertex2Process[v_id].size();
-    //         while((vertex2Process[v_id][counter] < localProcessId)
-    //             && (sizeVector > counter)) {
-    //           counter++;
-    //         }
-    //         if(sizeVector == counter) {
-    //           vertex2Process[v_id].push_back(localProcessId);
-
-    //         } else {
-    //           if(localProcessId != vertex2Process[v_id][counter]) {
-    //     vertex2Process[v_id].insert(vertex2Process[v_id].begin()+counter,
-    //     localProcessId);
-    //           }
-    //         }
-    //       }
-    //     }
-    //   }
-    // }
-
-    // this->setVertex2Process(vertex2Process);
-    // this->setIsOnMPIBoundary(
-    //         static_cast<int *>(ttkUtils::GetVoidPointer(isOnMPIBoundary)));
+  controller->Barrier();
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Preparation performed using " + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :"
+             + std::to_string(t_mpi.getElapsedTime()));
   }
   controller->Barrier();
-  if(myRank == 0) {
-    printMsg("Preparation performed using " + std::to_string(numberOfProcesses)
-               + " MPI processes lasted :"+ std::to_string(t_mpi.getElapsedTime()));
-  }
-  controller->Barrier();
-  if(myRank == 0) {
-	t_mpi.reStart();
+  if(ttk::MPIrank_ == 0) {
+    t_mpi.reStart();
   }
 
 #endif
@@ -227,9 +126,10 @@ int ttkScalarFieldCriticalPoints::RequestData(
 #if TTK_ENABLE_MPI
   controller->Barrier();
 
-  if(myRank == 0) {
-    printMsg("Computation performed using " + std::to_string(numberOfProcesses)
-              + " MPI processes lasted :"+ std::to_string(t_mpi.getElapsedTime()));
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Computation performed using " + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :"
+             + std::to_string(t_mpi.getElapsedTime()));
   }
 #endif
 

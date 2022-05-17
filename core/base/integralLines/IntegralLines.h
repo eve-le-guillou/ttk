@@ -157,7 +157,7 @@ void checkEndOfComputation() const {
 }
         if(seed > 0) {
           m.Id1 = seed;
-          if(this->MyRank != 0) {
+          if(ttk::MPIrank_ != 0) {
             MPI_Send(
               &m, 1, this->MessageType, 0, FINISHED_ELEMENT, this->MPIComm);
           } else {
@@ -172,7 +172,7 @@ void checkEndOfComputation() const {
             if(totalSeed == 0) {
 #pragma omp atomic write
               (keepWorking) = false;
-              for(int i = 0; i < this->NumberOfProcesses; i++) {
+              for(int i = 0; i < ttk::MPIsize_; i++) {
                 MPI_Send(
                   &m, 1, this->MessageType, i, STOP_WORKING, this->MPIComm);
               }
@@ -533,10 +533,10 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
               if(totalSeed == 0) {
 #pragma omp atomic write
                 (keepWorking) = false;
-                for(int i = 1; i < this->NumberOfProcesses; i++) {
+                for(int i = 1; i < ttk::MPIsize_; i++) {
                   MPI_Send(
                     &m, 1, this->MessageType, i, STOP_WORKING, this->MPIComm);
-              }
+                }
             }
             break;
           }

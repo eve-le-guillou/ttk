@@ -71,22 +71,12 @@ namespace ttk {
     unsigned char *PointGhostArray;
     int *ProcessId;
     MPI_Datatype MessageType;
-    int MyRank;
-    int NumberOfProcesses;
     BaseClass();
 
     virtual ~BaseClass() = default;
 
     int getThreadNumber() const {
       return threadNumber_;
-    }
-
-    void setMyRank(int rank) {
-      this->MyRank = rank;
-    }
-
-    void setNumberOfProcesses(int number) {
-      this->NumberOfProcesses = number;
     }
 
     void setMPIComm(MPI_Comm comm) {

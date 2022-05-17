@@ -178,13 +178,9 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   // Get processes information
   vtkMPIController *controller = vtkMPIController::SafeDownCast(
     vtkMultiProcessController::GetGlobalController());
-  int myRank = controller->GetLocalProcessId();
-  int numberOfProcesses = controller->GetNumberOfProcesses();
   MPI_Comm comm = MPI_COMM_NULL;
   comm = MPIGetComm();
   this->setMPIComm(comm);
-  this->setNumberOfProcesses(numberOfProcesses);
-  this->setMyRank(myRank);
 #endif
 
   vtkDataSet *domain = vtkDataSet::GetData(inputVector[0], 0);
@@ -204,22 +200,15 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #if TTK_ENABLE_MPI
   ttk::Timer t_mpi;
   controller->Barrier();
-  if(myRank == 0) {
+  if(ttk::MPIrank_ == 0) {
     t_mpi.reStart();
   }
   vtkSmartPointer<vtkIntArray> vtkInputIdentifiers
     = vtkSmartPointer<vtkIntArray>::New();
   vtkInputIdentifiers->SetNumberOfComponents(1);
   vtkInputIdentifiers->SetNumberOfTuples(0);
-  unsigned char *pointGhostArray = static_cast<unsigned char *>(
-    ttkUtils::GetVoidPointer(domain->GetGhostArray(vtkDataObject::POINT)));
-  this->setPointGhostArray(pointGhostArray);
   int *processId = static_cast<int *>(
     ttkUtils::GetVoidPointer(domain->GetPointData()->GetArray("RankArray")));
-
-  long int *globalPointsId = static_cast<long int *>(ttkUtils::GetVoidPointer(
-    domain->GetPointData()->GetArray("GlobalPointIds")));
-  this->setGlobalIdsArray(globalPointsId);
   this->setProcessId(processId);
   std::map<ttk::SimplexId, ttk::SimplexId> global2Local{};
   for(int i = 0; i < numberOfPointsInDomain; i++) {
@@ -227,13 +216,13 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   }
   this->setGlobalToLocal(global2Local);
 
-  if(this->NumberOfProcesses > 1) {
+  if(ttk::MPIsize_ > 1) {
     int totalSeeds;
     controller->Reduce(
       &numberOfPointsInSeeds, &totalSeeds, 1, vtkCommunicator::SUM_OP, 0);
     int isDistributed;
 
-    if(myRank == 0) {
+    if(ttk::MPIrank_ == 0) {
       isDistributed = numberOfPointsInSeeds != totalSeeds;
     }
 
@@ -241,7 +230,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 
     if(!isDistributed) {
       vtkDataArray *globalSeedsId;
-      if(myRank == 0) {
+      if(ttk::MPIrank_ == 0) {
         globalSeedsId = seeds->GetPointData()->GetArray("GlobalPointIds");
       } else {
         globalSeedsId = vtkDataArray::CreateDataArray(VTK_ID_TYPE);
@@ -249,7 +238,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       controller->Broadcast(&totalSeeds, 1, 0);
       this->setGlobalElementToCompute(totalSeeds);
 
-      if(myRank != 0) {
+      if(ttk::MPIrank_ != 0) {
         globalSeedsId->SetNumberOfComponents(1);
         globalSeedsId->SetNumberOfTuples(totalSeeds);
       }
@@ -261,7 +250,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         auto search = global2Local.find(globalSeedsId->GetTuple1(i));
         if(search != global2Local.end()) {
           localId = search->second;
-          if(pointGhostArray[localId] != ttk::type::DUPLICATEPOINT) {
+          if(this->PointGhostArray[localId] != ttk::type::DUPLICATEPOINT) {
             vtkInputIdentifiers->InsertNextTuple1(localId);
           }
         }
@@ -302,8 +291,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
   }
   controller->Barrier();
-  if(myRank == 0) {
-    printMsg("Preparation performed using " + std::to_string(numberOfProcesses)
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Preparation performed using " + std::to_string(ttk::MPIsize_)
              + " MPI processes lasted :"
              + std::to_string(t_mpi.getElapsedTime()));
   }
@@ -365,7 +354,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   int status = 0;
 #if TTK_ENABLE_MPI
   controller->Barrier();
-  if(myRank == 0) {
+  if(ttk::MPIrank_ == 0) {
     t_mpi.reStart();
   }
 #endif
@@ -375,8 +364,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #if TTK_ENABLE_MPI
   controller->Barrier();
 
-  if(myRank == 0) {
-    printMsg("Computation performed using " + std::to_string(numberOfProcesses)
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Computation performed using " + std::to_string(ttk::MPIsize_)
              + " MPI processes lasted :"
              + std::to_string(t_mpi.getElapsedTime()));
   }
@@ -399,8 +388,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   std::ofstream myfile;
   myfile.open("/home/eveleguillou/experiment/IntegralLines/Correctness/"
               "points_on_integralLines/cells/"
-              + std::to_string(numberOfProcesses) + "_proc_integraLines_"
-              + std::to_string(myRank) + ".csv");
+              + std::to_string(ttk::MPIsize_) + "_proc_integraLines_"
+              + std::to_string(ttk::MPIrank_) + ".csv");
   myfile << "DistanceFromSeed,SeedIdentifier,GlobalPointIds,vtkGhostType\n";
   vtkDataArray *ghostArray = output->GetPointData()->GetArray("vtkGhostType");
   vtkDataArray *seedIdentifier

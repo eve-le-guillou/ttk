@@ -116,11 +116,9 @@ int ttkScalarFieldNormalizer::RequestData(vtkInformation *ttkNotUsed(request),
 
   int myRank = controller->GetLocalProcessId();
   int numberOfProcesses = controller->GetNumberOfProcesses();
-  this->setNumberOfProcesses(numberOfProcesses);
-  this->setMyRank(myRank);
   ttk::Timer t_mpi;
   controller->Barrier();
-  if(this->MyRank == 0) {
+  if(ttk::MPIrank_ == 0) {
     t_mpi.reStart();
   }
 #endif
@@ -130,7 +128,7 @@ int ttkScalarFieldNormalizer::RequestData(vtkInformation *ttkNotUsed(request),
 
 #if TTK_ENABLE_MPI
   controller->Barrier();
-  if(this->MyRank == 0) {
+  if(ttk::MPIrank_ == 0) {
     printMsg("Computation performed using " + std::to_string(numberOfProcesses)
              + " MPI processes lasted :"
              + std::to_string(t_mpi.getElapsedTime()));

@@ -220,28 +220,25 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
   printMsg("Extracting critical points...");
 
   Timer t;
-
+  bool withMPI = isRunningWithMPI();
   std::vector<char> vertexTypes(vertexNumber_, (char)(CriticalType::Regular));
-
-#if TTK_ENABLE_MPI
-  if(this->PointGhostArray || (this->NumberOfProcesses == 1)) {
+#ifdef TTK_ENABLE_OPENMP
+  int chunkSize = std::max(1000, vertexNumber_ / (threadNumber_ * 100));
 #endif
-    int chunkSize = std::max(1000, vertexNumber_ / (threadNumber_ * 100));
-    if(triangulation) {
+  if(triangulation) {
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp parallel for schedule(dynamic,chunkSize) num_threads(threadNumber_)
 #endif
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
-      #if TTK_ENABLE_MPI
-      bool isNotToCompute = false;
-      if(this->NumberOfProcesses > 1) {
-        if(this->PointGhostArray[i] && ttk::type::DUPLICATEPOINT) {
-          isNotToCompute = true;
-        }
-      }
-      if (!isNotToCompute)
-      #endif
+#if TTK_ENABLE_MPI
+      if(!withMPI
+         || (withMPI
+             && (!(this->PointGhostArray[i] && ttk::type::DUPLICATEPOINT)))) {
+#endif
         vertexTypes[i] = getCriticalType(i, offsets, triangulation);
+#if TTK_ENABLE_MPI
+      }
+#endif
     }
   } else if(vertexLinkEdgeLists_) {
     // legacy implementation
@@ -249,25 +246,17 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
 #pragma omp parallel for schedule(dynamic,chunkSize) num_threads(threadNumber_)
 #endif
     for(SimplexId i = 0; i < (SimplexId)vertexNumber_; i++) {
-      #if TTK_ENABLE_MPI
-      bool isNotToCompute = false;
-      if(this->NumberOfProcesses > 1) {
-        if(this->PointGhostArray[i] && ttk::type::DUPLICATEPOINT) {
-          isNotToCompute = true;
-        }
-      }
-      if (!isNotToCompute)
-      #endif
+#if TTK_ENABLE_MPI
+      if(!withMPI
+         || (withMPI
+             && (!(this->PointGhostArray[i] && ttk::type::DUPLICATEPOINT)))) {
+#endif
         vertexTypes[i] = getCriticalType(i, offsets, (*vertexLinkEdgeLists_)[i]);
+#if TTK_ENABLE_MPI
+      }
+#endif
     }
   }
-#if TTK_ENABLE_MPI
-}
-else {
-  printErr("Please use Ghost Arrays for parallel computation of critical points");
-  return -1;
-}       
-#endif
 
   SimplexId minimumNumber = 0, maximumNumber = 0, saddleNumber = 0,
             oneSaddleNumber = 0, twoSaddleNumber = 0, monkeySaddleNumber = 0;
