@@ -209,6 +209,9 @@ protected:
   ttkAlgorithm();
   ~ttkAlgorithm() override;
 
+  void MPIPreconditioning(vtkInformation *request,
+                          vtkInformationVector **inputVectors,
+                          vtkInformationVector *outputVector);
   /**
    * This method is called during the first pipeline pass in
    * ProcessRequest() to create empty output data objects. The data type of

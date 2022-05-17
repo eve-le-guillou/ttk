@@ -9,6 +9,8 @@
 #include <vtkCellTypes.h>
 #include <vtkCommand.h>
 #include <vtkDataSet.h>
+#include <vtkGenerateGlobalIds.h>
+#include <vtkGhostCellsGenerator.h>
 #include <vtkImageData.h>
 #include <vtkInformation.h>
 #include <vtkInformationIntegerKey.h>
@@ -382,6 +384,51 @@ int ttkAlgorithm::RequestDataObject(vtkInformation *ttkNotUsed(request),
   return 1;
 }
 
+void ttkAlgorithm::MPIPreconditioning(vtkInformation *request,
+                                      vtkInformationVector **inputVector,
+                                      vtkInformationVector *outputVector) {
+  vtkDataSet *input = vtkDataSet::GetData(inputVector[0]);
+  vtkInformation *inInfo = inputVector[0]->GetInformationObject(0);
+  int levels = inInfo->Get(
+    vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS());
+  printMsg("ghost levels: " + std::to_string(levels));
+  this->setGlobalIdsArray(static_cast<long int *>(ttkUtils::GetVoidPointer(
+    input->GetPointData()->GetArray("GlobalPointIds"))));
+  if(!this->GlobalIdsArray) {
+    printWrn("Global ids haven't been produced in sequential, the parallel "
+             "result may be different");
+    vtkNew<vtkGenerateGlobalIds> globalIds;
+    globalIds->SetInputData(input);
+    globalIds->Update();
+    vtkDataArray *ids
+      = vtkDataSet::SafeDownCast(globalIds->GetOutputDataObject(0))
+          ->GetPointData()
+          ->GetArray("GlobalPointIds");
+    input->GetPointData()->AddArray(ids);
+    this->setGlobalIdsArray(static_cast<long int *>(ttkUtils::GetVoidPointer(
+      input->GetPointData()->GetArray("GlobalPointIds"))));
+  }
+
+  vtkNew<vtkGhostCellsGenerator> generator;
+  this->setPointGhostArray(static_cast<unsigned char *>(
+    ttkUtils::GetVoidPointer(input->GetPointData()->GetArray("vtkGhostType"))));
+  if(!this->PointGhostArray) {
+    generator->SetInputData(input);
+    generator->BuildIfRequiredOff();
+    generator->SetNumberOfGhostLayers(2);
+    generator->Update();
+    vtkDataArray *ghosts
+      = vtkDataSet::SafeDownCast(generator->GetOutputDataObject(0))
+          ->GetPointData()
+          ->GetArray("vtkGhostType");
+    input->GetPointData()->AddArray(ghosts);
+    this->setPointGhostArray(
+      static_cast<unsigned char *>(ttkUtils::GetVoidPointer(
+        input->GetPointData()->GetArray("vtkGhostType"))));
+  }
+  printMsg("MPIPreconditioning done");
+}
+
 //==============================================================================
 int ttkAlgorithm::ProcessRequest(vtkInformation *request,
                                  vtkInformationVector **inputVector,
@@ -434,6 +481,7 @@ int ttkAlgorithm::ProcessRequest(vtkInformation *request,
   if(request->Has(vtkCompositeDataPipeline::REQUEST_DATA())) {
     this->printMsg("Processing REQUEST_DATA", ttk::debug::Priority::VERBOSE);
     this->printMsg(ttk::debug::Separator::L0);
+    this->MPIPreconditioning(request, inputVector, outputVector);
     return this->RequestData(request, inputVector, outputVector);
   }
 
