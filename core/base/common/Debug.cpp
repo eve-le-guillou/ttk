@@ -40,12 +40,6 @@ int Debug::welcomeMsg(ostream &stream) {
   }
 #endif
 
-#if TTK_ENABLE_MPI
-  if(MPIrank_ != 0) {
-    ttk::welcomeMsg_ = false;
-  }
-#endif
-
   int priorityAsInt = (int)debug::Priority::PERFORMANCE;
 
   if((ttk::welcomeMsg_) && (debugLevel_ > priorityAsInt)) {
