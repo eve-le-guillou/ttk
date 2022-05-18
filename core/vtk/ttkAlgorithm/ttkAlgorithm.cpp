@@ -476,8 +476,7 @@ int ttkAlgorithm::ProcessRequest(vtkInformation *request,
   if(request->Has(vtkCompositeDataPipeline::REQUEST_DATA())) {
     this->printMsg("Processing REQUEST_DATA", ttk::debug::Priority::VERBOSE);
     this->printMsg(ttk::debug::Separator::L0);
-    if(ttk::MPIsize_ > 1) {
-      printMsg("Da");
+    if(ttk::isRunningWithMPI() != 0) {
       this->MPIPreconditioning(request, inputVector, outputVector);
     }
     return this->RequestData(request, inputVector, outputVector);
