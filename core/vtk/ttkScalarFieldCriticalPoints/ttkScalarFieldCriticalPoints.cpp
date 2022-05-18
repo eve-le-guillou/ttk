@@ -85,27 +85,15 @@ int ttkScalarFieldCriticalPoints::RequestData(
   this->preconditionTriangulation(triangulation);
   this->setOutput(&criticalPoints_);
 
-  #if TTK_ENABLE_MPI
+#if TTK_ENABLE_MPI
   Timer t_mpi;
   // Get processes information
   vtkMPIController *controller = vtkMPIController::SafeDownCast(
     vtkMultiProcessController::GetGlobalController());
-
   controller->Barrier();
   if(ttk::MPIrank_ == 0) {
     t_mpi.reStart();
   }
-  controller->Barrier();
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Preparation performed using " + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :"
-             + std::to_string(t_mpi.getElapsedTime()));
-  }
-  controller->Barrier();
-  if(ttk::MPIrank_ == 0) {
-    t_mpi.reStart();
-  }
-
 #endif
   
   printMsg("Starting computation...");
@@ -118,11 +106,6 @@ int ttkScalarFieldCriticalPoints::RequestData(
        static_cast<SimplexId *>(ttkUtils::GetVoidPointer(offsetField)),
        (TTK_TT *)triangulation->getData())));
 
-  if(status == -1) {
-    vtkErrorMacro("Please use Ghost Arrays for parallel computation of critical points");
-  }
-  if(status < 0)
-    return 0;
 #if TTK_ENABLE_MPI
   controller->Barrier();
 
