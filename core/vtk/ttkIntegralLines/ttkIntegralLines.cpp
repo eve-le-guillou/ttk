@@ -207,9 +207,9 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     = vtkSmartPointer<vtkIntArray>::New();
   vtkInputIdentifiers->SetNumberOfComponents(1);
   vtkInputIdentifiers->SetNumberOfTuples(0);
-  int *processId = static_cast<int *>(
+  int *rankArray = static_cast<int *>(
     ttkUtils::GetVoidPointer(domain->GetPointData()->GetArray("RankArray")));
-  this->setProcessId(processId);
+  this->setRankArray(rankArray);
   std::map<ttk::SimplexId, ttk::SimplexId> global2Local{};
   for(int i = 0; i < numberOfPointsInDomain; i++) {
     global2Local[this->GlobalIdsArray[i]] = i;

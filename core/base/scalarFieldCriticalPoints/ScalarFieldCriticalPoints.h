@@ -220,7 +220,9 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
   printMsg("Extracting critical points...");
 
   Timer t;
+#if TTK_ENABLE_MPI
   bool withMPI = isRunningWithMPI() != 0;
+#endif
   std::vector<char> vertexTypes(vertexNumber_, (char)(CriticalType::Regular));
 #ifdef TTK_ENABLE_OPENMP
   int chunkSize = std::max(1000, vertexNumber_ / (threadNumber_ * 100));

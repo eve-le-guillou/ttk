@@ -307,7 +307,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
 #if TTK_ENABLE_MPI
     size = trajectory->size();
     if(size > 1) {
-      int processId;
+      int rankArray;
       if(!(isMax && size == 3
            && (!(this->PointGhostArray[trajectory->at(size - 1)]
                  && ttk::type::DUPLICATEPOINT))
@@ -325,7 +325,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
             m.Id4 = -1;
             m.DistanceFromSeed4 = 0;
             m.Id3 = this->GlobalIdsArray[trajectory->back()];
-            processId = this->ProcessId[trajectory->back()];
+            rankArray = this->RankArray[trajectory->back()];
             m.DistanceFromSeed3 = distanceFromSeed->back();
             m.Id2 = this->GlobalIdsArray[trajectory->at(size - 2)];
             m.DistanceFromSeed2 = distanceFromSeed->at(size - 2);
@@ -348,7 +348,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
             m.DistanceFromSeed2 = distanceFromSeed->at(size - 3);
             m.Id3 = this->GlobalIdsArray[trajectory->at(size - 2)];
             m.DistanceFromSeed3 = distanceFromSeed->at(size - 2);
-            processId = this->ProcessId[trajectory->at(size - 2)];
+            rankArray = this->RankArray[trajectory->at(size - 2)];
             m.Id4 = this->GlobalIdsArray[trajectory->at(size - 1)];
             m.DistanceFromSeed4 = distanceFromSeed->at(size - 1);
             if(!(this->PointGhostArray[trajectory->at(size - 1)]
@@ -362,7 +362,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
             }
           }
           m.SeedIdentifier = seedIdentifier;
-          MPI_Send(&m, 1, this->MessageType, processId, IS_ELEMENT_TO_PROCESS,
+          MPI_Send(&m, 1, this->MessageType, rankArray, IS_ELEMENT_TO_PROCESS,
                    this->MPIComm);
           isMax = true;
         }

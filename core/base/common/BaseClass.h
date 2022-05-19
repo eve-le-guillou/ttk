@@ -65,12 +65,14 @@ namespace ttk {
 
   class BaseClass {
   public:
-    MPI_Comm MPIComm;
     int GlobalElementToCompute;
     long int *GlobalIdsArray;
     unsigned char *PointGhostArray;
-    int *ProcessId;
+    int *RankArray;
+#if TTK_ENABLE_MPI
+    MPI_Comm MPIComm;
     MPI_Datatype MessageType;
+#endif
     BaseClass();
 
     virtual ~BaseClass() = default;
@@ -78,11 +80,11 @@ namespace ttk {
     int getThreadNumber() const {
       return threadNumber_;
     }
-
+#if TTK_ENABLE_MPI
     void setMPIComm(MPI_Comm comm) {
       this->MPIComm = comm;
     }
-
+#endif
     void setGlobalElementToCompute(int number) {
       this->GlobalElementToCompute = number;
     }
@@ -95,8 +97,8 @@ namespace ttk {
       this->PointGhostArray = array;
     }
 
-    void setProcessId(int *processId) {
-      this->ProcessId = processId;
+    void setRankArray(int *rankArray) {
+      this->RankArray = rankArray;
     }
 
     virtual int setThreadNumber(const int threadNumber) {

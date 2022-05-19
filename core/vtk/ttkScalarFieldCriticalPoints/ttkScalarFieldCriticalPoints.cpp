@@ -85,7 +85,7 @@ int ttkScalarFieldCriticalPoints::RequestData(
   this->preconditionTriangulation(triangulation);
   this->setOutput(&criticalPoints_);
 
-#if TTK_ENABLE_MPI
+#if TTK_ENABLE_MPI_TIME
   Timer t_mpi;
   // Get processes information
   vtkMPIController *controller = vtkMPIController::SafeDownCast(
@@ -106,7 +106,7 @@ int ttkScalarFieldCriticalPoints::RequestData(
        static_cast<SimplexId *>(ttkUtils::GetVoidPointer(offsetField)),
        (TTK_TT *)triangulation->getData())));
 
-#if TTK_ENABLE_MPI
+#if TTK_ENABLE_MPI_TIME
   controller->Barrier();
 
   if(ttk::MPIrank_ == 0) {
