@@ -284,7 +284,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
     if(vnext == -1) {
       isMax = true;
 #if TTK_ENABLE_MPI
-      if(rankArray_[v] == ttk::MPIrank_) {
+      if(isRunningWithMPI() && rankArray_[v] == ttk::MPIrank_) {
 #pragma omp atomic update
         finishedElement++;
         // #pragma omp atomic read
@@ -305,47 +305,48 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
       (*distanceFromSeed).push_back(distance);
     }
 #if TTK_ENABLE_MPI
-    size = trajectory->size();
-    if(size > 1) {
-      int rankArray;
-      if(!(isMax && size == 3
-           && (rankArray_[trajectory->at(size - 1)] == ttk::MPIrank_)
-           && (rankArray_[trajectory->at(size - 2)] != ttk::MPIrank_)
-           && (rankArray_[trajectory->at(size - 3)] != ttk::MPIrank_))) {
-        if((isMax && (rankArray_[trajectory->at(size - 1)] != ttk::MPIrank_))
-           || (size >= 3
-               && (rankArray_[trajectory->at(size - 2)] != ttk::MPIrank_))) {
-          if(isMax) {
-            m.Id4 = -1;
-            m.DistanceFromSeed4 = 0;
-            m.Id3 = globalIdsArray_[trajectory->back()];
-            rankArray = rankArray_[trajectory->back()];
-            m.DistanceFromSeed3 = distanceFromSeed->back();
-            m.Id2 = globalIdsArray_[trajectory->at(size - 2)];
-            m.DistanceFromSeed2 = distanceFromSeed->at(size - 2);
-            if(size == 2) {
-              m.Id1 = -1;
-              m.DistanceFromSeed1 = 0;
+    if(isRunningWithMPI()) {
+      size = trajectory->size();
+      if(size > 1) {
+        int rankArray;
+        if(!(isMax && size == 3
+             && (rankArray_[trajectory->at(size - 1)] == ttk::MPIrank_)
+             && (rankArray_[trajectory->at(size - 2)] != ttk::MPIrank_)
+             && (rankArray_[trajectory->at(size - 3)] != ttk::MPIrank_))) {
+          if((isMax && (rankArray_[trajectory->at(size - 1)] != ttk::MPIrank_))
+             || (size >= 3
+                 && (rankArray_[trajectory->at(size - 2)] != ttk::MPIrank_))) {
+            if(isMax) {
+              m.Id4 = -1;
+              m.DistanceFromSeed4 = 0;
+              m.Id3 = globalIdsArray_[trajectory->back()];
+              rankArray = rankArray_[trajectory->back()];
+              m.DistanceFromSeed3 = distanceFromSeed->back();
+              m.Id2 = globalIdsArray_[trajectory->at(size - 2)];
+              m.DistanceFromSeed2 = distanceFromSeed->at(size - 2);
+              if(size == 2) {
+                m.Id1 = -1;
+                m.DistanceFromSeed1 = 0;
+              } else {
+                m.Id1 = globalIdsArray_[trajectory->at(size - 3)];
+                m.DistanceFromSeed1 = distanceFromSeed->at(size - 3);
+              }
             } else {
-              m.Id1 = globalIdsArray_[trajectory->at(size - 3)];
-              m.DistanceFromSeed1 = distanceFromSeed->at(size - 3);
-            }
-          } else {
-            if(size == 3) {
-              m.Id1 = -1;
-              m.DistanceFromSeed1 = 0;
-            } else {
-              m.Id1 = globalIdsArray_[trajectory->at(size - 4)];
-              m.DistanceFromSeed1 = distanceFromSeed->at(size - 4);
-            }
-            m.Id2 = globalIdsArray_[trajectory->at(size - 3)];
-            m.DistanceFromSeed2 = distanceFromSeed->at(size - 3);
-            m.Id3 = globalIdsArray_[trajectory->at(size - 2)];
-            m.DistanceFromSeed3 = distanceFromSeed->at(size - 2);
-            rankArray = rankArray_[trajectory->at(size - 2)];
-            m.Id4 = globalIdsArray_[trajectory->at(size - 1)];
-            m.DistanceFromSeed4 = distanceFromSeed->at(size - 1);
-            if(rankArray_[trajectory->at(size - 1)] == ttk::MPIrank_) {
+              if(size == 3) {
+                m.Id1 = -1;
+                m.DistanceFromSeed1 = 0;
+              } else {
+                m.Id1 = globalIdsArray_[trajectory->at(size - 4)];
+                m.DistanceFromSeed1 = distanceFromSeed->at(size - 4);
+              }
+              m.Id2 = globalIdsArray_[trajectory->at(size - 3)];
+              m.DistanceFromSeed2 = distanceFromSeed->at(size - 3);
+              m.Id3 = globalIdsArray_[trajectory->at(size - 2)];
+              m.DistanceFromSeed3 = distanceFromSeed->at(size - 2);
+              rankArray = rankArray_[trajectory->at(size - 2)];
+              m.Id4 = globalIdsArray_[trajectory->at(size - 1)];
+              m.DistanceFromSeed4 = distanceFromSeed->at(size - 1);
+              if(rankArray_[trajectory->at(size - 1)] == ttk::MPIrank_) {
 #pragma omp critical(unfinishedTrajectories)
               {
                 unfinishedDist.push_back(distanceFromSeed);
@@ -361,15 +362,18 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
         }
       }
     }
+    }
 #endif
   }
 #if TTK_ENABLE_MPI
 //#pragma omp critical(finished)
 //  {
+  if(isRunningWithMPI()) {
 #pragma omp atomic update
   taskCounter--;
   this->checkEndOfComputation();
 //  }
+  }
 #endif
 }
 
@@ -439,22 +443,23 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
         }
       }
 #if TTK_ENABLE_MPI
-      MPI_Status status;
-      struct Message m;
-      while(keepWorkingAux) {
-        MPI_Recv(&m, 1, this->MessageType, MPI_ANY_SOURCE, MPI_ANY_TAG,
-                 this->MPIComm, &status);
-        int stat = status.MPI_TAG;
-        switch(stat) {
-          case IS_ELEMENT_TO_PROCESS: {
-            int localId1 = -1;
-            std::vector<int> *trajectory;
-            std::vector<double> *distanceFromSeed;
-            bool isUnfinished = false;
-            if(m.Id1 != -1) {
-              localId1 = this->globalToLocal[m.Id1];
-              if(rankArray_[localId1] == ttk::MPIrank_) {
-                isUnfinished = true;
+      if(isRunningWithMPI()) {
+        MPI_Status status;
+        struct Message m;
+        while(keepWorkingAux) {
+          MPI_Recv(&m, 1, this->MessageType, MPI_ANY_SOURCE, MPI_ANY_TAG,
+                   this->MPIComm, &status);
+          int stat = status.MPI_TAG;
+          switch(stat) {
+            case IS_ELEMENT_TO_PROCESS: {
+              int localId1 = -1;
+              std::vector<int> *trajectory;
+              std::vector<double> *distanceFromSeed;
+              bool isUnfinished = false;
+              if(m.Id1 != -1) {
+                localId1 = this->globalToLocal[m.Id1];
+                if(rankArray_[localId1] == ttk::MPIrank_) {
+                  isUnfinished = true;
 #pragma omp critical(unfinishedTrajectories)
                 {
                   int localId3 = this->globalToLocal[m.Id3];
@@ -544,7 +549,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 #pragma omp atomic read
         keepWorkingAux = (keepWorking);
       }
-
+      }
 #endif
       {
         std::stringstream msg;
