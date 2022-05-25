@@ -100,16 +100,6 @@ int ttkScalarFieldCriticalPoints::RequestData(
        static_cast<SimplexId *>(ttkUtils::GetVoidPointer(offsetField)),
        (TTK_TT *)triangulation->getData())));
 
-#if TTK_ENABLE_MPI_TIME
-  controller->Barrier();
-
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation performed using " + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :"
-             + std::to_string(t_mpi.getElapsedTime()));
-  }
-#endif
-
 #ifdef TTK_ENABLE_MPI_TIME
   double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
   if(ttk::MPIrank_ == 0) {

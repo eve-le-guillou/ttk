@@ -197,22 +197,21 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setVertexNumber(numberOfPointsInDomain);
   ttk::SimplexId numberOfPointsInSeeds = seeds->GetNumberOfPoints();
   ttk::SimplexId *inputIdentifiers;
-#if TTK_ENABLE_MPI
+
+#ifdef TTK_ENABLE_MPI_TIME
   ttk::Timer t_mpi;
-  controller->Barrier();
-  if(ttk::MPIrank_ == 0) {
-    t_mpi.reStart();
-  }
+  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
+#if TTK_ENABLE_MPI
+
   vtkSmartPointer<vtkIntArray> vtkInputIdentifiers
     = vtkSmartPointer<vtkIntArray>::New();
   vtkInputIdentifiers->SetNumberOfComponents(1);
   vtkInputIdentifiers->SetNumberOfTuples(0);
-  int *rankArray = static_cast<int *>(
-    ttkUtils::GetVoidPointer(domain->GetPointData()->GetArray("RankArray")));
-  this->setRankArray(rankArray);
   std::map<ttk::SimplexId, ttk::SimplexId> global2Local{};
+  long int *globalIds = triangulation->getGlobalIdsArray();
   for(int i = 0; i < numberOfPointsInDomain; i++) {
-    global2Local[this->GlobalIdsArray[i]] = i;
+    global2Local[globalIds[i]] = i;
   }
   this->setGlobalToLocal(global2Local);
 
@@ -242,15 +241,14 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         globalSeedsId->SetNumberOfComponents(1);
         globalSeedsId->SetNumberOfTuples(totalSeeds);
       }
-
       controller->Broadcast(globalSeedsId, 0);
-
+      int *rankArray = triangulation->getRankArray();
       int localId = -1;
       for(int i = 0; i < totalSeeds; i++) {
         auto search = global2Local.find(globalSeedsId->GetTuple1(i));
         if(search != global2Local.end()) {
           localId = search->second;
-          if(this->PointGhostArray[localId] != ttk::type::DUPLICATEPOINT) {
+          if(rankArray[localId] == ttk::MPIrank_) {
             vtkInputIdentifiers->InsertNextTuple1(localId);
           }
         }
@@ -290,12 +288,13 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     inputIdentifiers
       = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
   }
-  controller->Barrier();
+#ifdef TTK_ENABLE_MPI_TIME
+  double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
   if(ttk::MPIrank_ == 0) {
     printMsg("Preparation performed using " + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :"
-             + std::to_string(t_mpi.getElapsedTime()));
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
   }
+#endif
 #else
   std::vector<ttk::SimplexId> idSpareStorage{};
   inputIdentifiers = this->GetIdentifierArrayPtr(ForceInputVertexScalarField, 2,
@@ -352,22 +351,18 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   printMsg("Number of seeds: " + std::to_string(numberOfPointsInSeeds));
   this->preconditionTriangulation(triangulation);
   int status = 0;
-#if TTK_ENABLE_MPI
-  controller->Barrier();
-  if(ttk::MPIrank_ == 0) {
-    t_mpi.reStart();
-  }
+#ifdef TTK_ENABLE_MPI_TIME
+  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
   ttkVtkTemplateMacro(inputScalars->GetDataType(), triangulation->getType(),
                       (status = this->execute<VTK_TT, TTK_TT>(
                          static_cast<TTK_TT *>(triangulation->getData()))));
-#if TTK_ENABLE_MPI
-  controller->Barrier();
 
+#ifdef TTK_ENABLE_MPI_TIME
+  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
   if(ttk::MPIrank_ == 0) {
     printMsg("Computation performed using " + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :"
-             + std::to_string(t_mpi.getElapsedTime()));
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
   }
 #endif
 #ifndef TTK_ENABLE_KAMIKAZE
@@ -394,12 +389,13 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   vtkDataArray *ghostArray = output->GetPointData()->GetArray("vtkGhostType");
   vtkDataArray *seedIdentifier
     = output->GetPointData()->GetArray("SeedIdentifier");
-  vtkDataArray *globalIds = output->GetPointData()->GetArray("GlobalPointIds");
+  vtkDataArray *globalIdsForCsv
+    = output->GetPointData()->GetArray("GlobalPointIds");
   vtkDataArray *distance = output->GetPointData()->GetArray("DistanceFromSeed");
   for(int i = 0; i < ghostArray->GetNumberOfTuples(); i++) {
     myfile << std::to_string(distance->GetTuple1(i)) + ","
                 + std::to_string(seedIdentifier->GetTuple1(i)) + ","
-                + std::to_string(globalIds->GetTuple1(i)) + ","
+                + std::to_string(globalIdsForCsv->GetTuple1(i)) + ","
                 + std::to_string(ghostArray->GetTuple1(i)) + "\n";
   }
   myfile.close();
