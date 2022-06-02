@@ -162,12 +162,8 @@ void checkEndOfComputation() const {
           } else {
 #pragma omp atomic update
             globalElementCounter -= m.Id1;
-            // printMsg("Send "+std::to_string(m.Id1)+ " finished element to
-            // myself");
 #pragma omp atomic read
             totalSeed = globalElementCounter;
-            if (totalSeed <=0)
-		printMsg("totalSeed: "+std::to_string(totalSeed)+", received "+std::to_string(m.Id1)+" from myself");
             if(totalSeed == 0) {
 #pragma omp atomic write
               (keepWorking) = false;
@@ -304,6 +300,17 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
       p0[2] = p1[2];
       (*distanceFromSeed).push_back(distance);
     }
+    if(seedIdentifier == 32639 || seedIdentifier == 32640
+       || seedIdentifier == 32897) {
+      std::string st = "";
+      for(int i = 0; i < (*trajectory).size(); i++) {
+        st += std::to_string(globalIdsArray_[(*trajectory)[i]]) + " ";
+      }
+      printErr(
+        "seedIdentifier: " + std::to_string(seedIdentifier) + " traj: " + st
+        + " dist: " + std::to_string((*distanceFromSeed).back())
+        + " rankArray: " + std::to_string(rankArray_[(*trajectory).back()]));
+    }
 #if TTK_ENABLE_MPI
     if(isRunningWithMPI()) {
       size = trajectory->size();
@@ -358,6 +365,11 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
           m.SeedIdentifier = seedIdentifier;
           MPI_Send(&m, 1, this->MessageType, rankArray, IS_ELEMENT_TO_PROCESS,
                    this->MPIComm);
+          if(seedIdentifier == 32639 || seedIdentifier == 32640
+             || seedIdentifier == 32897) {
+            printErr("Send seedIdentifier: " + std::to_string(seedIdentifier)
+                     + " to " + std::to_string(rankArray));
+          }
           isMax = true;
         }
       }
@@ -412,9 +424,10 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   std::vector<SimplexId> seeds(isSeed.begin(), isSeed.end());
   isSeed.clear();
 #if TTK_ENABLE_MPI
-#pragma omp parallel shared(                                       \
-  finishedElement, keepWorking, globalElementCounter, taskCounter, \
-  unfinishedDist, unfinishedTraj, unfinishedSeed) firstprivate(keepWorkingAux)
+#pragma omp parallel shared(finishedElement, keepWorking,                      \
+                            globalElementCounter, taskCounter, unfinishedDist, \
+                            unfinishedTraj, unfinishedSeed)                    \
+  firstprivate(keepWorkingAux) num_threads(threadNumber_)
   {
 #else
 #pragma omp parallel
@@ -435,6 +448,12 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
         seedIdentifier = v;
 #endif
         seedIdentifiers->addArrayElement(seedIdentifier);
+        if(seedIdentifier == 32639 || seedIdentifier == 32640
+           || seedIdentifier == 32897) {
+          printErr("seedIdentifier: " + std::to_string(seedIdentifier)
+                   + " rankArray: "
+                   + std::to_string(rankArray_[globalToLocal[seedIdentifier]]));
+        }
 #pragma omp task firstprivate(seedIdentifier)
         {
           this->create_task<dataType, triangulationType>(
@@ -453,6 +472,13 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
           switch(stat) {
             case IS_ELEMENT_TO_PROCESS: {
               int localId1 = -1;
+              int identifier = m.SeedIdentifier;
+              if(identifier == 32639 || identifier == 32640
+                 || identifier == 32897) {
+                printErr("Received seedIdentifier: "
+                         + std::to_string(identifier) + " from "
+                         + std::to_string(status.MPI_SOURCE));
+              }
               std::vector<int> *trajectory;
               std::vector<double> *distanceFromSeed;
               bool isUnfinished = false;
@@ -487,7 +513,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
               distanceFromSeed
                 = distancesFromSeed->addArrayElement(std::vector<double>(0));
             }
-            int identifier = m.SeedIdentifier;
+
             if(!isUnfinished) {
               trajectory->push_back(this->globalToLocal[m.Id2]);
               distanceFromSeed->push_back(m.DistanceFromSeed2);
@@ -508,16 +534,9 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
               }
             } else {
 
-//#pragma omp critical(finished)
-//              {
 #pragma omp atomic update
                 finishedElement++;
-                // #pragma omp atomic read
-                // temp = finishedElement;
-                // if (this->MyRank == 2)
-                // printMsg("finishedElement: "+std::to_string(temp));
                 this->checkEndOfComputation();
-              //}
             }
             break;
           }
@@ -526,8 +545,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             (globalElementCounter) -= m.Id1;
 #pragma omp atomic read
               totalSeed = (globalElementCounter);
-		if (totalSeed <= 0)
-               printMsg("totalSeed: "+std::to_string(totalSeed)+", received "+std::to_string(m.Id1)+" from "+std::to_string(status.MPI_SOURCE));
               if(totalSeed == 0) {
 #pragma omp atomic write
                 (keepWorking) = false;
@@ -554,7 +571,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
       {
         std::stringstream msg;
         msg << "Processed " << vertexNumber_ << " points";
-        this->printMsg(msg.str(), 1, t.getElapsedTime(), 1);
+        this->printMsg(msg.str(), 1, t.getElapsedTime(), threadNumber_);
       }
     }
   }
