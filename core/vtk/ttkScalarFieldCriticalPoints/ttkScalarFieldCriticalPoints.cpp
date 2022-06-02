@@ -69,16 +69,6 @@ int ttkScalarFieldCriticalPoints::RequestData(
   if(VertexBoundary)
     triangulation->preconditionBoundaryVertices();
 
-  long int *globalIds2 = triangulation->getGlobalIdsArray();
-  rankArray_ = triangulation->getRankArray();
-  for(int i = 0; i < triangulation->getNumberOfVertices(); i++) {
-    if(globalIds2[i] == 32640 || globalIds2[i] == 32639
-       || globalIds2[i] == 32897) {
-      printErr("Element " + std::to_string(globalIds2[i])
-               + " possessed with RankArray: " + std::to_string(rankArray_[i]));
-    }
-  }
-
   // in the following, the target scalar field of the input is replaced in the
   // variable 'output' with the result of the computation.
   // if your wrapper produces an output of the same type of the input, you

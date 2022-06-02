@@ -300,17 +300,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
       p0[2] = p1[2];
       (*distanceFromSeed).push_back(distance);
     }
-    if(seedIdentifier == 32639 || seedIdentifier == 32640
-       || seedIdentifier == 32897) {
-      std::string st = "";
-      for(int i = 0; i < (*trajectory).size(); i++) {
-        st += std::to_string(globalIdsArray_[(*trajectory)[i]]) + " ";
-      }
-      printErr(
-        "seedIdentifier: " + std::to_string(seedIdentifier) + " traj: " + st
-        + " dist: " + std::to_string((*distanceFromSeed).back())
-        + " rankArray: " + std::to_string(rankArray_[(*trajectory).back()]));
-    }
+
 #if TTK_ENABLE_MPI
     if(isRunningWithMPI()) {
       size = trajectory->size();
@@ -365,11 +355,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
           m.SeedIdentifier = seedIdentifier;
           MPI_Send(&m, 1, this->MessageType, rankArray, IS_ELEMENT_TO_PROCESS,
                    this->MPIComm);
-          if(seedIdentifier == 32639 || seedIdentifier == 32640
-             || seedIdentifier == 32897) {
-            printErr("Send seedIdentifier: " + std::to_string(seedIdentifier)
-                     + " to " + std::to_string(rankArray));
-          }
+
           isMax = true;
         }
       }
@@ -448,12 +434,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
         seedIdentifier = v;
 #endif
         seedIdentifiers->addArrayElement(seedIdentifier);
-        if(seedIdentifier == 32639 || seedIdentifier == 32640
-           || seedIdentifier == 32897) {
-          printErr("seedIdentifier: " + std::to_string(seedIdentifier)
-                   + " rankArray: "
-                   + std::to_string(rankArray_[globalToLocal[seedIdentifier]]));
-        }
 #pragma omp task firstprivate(seedIdentifier)
         {
           this->create_task<dataType, triangulationType>(
@@ -473,12 +453,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             case IS_ELEMENT_TO_PROCESS: {
               int localId1 = -1;
               int identifier = m.SeedIdentifier;
-              if(identifier == 32639 || identifier == 32640
-                 || identifier == 32897) {
-                printErr("Received seedIdentifier: "
-                         + std::to_string(identifier) + " from "
-                         + std::to_string(status.MPI_SOURCE));
-              }
               std::vector<int> *trajectory;
               std::vector<double> *distanceFromSeed;
               bool isUnfinished = false;

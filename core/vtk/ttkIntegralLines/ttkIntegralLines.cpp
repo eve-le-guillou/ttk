@@ -211,11 +211,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   std::map<ttk::SimplexId, ttk::SimplexId> global2Local{};
   long int *globalIds = triangulation->getGlobalIdsArray();
   for(int i = 0; i < numberOfPointsInDomain; i++) {
-    if(globalIds[i] == 32640 || globalIds[i] == 32639
-       || globalIds[i] == 32897) {
-      printErr("Element " + std::to_string(globalIds[i])
-               + " possessed with RankArray: " + std::to_string(rankArray_[i]));
-    }
     global2Local[globalIds[i]] = i;
   }
   this->setGlobalToLocal(global2Local);
@@ -262,7 +257,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       inputIdentifiers
         = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
     } else {
-      printErr("IsDistributed");
       this->setGlobalElementToCompute(totalSeeds);
       std::vector<ttk::SimplexId> idSpareStorage{};
       ttk::SimplexId *inputIdentifierGlobalId;
@@ -272,14 +266,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       vtkInputIdentifiers->SetNumberOfTuples(numberOfPointsInSeeds);
 #pragma omp parallel for
       for(int i = 0; i < numberOfPointsInSeeds; i++) {
-        if(inputIdentifierGlobalId[i] == 32640
-           || inputIdentifierGlobalId[i] == 32639
-           || inputIdentifierGlobalId[i] == 32897) {
-          printErr("Seed " + std::to_string(inputIdentifierGlobalId[i])
-                   + " possessed with RankArray: "
-                   + std::to_string(
-                     rankArray_[global2Local[inputIdentifierGlobalId[i]]]));
-        }
         vtkInputIdentifiers->SetTuple1(
           i, global2Local[inputIdentifierGlobalId[i]]);
       }
@@ -362,7 +348,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setOutputTrajectories(&trajectories);
   this->setOutputDistancesFromSeed(&distancesFromSeed);
   this->setOutputSeedIdentifiers(&seedIdentifiers);
-  printMsg("Number of seeds: " + std::to_string(numberOfPointsInSeeds));
   this->preconditionTriangulation(triangulation);
   int status = 0;
 #ifdef TTK_ENABLE_MPI_TIME
