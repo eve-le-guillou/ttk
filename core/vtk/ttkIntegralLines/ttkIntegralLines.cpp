@@ -203,7 +203,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
 #if TTK_ENABLE_MPI
-
+  rankArray_ = triangulation->getRankArray();
   vtkSmartPointer<vtkIntArray> vtkInputIdentifiers
     = vtkSmartPointer<vtkIntArray>::New();
   vtkInputIdentifiers->SetNumberOfComponents(1);
@@ -211,6 +211,11 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   std::map<ttk::SimplexId, ttk::SimplexId> global2Local{};
   long int *globalIds = triangulation->getGlobalIdsArray();
   for(int i = 0; i < numberOfPointsInDomain; i++) {
+    if(globalIds[i] == 32640 || globalIds[i] == 32639
+       || globalIds[i] == 32897) {
+      printErr("Element " + std::to_string(globalIds[i])
+               + " possessed with RankArray: " + std::to_string(rankArray_[i]));
+    }
     global2Local[globalIds[i]] = i;
   }
   this->setGlobalToLocal(global2Local);
@@ -257,6 +262,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       inputIdentifiers
         = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
     } else {
+      printErr("IsDistributed");
       this->setGlobalElementToCompute(totalSeeds);
       std::vector<ttk::SimplexId> idSpareStorage{};
       ttk::SimplexId *inputIdentifierGlobalId;
@@ -266,6 +272,14 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       vtkInputIdentifiers->SetNumberOfTuples(numberOfPointsInSeeds);
 #pragma omp parallel for
       for(int i = 0; i < numberOfPointsInSeeds; i++) {
+        if(inputIdentifierGlobalId[i] == 32640
+           || inputIdentifierGlobalId[i] == 32639
+           || inputIdentifierGlobalId[i] == 32897) {
+          printErr("Seed " + std::to_string(inputIdentifierGlobalId[i])
+                   + " possessed with RankArray: "
+                   + std::to_string(
+                     rankArray_[global2Local[inputIdentifierGlobalId[i]]]));
+        }
         vtkInputIdentifiers->SetTuple1(
           i, global2Local[inputIdentifierGlobalId[i]]);
       }
@@ -382,7 +396,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 
   std::ofstream myfile;
   myfile.open("/home/eveleguillou/experiment/IntegralLines/Correctness/"
-              "points_on_integralLines/cells/"
+              "MeSU/"
               + std::to_string(ttk::MPIsize_) + "_proc_integraLines_"
               + std::to_string(ttk::MPIrank_) + ".csv");
   myfile << "DistanceFromSeed,SeedIdentifier,GlobalPointIds,vtkGhostType\n";
