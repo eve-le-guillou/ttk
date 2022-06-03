@@ -350,6 +350,9 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setOutputSeedIdentifiers(&seedIdentifiers);
   this->preconditionTriangulation(triangulation);
   int status = 0;
+  globalIdsArray_ = triangulation->getGlobalIdsArray();
+  rankArray_ = triangulation->getRankArray();
+  this->createMessageType();
 #ifdef TTK_ENABLE_MPI_TIME
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif

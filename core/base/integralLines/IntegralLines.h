@@ -147,26 +147,26 @@ void checkEndOfComputation() const {
 #pragma omp atomic read
       tempTask = taskCounter;
       if(tempTask == 0) {
-#pragma omp critical(resetFinishedElement)
-{
-#pragma omp atomic read
-        seed = finishedElement;
-#pragma omp atomic update
-        finishedElement -= seed;
-}
+#pragma omp atomic capture
+        {
+          seed = finishedElement;
+          finishedElement = 0;
+        }
+
         if(seed > 0) {
           m.Id1 = seed;
           if(ttk::MPIrank_ != 0) {
             MPI_Send(
               &m, 1, this->MessageType, 0, FINISHED_ELEMENT, this->MPIComm);
           } else {
-#pragma omp atomic update
-            globalElementCounter -= m.Id1;
-#pragma omp atomic read
-            totalSeed = globalElementCounter;
+#pragma omp atomic capture
+            {
+              globalElementCounter -= m.Id1;
+              totalSeed = globalElementCounter;
+            }
             if(totalSeed == 0) {
 #pragma omp atomic write
-              (keepWorking) = false;
+              keepWorking = false;
               for(int i = 0; i < ttk::MPIsize_; i++) {
                 MPI_Send(
                   &m, 1, this->MessageType, i, STOP_WORKING, this->MPIComm);
@@ -174,8 +174,6 @@ void checkEndOfComputation() const {
             }
           }
         }
-        // printMsg("Old finishedElement: "+std::to_string(seed)+" New
-        // finishedElement: "+std::to_string(temp));
       }
    }
 #endif
@@ -283,10 +281,6 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
       if(isRunningWithMPI() && rankArray_[v] == ttk::MPIrank_) {
 #pragma omp atomic update
         finishedElement++;
-        // #pragma omp atomic read
-        // temp = finishedElement;
-        // if (this->MyRank == 2)
-        // printMsg("finishedElement: "+std::to_string(temp));
       }
 #endif
     } else {
@@ -379,18 +373,12 @@ template <typename dataType, class triangulationType>
 int ttk::IntegralLines::execute(triangulationType *triangulation) {
 
 #if TTK_ENABLE_MPI
-  globalIdsArray_ = triangulation->getGlobalIdsArray();
-  rankArray_ = triangulation->getRankArray();
-  this->createMessageType();
   finishedElement = 0;
   taskCounter = seedNumber_;
   globalElementCounter = this->GlobalElementToCompute;
   int totalSeed;
   keepWorking = true;
   bool keepWorkingAux = keepWorking;
-  // int provided;
-  // MPI_Query_thread(&provided);
-  // printMsg("LEVEL OF THREAD SUPPORT: " + std::to_string(provided));
 #endif
 
   const SimplexId *offsets = inputOffsets_;
@@ -515,11 +503,12 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             break;
           }
           case FINISHED_ELEMENT: {
-#pragma omp atomic update
-            (globalElementCounter) -= m.Id1;
-#pragma omp atomic read
-              totalSeed = (globalElementCounter);
-              if(totalSeed == 0) {
+#pragma omp atomic capture
+            {
+              globalElementCounter -= m.Id1;
+              totalSeed = globalElementCounter;
+            }
+            if(totalSeed == 0) {
 #pragma omp atomic write
                 (keepWorking) = false;
                 for(int i = 1; i < ttk::MPIsize_; i++) {
