@@ -107,13 +107,13 @@ namespace ttk {
 
     template <typename dataType,
               class triangulationType = ttk::AbstractTriangulation>
-    void
-      create_multiple_tasks(const triangulationType *triangulation,
-                            std::vector<std::vector<SimplexId> *> trajectory,
-                            std::vector<std::vector<double> *> distanceFromSeed,
-                            const SimplexId *offsets,
-                            dataType *scalars,
-                            std::vector<int> seedIdentifier) const;
+    void create_multiple_tasks(
+      const triangulationType *triangulation,
+      std::vector<std::vector<SimplexId> *> &trajectory,
+      std::vector<std::vector<double> *> &distanceFromSeed,
+      const SimplexId *offsets,
+      dataType *scalars,
+      std::vector<int> &seedIdentifier) const;
 
     inline void setVertexNumber(const SimplexId &vertexNumber) {
       vertexNumber_ = vertexNumber;
@@ -372,11 +372,11 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
 template <typename dataType, class triangulationType>
 void ttk::IntegralLines::create_multiple_tasks(
   const triangulationType *triangulation,
-  std::vector<std::vector<SimplexId> *> chunk_trajectory,
-  std::vector<std::vector<double> *> chunk_distanceFromSeed,
+  std::vector<std::vector<SimplexId> *> &chunk_trajectory,
+  std::vector<std::vector<double> *> &chunk_distanceFromSeed,
   const SimplexId *offsets,
   dataType *scalars,
-  std::vector<int> chunk_seedIdentifier) const {
+  std::vector<int> &chunk_seedIdentifier) const {
 
   int chunkSize = chunk_seedIdentifier.size();
   for(int i = 0; i < chunkSize; i++) {
