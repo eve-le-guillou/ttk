@@ -105,6 +105,16 @@ namespace ttk {
                      dataType *scalars,
                      int seedIdentifier) const;
 
+    template <typename dataType,
+              class triangulationType = ttk::AbstractTriangulation>
+    void
+      create_multiple_tasks(const triangulationType *triangulation,
+                            std::vector<std::vector<SimplexId> *> trajectory,
+                            std::vector<std::vector<double> *> distanceFromSeed,
+                            const SimplexId *offsets,
+                            dataType *scalars,
+                            std::vector<int> seedIdentifier) const;
+
     inline void setVertexNumber(const SimplexId &vertexNumber) {
       vertexNumber_ = vertexNumber;
     }
@@ -357,16 +367,29 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
     }
 #endif
   }
-#if TTK_ENABLE_MPI
-//#pragma omp critical(finished)
-//  {
+}
+
+template <typename dataType, class triangulationType>
+void ttk::IntegralLines::create_multiple_tasks(
+  const triangulationType *triangulation,
+  std::vector<std::vector<SimplexId> *> chunk_trajectory,
+  std::vector<std::vector<double> *> chunk_distanceFromSeed,
+  const SimplexId *offsets,
+  dataType *scalars,
+  std::vector<int> chunk_seedIdentifier) const {
+
+  int chunkSize = chunk_seedIdentifier.size();
+  for(int i = 0; i < chunkSize; i++) {
+    this->create_task(triangulation, chunk_trajectory[i],
+                      chunk_distanceFromSeed[i], offsets, scalars,
+                      chunk_seedIdentifier[i]);
+  }
+
   if(isRunningWithMPI()) {
 #pragma omp atomic update
-  taskCounter--;
-  this->checkEndOfComputation();
-//  }
+    taskCounter -= chunkSize;
+    this->checkEndOfComputation();
   }
-#endif
 }
 
 template <typename dataType, class triangulationType>
@@ -397,6 +420,11 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   }
   std::vector<SimplexId> seeds(isSeed.begin(), isSeed.end());
   isSeed.clear();
+  int chunkSize = std::max(1000, (int)seedNumber_ / (threadNumber_ * 100));
+  std::vector<std::vector<int> *> chunk_trajectories(chunkSize);
+  std::vector<std::vector<double> *> chunk_distanceFromSeed(chunkSize);
+  std::vector<int> chunk_identifier(chunkSize);
+  int taskNumber = (int)seedNumber_ / chunkSize;
 #if TTK_ENABLE_MPI
 #pragma omp parallel shared(finishedElement, keepWorking,                      \
                             globalElementCounter, taskCounter, unfinishedDist, \
@@ -409,26 +437,58 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 #endif
 #pragma omp single nowait
     {
-      for(SimplexId i = 0; i < seedNumber_; ++i) {
-        SimplexId v{seeds[i]};
-        std::vector<int> *trajectory
-          = trajectories->addArrayElement(std::vector<int>(1, v));
-        std::vector<double> *distanceFromSeed
-          = distancesFromSeed->addArrayElement(std::vector<double>(1, 0));
-        int seedIdentifier;
+      for(SimplexId i = 0; i < taskNumber; ++i) {
+        // printMsg("Da"+std::to_string(i));
+        for(SimplexId j = 0; j < chunkSize; j++) {
+          SimplexId v{seeds[j + i * chunkSize]};
+          chunk_trajectories[j]
+            = trajectories->addArrayElement(std::vector<int>(1, v));
+          chunk_distanceFromSeed[j]
+            = distancesFromSeed->addArrayElement(std::vector<double>(1, 0));
 #if TTK_ENABLE_MPI
-        seedIdentifier = globalIdsArray_[v];
+          chunk_identifier[j] = globalIdsArray_[v];
 #else
-        seedIdentifier = v;
+          chunk_identifier[j] = = v;
 #endif
-        seedIdentifiers->addArrayElement(seedIdentifier);
-#pragma omp task firstprivate(seedIdentifier)
+          seedIdentifiers->addArrayElement(chunk_identifier[j]);
+        }
+
+#pragma omp task firstprivate( \
+  chunk_trajectories, chunk_distanceFromSeed, chunk_identifier)
         {
-          this->create_task<dataType, triangulationType>(
-            triangulation, trajectory, distanceFromSeed, offsets, scalars,
-            seedIdentifier);
+          this->create_multiple_tasks<dataType, triangulationType>(
+            triangulation, chunk_trajectories, chunk_distanceFromSeed, offsets,
+            scalars, chunk_identifier);
         }
       }
+      int rest = seedNumber_ % chunkSize;
+      if(rest > 0) {
+        chunk_trajectories.resize(rest);
+        chunk_distanceFromSeed.resize(rest);
+        chunk_identifier.resize(rest);
+        for(SimplexId j = 0; j < rest; j++) {
+          SimplexId v{seeds[j + taskNumber * chunkSize]};
+          chunk_trajectories[j]
+            = trajectories->addArrayElement(std::vector<int>(1, v));
+          chunk_distanceFromSeed[j]
+            = distancesFromSeed->addArrayElement(std::vector<double>(1, 0));
+#if TTK_ENABLE_MPI
+          chunk_identifier[j] = globalIdsArray_[v];
+#else
+          chunk_identifier[j] = = v;
+#endif
+          seedIdentifiers->addArrayElement(chunk_identifier[j]);
+        }
+
+#pragma omp task firstprivate( \
+  chunk_trajectories, chunk_distanceFromSeed, chunk_identifier)
+        {
+          this->create_multiple_tasks<dataType, triangulationType>(
+            triangulation, chunk_trajectories, chunk_distanceFromSeed, offsets,
+            scalars, chunk_identifier);
+        }
+      }
+
 #if TTK_ENABLE_MPI
       if(isRunningWithMPI()) {
         MPI_Status status;
@@ -493,6 +553,11 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
                 this->create_task<dataType, triangulationType>(
                   triangulation, trajectory, distanceFromSeed, offsets, scalars,
                   identifier);
+                if(isRunningWithMPI()) {
+#pragma omp atomic update
+                  taskCounter--;
+                  this->checkEndOfComputation();
+                }
               }
             } else {
 
