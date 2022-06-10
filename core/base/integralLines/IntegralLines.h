@@ -448,7 +448,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 #if TTK_ENABLE_MPI
           chunk_identifier[j] = globalIdsArray_[v];
 #else
-          chunk_identifier[j] = = v;
+          chunk_identifier[j] = v;
 #endif
           seedIdentifiers->addArrayElement(chunk_identifier[j]);
         }
@@ -475,7 +475,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 #if TTK_ENABLE_MPI
           chunk_identifier[j] = globalIdsArray_[v];
 #else
-          chunk_identifier[j] = = v;
+          chunk_identifier[j] = v;
 #endif
           seedIdentifiers->addArrayElement(chunk_identifier[j]);
         }

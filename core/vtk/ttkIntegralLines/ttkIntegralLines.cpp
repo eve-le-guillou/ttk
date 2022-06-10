@@ -257,20 +257,24 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       inputIdentifiers
         = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
     } else {
-      this->setGlobalElementToCompute(totalSeeds);
       std::vector<ttk::SimplexId> idSpareStorage{};
       ttk::SimplexId *inputIdentifierGlobalId;
       inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
         ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
         idSpareStorage);
-      vtkInputIdentifiers->SetNumberOfTuples(numberOfPointsInSeeds);
-#pragma omp parallel for
+      int localId = 0;
       for(int i = 0; i < numberOfPointsInSeeds; i++) {
-        vtkInputIdentifiers->SetTuple1(
-          i, global2Local[inputIdentifierGlobalId[i]]);
+        localId = global2Local[inputIdentifierGlobalId[i]];
+        if(rankArray_[localId] == ttk::MPIrank_) {
+          vtkInputIdentifiers->InsertNextTuple1(localId);
+        }
       }
       inputIdentifiers
         = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
+      numberOfPointsInSeeds = vtkInputIdentifiers->GetNumberOfTuples();
+      controller->Reduce(
+        &numberOfPointsInSeeds, &totalSeeds, 1, vtkCommunicator::SUM_OP, 0);
+      this->setGlobalElementToCompute(totalSeeds);
     }
   } else {
     this->setGlobalElementToCompute(numberOfPointsInSeeds);
@@ -341,6 +345,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);
+  printMsg("Number of seeds: " + std::to_string(numberOfPointsInSeeds));
   this->setDirection(Direction);
   this->setInputScalarField(inputScalars->GetVoidPointer(0));
   this->setInputOffsets(ttkUtils::GetPointer<ttk::SimplexId>(inputOffsets));
@@ -382,25 +387,27 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 
   // Write data to csv
 
-  std::ofstream myfile;
-  myfile.open("/home/eveleguillou/experiment/IntegralLines/Correctness/"
-              "MeSU/"
-              + std::to_string(ttk::MPIsize_) + "_proc_integraLines_"
-              + std::to_string(ttk::MPIrank_) + ".csv");
-  myfile << "DistanceFromSeed,SeedIdentifier,GlobalPointIds,vtkGhostType\n";
-  vtkDataArray *ghostArray = output->GetPointData()->GetArray("vtkGhostType");
-  vtkDataArray *seedIdentifier
-    = output->GetPointData()->GetArray("SeedIdentifier");
-  vtkDataArray *globalIdsForCsv
-    = output->GetPointData()->GetArray("GlobalPointIds");
-  vtkDataArray *distance = output->GetPointData()->GetArray("DistanceFromSeed");
-  for(int i = 0; i < ghostArray->GetNumberOfTuples(); i++) {
-    myfile << std::to_string(distance->GetTuple1(i)) + ","
-                + std::to_string(seedIdentifier->GetTuple1(i)) + ","
-                + std::to_string(globalIdsForCsv->GetTuple1(i)) + ","
-                + std::to_string(ghostArray->GetTuple1(i)) + "\n";
-  }
-  myfile.close();
+  // std::ofstream myfile;
+  // myfile.open("/home/eveleguillou/experiment/IntegralLines/Correctness/"
+  //             "MeSU/"
+  //             + std::to_string(ttk::MPIsize_) + "_proc_integraLines_"
+  //             + std::to_string(ttk::MPIrank_) + ".csv");
+  // myfile << "DistanceFromSeed,SeedIdentifier,GlobalPointIds,vtkGhostType\n";
+  // vtkDataArray *ghostArray =
+  // output->GetPointData()->GetArray("vtkGhostType"); vtkDataArray
+  // *seedIdentifier
+  //   = output->GetPointData()->GetArray("SeedIdentifier");
+  // vtkDataArray *globalIdsForCsv
+  //   = output->GetPointData()->GetArray("GlobalPointIds");
+  // vtkDataArray *distance =
+  // output->GetPointData()->GetArray("DistanceFromSeed"); for(int i = 0; i <
+  // ghostArray->GetNumberOfTuples(); i++) {
+  //   myfile << std::to_string(distance->GetTuple1(i)) + ","
+  //               + std::to_string(seedIdentifier->GetTuple1(i)) + ","
+  //               + std::to_string(globalIdsForCsv->GetTuple1(i)) + ","
+  //               + std::to_string(ghostArray->GetTuple1(i)) + "\n";
+  // }
+  // myfile.close();
 
   return (int)(status == 0);
 }
