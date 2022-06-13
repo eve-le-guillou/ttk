@@ -90,7 +90,7 @@ public:
     ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>
       &trajectories,
     ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
-    ttk::ArrayLinkedList<int, TABULAR_SIZE> &seedIdentifiers,
+    ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> &seedIdentifiers,
     vtkUnstructuredGrid *output);
 
 protected:

@@ -2611,12 +2611,12 @@ namespace ttk {
       return nullptr;
     }
 
-    inline void setGlobalIdsArray(long int *globalIds) {
+    inline void setGlobalIdsArray(ttk::LongSimplexId *globalIds) {
       if(this->abstractTriangulation_)
         this->abstractTriangulation_->setGlobalIdsArray(globalIds);
     }
 
-    inline long int *getGlobalIdsArray() {
+    inline ttk::LongSimplexId *getGlobalIdsArray() {
       if(this->abstractTriangulation_)
         return this->abstractTriangulation_->getGlobalIdsArray();
 

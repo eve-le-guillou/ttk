@@ -390,7 +390,7 @@ int ttkAlgorithm::RequestDataObject(vtkInformation *ttkNotUsed(request),
 void ttkAlgorithm::MPIPreconditioning(vtkDataSet *input) {
   ttk::Triangulation *triangulation = ttkAlgorithm::GetTriangulation(input);
   triangulation->setGlobalIdsArray(
-    static_cast<long int *>(ttkUtils::GetVoidPointer(
+    static_cast<ttk::LongSimplexId *>(ttkUtils::GetVoidPointer(
       input->GetPointData()->GetArray("GlobalPointIds"))));
   if(!triangulation->getGlobalIdsArray()) {
     printWrn("Global ids haven't been produced in sequential, the parallel "
@@ -400,7 +400,7 @@ void ttkAlgorithm::MPIPreconditioning(vtkDataSet *input) {
     globalIds->Update();
     input->ShallowCopy(globalIds->GetOutputDataObject(0));
     triangulation->setGlobalIdsArray(
-      static_cast<long int *>(ttkUtils::GetVoidPointer(
+      static_cast<ttk::LongSimplexId *>(ttkUtils::GetVoidPointer(
         input->GetPointData()->GetArray("GlobalPointIds"))));
   }
 

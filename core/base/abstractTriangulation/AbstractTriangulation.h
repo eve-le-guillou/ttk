@@ -3373,15 +3373,15 @@ namespace ttk {
     bool hasPreconditionedDistributedEdges_{false};
     bool hasPreconditionedDistributedTriangles_{false};
 
-    long int *globalIdsArray_{nullptr};
+    ttk::LongSimplexId *globalIdsArray_{nullptr};
     int *rankArray_{nullptr};
 
   public:
-    void setGlobalIdsArray(long int *array) {
+    void setGlobalIdsArray(ttk::LongSimplexId *array) {
       this->globalIdsArray_ = array;
     }
 
-    long int *getGlobalIdsArray() const {
+    ttk::LongSimplexId *getGlobalIdsArray() const {
       return this->globalIdsArray_;
     }
 

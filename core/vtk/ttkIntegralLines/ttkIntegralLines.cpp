@@ -71,7 +71,7 @@ int ttkIntegralLines::getTrajectories(
   ttk::Triangulation *triangulation,
   ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> &trajectories,
   ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
-  ttk::ArrayLinkedList<int, TABULAR_SIZE> &seedIdentifiers,
+  ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> &seedIdentifiers,
   vtkUnstructuredGrid *output) {
 
   if(input == nullptr || output == nullptr
@@ -116,7 +116,7 @@ int ttkIntegralLines::getTrajectories(
     = trajectories.list.begin();
   std::list<std::array<std::vector<double>, TABULAR_SIZE>>::iterator distanceFromSeed
     = distancesFromSeed.list.begin();
-  std::list<std::array<int, TABULAR_SIZE>>::iterator seedIdentifier
+  std::list<std::array<ttk::SimplexId, TABULAR_SIZE>>::iterator seedIdentifier
     = seedIdentifiers.list.begin();
   while(trajectory != trajectories.list.end()) {
     for(int i = 0; i < TABULAR_SIZE; i++) {
@@ -195,7 +195,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 
   const ttk::SimplexId numberOfPointsInDomain = domain->GetNumberOfPoints();
   this->setVertexNumber(numberOfPointsInDomain);
-  ttk::SimplexId numberOfPointsInSeeds = seeds->GetNumberOfPoints();
+  int numberOfPointsInSeeds = seeds->GetNumberOfPoints();
   ttk::SimplexId *inputIdentifiers;
 
 #ifdef TTK_ENABLE_MPI_TIME
@@ -204,12 +204,12 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
 #if TTK_ENABLE_MPI
   rankArray_ = triangulation->getRankArray();
-  vtkSmartPointer<vtkIntArray> vtkInputIdentifiers
-    = vtkSmartPointer<vtkIntArray>::New();
+  vtkSmartPointer<vtkIdTypeArray> vtkInputIdentifiers
+    = vtkSmartPointer<vtkIdTypeArray>::New();
   vtkInputIdentifiers->SetNumberOfComponents(1);
   vtkInputIdentifiers->SetNumberOfTuples(0);
   std::map<ttk::SimplexId, ttk::SimplexId> global2Local{};
-  long int *globalIds = triangulation->getGlobalIdsArray();
+  ttk::LongSimplexId *globalIds = triangulation->getGlobalIdsArray();
   for(int i = 0; i < numberOfPointsInDomain; i++) {
     global2Local[globalIds[i]] = i;
   }
@@ -243,7 +243,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       }
       controller->Broadcast(globalSeedsId, 0);
       int *rankArray = triangulation->getRankArray();
-      int localId = -1;
+      ttk::SimplexId localId = -1;
       for(int i = 0; i < totalSeeds; i++) {
         auto search = global2Local.find(globalSeedsId->GetTuple1(i));
         if(search != global2Local.end()) {
@@ -262,7 +262,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
         ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
         idSpareStorage);
-      int localId = 0;
+      ttk::SimplexId localId = 0;
       for(int i = 0; i < numberOfPointsInSeeds; i++) {
         localId = global2Local[inputIdentifierGlobalId[i]];
         if(rankArray_[localId] == ttk::MPIrank_) {
@@ -341,7 +341,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
   ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> trajectories;
   ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> distancesFromSeed;
-  ttk::ArrayLinkedList<int, TABULAR_SIZE> seedIdentifiers;
+  ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> seedIdentifiers;
 
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);
