@@ -196,7 +196,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   const ttk::SimplexId numberOfPointsInDomain = domain->GetNumberOfPoints();
   this->setVertexNumber(numberOfPointsInDomain);
   int numberOfPointsInSeeds = seeds->GetNumberOfPoints();
-  ttk::SimplexId *inputIdentifiers;
+  std::vector<ttk::SimplexId> inputIdentifiers{};
 
 #ifdef TTK_ENABLE_MPI_TIME
   ttk::Timer t_mpi;
@@ -204,16 +204,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
 #if TTK_ENABLE_MPI
   rankArray_ = triangulation->getRankArray();
-  vtkSmartPointer<vtkIdTypeArray> vtkInputIdentifiers
-    = vtkSmartPointer<vtkIdTypeArray>::New();
-  vtkInputIdentifiers->SetNumberOfComponents(1);
-  vtkInputIdentifiers->SetNumberOfTuples(0);
-  std::map<ttk::SimplexId, ttk::SimplexId> global2Local{};
-  ttk::LongSimplexId *globalIds = triangulation->getGlobalIdsArray();
-  for(int i = 0; i < numberOfPointsInDomain; i++) {
-    global2Local[globalIds[i]] = i;
-  }
-  this->setGlobalToLocal(global2Local);
 
   if(ttk::MPIsize_ > 1) {
     int totalSeeds;
@@ -242,20 +232,14 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         globalSeedsId->SetNumberOfTuples(totalSeeds);
       }
       controller->Broadcast(globalSeedsId, 0);
-      int *rankArray = triangulation->getRankArray();
       ttk::SimplexId localId = -1;
       for(int i = 0; i < totalSeeds; i++) {
-        auto search = global2Local.find(globalSeedsId->GetTuple1(i));
-        if(search != global2Local.end()) {
-          localId = search->second;
-          if(rankArray[localId] == ttk::MPIrank_) {
-            vtkInputIdentifiers->InsertNextTuple1(localId);
-          }
+        localId = triangulation->getVertexLocalId(globalSeedsId->GetTuple1(i));
+        if(rankArray_[localId] == ttk::MPIrank_) {
+          inputIdentifiers.push_back(localId);
         }
       }
-      numberOfPointsInSeeds = vtkInputIdentifiers->GetNumberOfTuples();
-      inputIdentifiers
-        = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
+      numberOfPointsInSeeds = inputIdentifiers.size();
     } else {
       std::vector<ttk::SimplexId> idSpareStorage{};
       ttk::SimplexId *inputIdentifierGlobalId;
@@ -264,33 +248,28 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         idSpareStorage);
       ttk::SimplexId localId = 0;
       for(int i = 0; i < numberOfPointsInSeeds; i++) {
-        localId = global2Local[inputIdentifierGlobalId[i]];
+        localId = triangulation->getVertexLocalId(inputIdentifierGlobalId[i]);
         if(rankArray_[localId] == ttk::MPIrank_) {
-          vtkInputIdentifiers->InsertNextTuple1(localId);
+          inputIdentifiers.push_back(localId);
         }
       }
-      inputIdentifiers
-        = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
-      numberOfPointsInSeeds = vtkInputIdentifiers->GetNumberOfTuples();
+      numberOfPointsInSeeds = inputIdentifiers.size();
       controller->Reduce(
         &numberOfPointsInSeeds, &totalSeeds, 1, vtkCommunicator::SUM_OP, 0);
       this->setGlobalElementToCompute(totalSeeds);
     }
   } else {
     this->setGlobalElementToCompute(numberOfPointsInSeeds);
-    vtkInputIdentifiers->SetNumberOfTuples(numberOfPointsInSeeds);
+    inputIdentifiers.resize(numberOfPointsInSeeds);
     std::vector<ttk::SimplexId> idSpareStorage{};
     ttk::SimplexId *inputIdentifierGlobalId;
     inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
       ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
       idSpareStorage);
-#pragma omp parallel for
     for(int i = 0; i < numberOfPointsInSeeds; i++) {
-      vtkInputIdentifiers->SetTuple1(
-        i, global2Local[inputIdentifierGlobalId[i]]);
+      inputIdentifiers.at(i)
+        = triangulation->getVertexLocalId(inputIdentifierGlobalId[i]);
     }
-    inputIdentifiers
-      = static_cast<ttk::SimplexId *>(vtkInputIdentifiers->GetVoidPointer(0));
   }
 #ifdef TTK_ENABLE_MPI_TIME
   double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
@@ -301,9 +280,15 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
 #else
   std::vector<ttk::SimplexId> idSpareStorage{};
-  inputIdentifiers = this->GetIdentifierArrayPtr(ForceInputVertexScalarField, 2,
-                                                 ttk::VertexScalarFieldName,
-                                                 seeds, idSpareStorage);
+  ttk::SimplexId *identifiers = this->GetIdentifierArrayPtr(
+    ForceInputVertexScalarField, 2, ttk::VertexScalarFieldName, seeds,
+    idSpareStorage);
+  std::unordered_set<SimplexId> isSeed;
+  for(SimplexId k = 0; k < numberOfPointsInSeeds; ++k) {
+    isSeed.insert(identifiers[k]);
+  }
+  std::vector<SimplexId> inputIdentifiers(isSeed.begin(), isSeed.end());
+  isSeed.clear();
 #endif
 
 #ifndef TTK_ENABLE_KAMIKAZE
@@ -324,7 +309,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     return -1;
   }
   // field problem
-  if(!inputIdentifiers) {
+  if(!inputIdentifiers.size()) {
     this->printErr("wrong identifiers.");
     return -1;
   }
@@ -349,14 +334,12 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setDirection(Direction);
   this->setInputScalarField(inputScalars->GetVoidPointer(0));
   this->setInputOffsets(ttkUtils::GetPointer<ttk::SimplexId>(inputOffsets));
-  this->setVertexIdentifierScalarField(inputIdentifiers);
+  this->setVertexIdentifierScalarField(&inputIdentifiers);
   this->setOutputTrajectories(&trajectories);
   this->setOutputDistancesFromSeed(&distancesFromSeed);
   this->setOutputSeedIdentifiers(&seedIdentifiers);
   this->preconditionTriangulation(triangulation);
   int status = 0;
-  globalIdsArray_ = triangulation->getGlobalIdsArray();
-  rankArray_ = triangulation->getRankArray();
   this->createMessageType();
 #ifdef TTK_ENABLE_MPI_TIME
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
