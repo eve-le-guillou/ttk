@@ -403,6 +403,7 @@ void ttkAlgorithm::MPIPreconditioning(vtkDataSet *input) {
       static_cast<ttk::LongSimplexId *>(ttkUtils::GetVoidPointer(
         input->GetPointData()->GetArray("GlobalPointIds"))));
   }
+  triangulation->preconditionDistributedVertices();
 
   if(!input->HasAnyGhostPoints()) {
     vtkNew<vtkGhostCellsGenerator> generator;
