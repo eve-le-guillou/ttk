@@ -287,7 +287,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
     if(vnext == -1) {
       isMax = true;
 #if TTK_ENABLE_MPI
-      if(isRunningWithMPI() && rankArray_[v] == ttk::MPIrank_) {
+      if(ttk::MPIsize_ > 1 && rankArray_[v] == ttk::MPIrank_) {
 #pragma omp atomic update
         finishedElement++;
       }
@@ -305,7 +305,7 @@ void ttk::IntegralLines::create_task(const triangulationType *triangulation,
     }
 
 #if TTK_ENABLE_MPI
-    if(isRunningWithMPI()) {
+    if(ttk::MPIsize_ > 1) {
       size = trajectory->size();
       if(size > 1) {
         int rankArray;
@@ -390,7 +390,7 @@ void ttk::IntegralLines::create_multiple_tasks(
                       chunk_seedIdentifier[i]);
   }
 
-  if(isRunningWithMPI()) {
+  if(ttk::MPIsize_ > 1) {
 #pragma omp atomic update
     taskCounter -= chunkSize;
     this->checkEndOfComputation();
@@ -490,7 +490,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
       }
 
 #if TTK_ENABLE_MPI
-      if(isRunningWithMPI()) {
+      if(ttk::MPIsize_ > 1) {
         MPI_Status status;
         struct Message m;
         while(keepWorkingAux) {
@@ -555,7 +555,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
                 this->create_task<dataType, triangulationType>(
                   triangulation, trajectory, distanceFromSeed, offsets, scalars,
                   identifier);
-                if(isRunningWithMPI()) {
+                if(ttk::MPIsize_ > 1) {
 #pragma omp atomic update
                   taskCounter--;
                   this->checkEndOfComputation();
