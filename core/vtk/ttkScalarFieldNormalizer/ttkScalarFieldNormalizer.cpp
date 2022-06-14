@@ -110,30 +110,8 @@ int ttkScalarFieldNormalizer::RequestData(vtkInformation *ttkNotUsed(request),
   outputArray->SetNumberOfComponents(1);
   outputArray->SetNumberOfTuples(inputArray->GetNumberOfTuples());
 
-#if TTK_ENABLE_MPI
-  vtkMPIController *controller = vtkMPIController::SafeDownCast(
-    vtkMultiProcessController::GetGlobalController());
-
-  int myRank = controller->GetLocalProcessId();
-  int numberOfProcesses = controller->GetNumberOfProcesses();
-  ttk::Timer t_mpi;
-  controller->Barrier();
-  if(ttk::MPIrank_ == 0) {
-    t_mpi.reStart();
-  }
-#endif
-
   // calling the executing package
   normalize(inputArray, outputArray);
-
-#if TTK_ENABLE_MPI
-  controller->Barrier();
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation performed using " + std::to_string(numberOfProcesses)
-             + " MPI processes lasted :"
-             + std::to_string(t_mpi.getElapsedTime()));
-  }
-#endif
 
   // prepare the output
   output->ShallowCopy(input);
