@@ -339,6 +339,9 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setOutputDistancesFromSeed(&distancesFromSeed);
   this->setOutputSeedIdentifiers(&seedIdentifiers);
   this->preconditionTriangulation(triangulation);
+  this->setChunkSize(
+    std::max(std::min(1000, (int)numberOfPointsInSeeds),
+             (int)numberOfPointsInSeeds / (threadNumber_ * 100)));
   int status = 0;
   this->createMessageType();
 #ifdef TTK_ENABLE_MPI_TIME
