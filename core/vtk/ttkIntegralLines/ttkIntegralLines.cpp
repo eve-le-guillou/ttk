@@ -327,8 +327,10 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> trajectories;
   ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> distancesFromSeed;
   ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> seedIdentifiers;
-  ttk::ArrayLinkedList<MPI_Request *, TABULAR_SIZE> sentRequests;
-  ttk::ArrayLinkedList<Message *, TABULAR_SIZE> sentMessages;
+  std::vector<ttk::ArrayLinkedList<MPI_Request, TABULAR_SIZE>> sentRequests(
+    threadNumber_, ttk::ArrayLinkedList<MPI_Request, TABULAR_SIZE>());
+  std::vector<ttk::ArrayLinkedList<Message, TABULAR_SIZE>> sentMessages(
+    threadNumber_, ttk::ArrayLinkedList<Message, TABULAR_SIZE>());
 
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);
