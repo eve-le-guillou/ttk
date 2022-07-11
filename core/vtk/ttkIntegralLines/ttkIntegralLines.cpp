@@ -327,10 +327,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> trajectories;
   ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> distancesFromSeed;
   ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> seedIdentifiers;
-  std::vector<ttk::ArrayLinkedList<MPI_Request, TABULAR_SIZE>> sentRequests(
-    threadNumber_, ttk::ArrayLinkedList<MPI_Request, TABULAR_SIZE>());
-  std::vector<ttk::ArrayLinkedList<Message, TABULAR_SIZE>> sentMessages(
-    threadNumber_, ttk::ArrayLinkedList<Message, TABULAR_SIZE>());
 
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);
@@ -346,8 +342,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setChunkSize(
     std::max(std::min(1000, (int)numberOfPointsInSeeds),
              (int)numberOfPointsInSeeds / (threadNumber_ * 100)));
-  this->setSentMessages(&sentMessages);
-  this->setSentRequests(&sentRequests);
   int status = 0;
   this->createMessageType();
 #ifdef TTK_ENABLE_MPI_TIME
