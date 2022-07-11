@@ -25,6 +25,7 @@
 #include <limits>
 #include <unordered_set>
 #define TABULAR_SIZE 50
+#define RECEIVE_SIZE 10
 #if TTK_ENABLE_MPI
 #define IS_ELEMENT_TO_PROCESS 0
 #define FINISHED_ELEMENT 1
@@ -44,6 +45,14 @@ struct Message {
   double DistanceFromSeed4;
   ttk::SimplexId SeedIdentifier;
 };
+
+struct MessageAndMPIInfo {
+  Message *m;
+  int receiver;
+  int tag;
+  MPI_Request *request;
+};
+
 #endif
 
 namespace ttk {
@@ -56,6 +65,7 @@ namespace ttk {
   static std::vector<std::vector<SimplexId> *> unfinishedTraj;
   static std::vector<std::vector<double> *> unfinishedDist;
   static std::vector<int> unfinishedSeed;
+  static std::queue<MessageAndMPIInfo> sendQueue{};
 #endif
 
   enum Direction { Forward = 0, Backward };
@@ -147,6 +157,38 @@ namespace ttk {
       direction_ = direction;
     }
 
+    inline void pushMessage(Message m, int receiver, int tag) const {
+      Message *m_ptr;
+      MPI_Request *request;
+#pragma omp critical(addMessageAndRequest)
+      {
+        m_ptr = this->sentMessages_->addArrayElement(m);
+        request
+          = this->sentRequests_->addArrayElement(MPI_Request{MPI_REQUEST_NULL});
+      }
+#pragma omp critical(sendMessageQueue)
+      { sendQueue.push(MessageAndMPIInfo{m_ptr, receiver, tag, request}); }
+    };
+
+    inline MessageAndMPIInfo popMessage() const {
+      MessageAndMPIInfo m;
+#pragma omp critical(sendMessageQueue)
+      {
+        m = sendQueue.front();
+        sendQueue.pop();
+      }
+      return m;
+    }
+
+    inline void setSentRequests(
+      ArrayLinkedList<MPI_Request, TABULAR_SIZE> *sentRequests) {
+      sentRequests_ = sentRequests;
+    }
+
+    inline void
+      setSentMessages(ArrayLinkedList<Message, TABULAR_SIZE> *sentMessages) {
+      sentMessages_ = sentMessages;
+    }
 
 #if TTK_ENABLE_MPI
 
@@ -189,8 +231,7 @@ void checkEndOfComputation() const {
         }
         if(seed > 0) {
           Message m = Message{seed, -1, -1, -1, 0, 0, 0, 0, -1};
-          MPI_Bsend(
-            &m, 1, this->MessageType, 0, FINISHED_ELEMENT, this->MPIComm);
+          this->pushMessage(m, 0, FINISHED_ELEMENT);
         }
       }
       //     }
@@ -257,6 +298,8 @@ void checkEndOfComputation() const {
       *outputDistancesFromSeed_;
     ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> *outputSeedIdentifiers_;
     int *rankArray_{nullptr};
+    ArrayLinkedList<MPI_Request, TABULAR_SIZE> *sentRequests_;
+    ArrayLinkedList<Message, TABULAR_SIZE> *sentMessages_;
   };
 } // namespace ttk
 
@@ -321,9 +364,7 @@ void ttk::IntegralLines::sendTrajectoryIfNecessary(
               }
             }
           }
-          int threadId = omp_get_thread_num();
-          MPI_Bsend(&m, 1, this->MessageType, rankArray, IS_ELEMENT_TO_PROCESS,
-                    this->MPIComm);
+          this->pushMessage(m, rankArray, IS_ELEMENT_TO_PROCESS);
 
           isMax = true;
         }
@@ -414,18 +455,22 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
   if(ttk::MPIsize_ > 1) {
     MPI_Status status;
     struct Message m_recv;
+    int count = RECEIVE_SIZE;
     while(keepWorking) {
-      MPI_Recv(&m_recv, 1, this->MessageType, MPI_ANY_SOURCE, MPI_ANY_TAG,
-               this->MPIComm, &status);
-
-      int stat = status.MPI_TAG;
-      switch(stat) {
-        case IS_ELEMENT_TO_PROCESS: {
-          this->receiveElement<dataType, triangulationType>(
-            triangulation, m_recv, offsets, scalars);
-          break;
-        }
-        case FINISHED_ELEMENT: {
+      int probe;
+      int out = MPI_Iprobe(
+        MPI_ANY_SOURCE, MPI_ANY_TAG, this->MPIComm, &probe, &status);
+      while(!out && probe) {
+        MPI_Recv(&m_recv, 1, this->MessageType, MPI_ANY_SOURCE, MPI_ANY_TAG,
+                 this->MPIComm, &status);
+        int stat = status.MPI_TAG;
+        switch(stat) {
+          case IS_ELEMENT_TO_PROCESS: {
+            this->receiveElement<dataType, triangulationType>(
+              triangulation, m_recv, offsets, scalars);
+            break;
+          }
+          case FINISHED_ELEMENT: {
             globalElementCounter -= m_recv.Id1;
             if(globalElementCounter < 100) {
               printMsg("GlobalElementCounter: "
@@ -433,23 +478,32 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
             }
             if(globalElementCounter == 0) {
               keepWorking = false;
-              int threadId = omp_get_thread_num();
               for(int i = 1; i < ttk::MPIsize_; i++) {
                 Message m = Message{-1, -1, -1, -1, 0, 0, 0, 0, -1};
-                MPI_Bsend(
-                  &m, 1, this->MessageType, i, STOP_WORKING, this->MPIComm);
+                this->pushMessage(m, i, STOP_WORKING);
                 printMsg("All processes should stop working");
               }
             }
-          break;
+            break;
+          }
+          case STOP_WORKING: {
+            keepWorking = false;
+            printMsg("I was told to stop working");
+            break;
+          }
+          default:
+            break;
         }
-        case STOP_WORKING: {
-          keepWorking = false;
-          printMsg("I was told to stop working");
-          break;
-        }
-        default:
-          break;
+        out = MPI_Iprobe(
+          MPI_ANY_SOURCE, MPI_ANY_TAG, this->MPIComm, &probe, &status);
+      }
+      MessageAndMPIInfo message;
+      count = RECEIVE_SIZE;
+      while(!sendQueue.empty() && count) {
+        message = this->popMessage();
+        MPI_Isend(message.m, 1, this->MessageType, message.receiver,
+                  message.tag, this->MPIComm, message.request);
+        count--;
       }
     }
   }
@@ -562,9 +616,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 #if TTK_ENABLE_MPI
   taskCounter = seedNumber_;
   globalElementCounter = this->GlobalElementToCompute;
-  int buffer_size = seedNumber_ * sizeof(Message);
-  void *buffer = malloc(buffer_size);
-  MPI_Buffer_attach(buffer, buffer_size);
 #endif
 
   const SimplexId *offsets = inputOffsets_;
@@ -603,12 +654,26 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
         triangulation, offsets, scalars);
     }
   }
-  char *buf;
-  int size;
-  printMsg("Before detach");
-  MPI_Buffer_detach(&buf, &size);
-  printMsg("Before free");
-  free(buffer);
+
+  if(ttk::MPIsize_ > 1) {
+    std::vector<MPI_Status> dummyStatus(2 * TABULAR_SIZE);
+    std::list<std::array<MPI_Request, TABULAR_SIZE>>::iterator requestBlock
+      = sentRequests_->list.begin();
+    std::list<std::array<Message, TABULAR_SIZE>>::iterator messageBlock
+      = sentMessages_->list.begin();
+
+    int sizeBlock = TABULAR_SIZE;
+    while(requestBlock != sentRequests_->list.end()) {
+      requestBlock++;
+      if(requestBlock == sentRequests_->list.end()) {
+        sizeBlock = std::min((int)TABULAR_SIZE, sentRequests_->numberOfElement);
+      }
+      requestBlock--;
+      MPI_Waitall(sizeBlock, requestBlock->data(), dummyStatus.data());
+      messageBlock++;
+      requestBlock++;
+    }
+  }
   {
     std::stringstream msg;
     msg << "Processed " << vertexNumber_ << " points";
