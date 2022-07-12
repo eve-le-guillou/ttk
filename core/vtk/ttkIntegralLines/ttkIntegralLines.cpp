@@ -216,7 +216,9 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     }
 
     controller->Broadcast(&isDistributed, 1, 0);
-
+    controller->Broadcast(&totalSeeds, 1, 0);
+    this->setMessageSize(
+      std::max((int)(totalSeeds * 0.001 / ttk::MPIsize_), 10));
     if(!isDistributed) {
       vtkDataArray *globalSeedsId;
       if(ttk::MPIrank_ == 0) {
@@ -224,8 +226,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       } else {
         globalSeedsId = vtkDataArray::CreateDataArray(VTK_ID_TYPE);
       }
-      controller->Broadcast(&totalSeeds, 1, 0);
-      this->setGlobalElementToCompute(totalSeeds);
 
       if(ttk::MPIrank_ != 0) {
         globalSeedsId->SetNumberOfComponents(1);
@@ -328,7 +328,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> distancesFromSeed;
   ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> seedIdentifiers;
   ttk::ArrayLinkedList<MPI_Request, TABULAR_SIZE> sentRequests;
-  ttk::ArrayLinkedList<Message, TABULAR_SIZE> sentMessages;
+  ttk::ArrayLinkedList<std::vector<Message>, TABULAR_SIZE> sentMessages;
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);
   printMsg("Number of seeds: " + std::to_string(numberOfPointsInSeeds));
