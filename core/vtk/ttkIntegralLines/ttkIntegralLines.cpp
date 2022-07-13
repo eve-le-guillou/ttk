@@ -218,7 +218,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     controller->Broadcast(&isDistributed, 1, 0);
     controller->Broadcast(&totalSeeds, 1, 0);
     this->setMessageSize(
-      std::max((int)(totalSeeds * 0.001 / ttk::MPIsize_), 10));
+      std::max((int)(totalSeeds * 0.005 / ttk::MPIsize_), 10));
     if(!isDistributed) {
       vtkDataArray *globalSeedsId;
       if(ttk::MPIrank_ == 0) {

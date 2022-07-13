@@ -409,9 +409,10 @@ void ttk::IntegralLines::receiveElement(const triangulationType *triangulation,
                                         dataType *scalars) const {
   ttk::SimplexId localId1 = -1;
   ttk::SimplexId identifier = m.SeedIdentifier;
-  printMsg("identifier: " + std::to_string(identifier) + " id1: "
-           + std::to_string(m.Id1) + " id1: " + std::to_string(m.Id2) + " id1: "
-           + std::to_string(m.Id3) + " id1: " + std::to_string(m.Id4));
+  // printMsg("identifier: " + std::to_string(identifier) + " id1: "
+  //          + std::to_string(m.Id1) + " id1: " + std::to_string(m.Id2) + "
+  //          id1: "
+  //          + std::to_string(m.Id3) + " id1: " + std::to_string(m.Id4));
   std::vector<ttk::SimplexId> *trajectory;
   std::vector<double> *distanceFromSeed;
   bool isUnfinished = false;
@@ -422,7 +423,6 @@ void ttk::IntegralLines::receiveElement(const triangulationType *triangulation,
 #pragma omp critical(unfinishedTrajectories)
       {
         ttk::SimplexId localId3 = triangulation->getVertexLocalId(m.Id3);
-        printMsg("Localid3: " + std::to_string(localId3));
         for(int i = 0; i < (int)unfinishedSeed.size(); i++) {
           if(unfinishedSeed[i] == m.SeedIdentifier
              && (unfinishedTraj[i])->back() == localId3) {
@@ -493,11 +493,10 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
       int out = MPI_Iprobe(
         MPI_ANY_SOURCE, MPI_ANY_TAG, this->MPIComm, &probe, &status);
       while(!out && probe) {
-        printMsg("About to receive Message");
         MPI_Recv(m_recv.data(), messageSize_, this->MessageType, MPI_ANY_SOURCE,
                  MPI_ANY_TAG, this->MPIComm, &status);
-        printMsg("Element: " + std::to_string(m_recv[0].Id1)
-                 + " tag: " + std::to_string(status.MPI_TAG));
+        // printMsg("Element: " + std::to_string(m_recv[0].Id1)
+        //          + " tag: " + std::to_string(status.MPI_TAG));
         MPI_Get_count(&status, this->MessageType, &count);
         // recvCount++;
         int stat = status.MPI_TAG;
@@ -511,10 +510,6 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
           }
           case FINISHED_ELEMENT: {
             globalElementCounter -= m_recv[0].Id1;
-            if(globalElementCounter < 100) {
-              printMsg("GlobalElementCounter: "
-                       + std::to_string(globalElementCounter));
-            }
             if(globalElementCounter == 0) {
               keepWorking = false;
               for(int i = 1; i < ttk::MPIsize_; i++) {
@@ -699,9 +694,10 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   std::vector<ttk::SimplexId> chunk_identifier(chunkSize_);
   int taskNumber = (int)seedNumber_ / chunkSize_;
 #if TTK_ENABLE_MPI
-#pragma omp parallel shared(finishedElement, taskCounter, unfinishedDist, \
-                            unfinishedTraj, unfinishedSeed)               \
-  num_threads(threadNumber_)
+#pragma omp parallel shared(                                              \
+  finishedElement, taskCounter, unfinishedDist, multipleElementToSend,    \
+  unfinishedTraj, unfinishedSeed, messageCount, sendQueue, sentMessages_, \
+  sentRequests_) num_threads(threadNumber_)
   {
 #else
 #pragma omp parallel
