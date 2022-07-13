@@ -254,8 +254,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         }
       }
       numberOfPointsInSeeds = inputIdentifiers.size();
-      controller->Reduce(
-        &numberOfPointsInSeeds, &totalSeeds, 1, vtkCommunicator::SUM_OP, 0);
+      controller->AllReduce(
+        &numberOfPointsInSeeds, &totalSeeds, 1, vtkCommunicator::SUM_OP);
       this->setGlobalElementToCompute(totalSeeds);
     }
   } else {
@@ -351,7 +351,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
   ttkVtkTemplateMacro(inputScalars->GetDataType(), triangulation->getType(),
-                      (status = this->execute<VTK_TT, TTK_TT>(
+                      (status = this->executeMethode1<VTK_TT, TTK_TT>(
                          static_cast<TTK_TT *>(triangulation->getData()))));
 
 #ifdef TTK_ENABLE_MPI_TIME
