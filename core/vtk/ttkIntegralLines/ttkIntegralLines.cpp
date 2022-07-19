@@ -220,6 +220,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     this->setMessageSize(
       std::max((int)(totalSeeds * 0.005 / ttk::MPIsize_), 10));
     if(!isDistributed) {
+      this->setGlobalElementToCompute(totalSeeds);
       vtkDataArray *globalSeedsId;
       if(ttk::MPIrank_ == 0) {
         globalSeedsId = seeds->GetPointData()->GetArray("GlobalPointIds");
@@ -235,7 +236,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       ttk::SimplexId localId = -1;
       for(int i = 0; i < totalSeeds; i++) {
         localId = triangulation->getVertexLocalId(globalSeedsId->GetTuple1(i));
-        if(rankArray_[localId] == ttk::MPIrank_) {
+        if(localId != -1 && rankArray_[localId] == ttk::MPIrank_) {
           inputIdentifiers.push_back(localId);
         }
       }
@@ -331,7 +332,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::ArrayLinkedList<std::vector<Message>, TABULAR_SIZE> sentMessages;
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);
-  printMsg("Number of seeds: " + std::to_string(numberOfPointsInSeeds));
   this->setDirection(Direction);
   this->setInputScalarField(inputScalars->GetVoidPointer(0));
   this->setInputOffsets(ttkUtils::GetPointer<ttk::SimplexId>(inputOffsets));
@@ -351,7 +351,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
   ttkVtkTemplateMacro(inputScalars->GetDataType(), triangulation->getType(),
-                      (status = this->executeMethode1<VTK_TT, TTK_TT>(
+                      (status = this->execute<VTK_TT, TTK_TT>(
                          static_cast<TTK_TT *>(triangulation->getData()))));
 
 #ifdef TTK_ENABLE_MPI_TIME

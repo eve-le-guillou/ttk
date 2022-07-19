@@ -70,7 +70,7 @@ namespace ttk {
   static int sendCount{0};
   static int recvCount{0};
   static std::queue<MessageAndMPIInfo> sendQueue{};
-  static std::vector<std::vector<std::vector<Message>>> toSend;
+  static std::vector<std::vector<Message>> toSend;
   static std::vector<std::vector<Message>> multipleElementToSend;
   static std::vector<int> messageCount;
 #endif
@@ -369,6 +369,7 @@ void checkEndOfComputation() const {
     ArrayLinkedList<std::vector<Message>, TABULAR_SIZE> *sentMessages_;
     int messageSize_;
     int neighborNumber_;
+    std::unordered_map<int, int> neighborsToId_;
     std::vector<int> neighbors_;
   };
 } // namespace ttk
@@ -505,7 +506,8 @@ void ttk::IntegralLines::sendTrajectoryIfNecessaryMethode1(
               }
             }
           }
-          toSend[neighbors_[rankArray]][omp_get_thread_num()].push_back(m);
+#pragma omp critical(sendMessage)
+          { toSend[neighborsToId_.find(rankArray)->second].push_back(m); }
           isMax = true;
         }
       }
@@ -610,7 +612,6 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
         // printMsg("Element: " + std::to_string(m_recv[0].Id1)
         //          + " tag: " + std::to_string(status.MPI_TAG));
         MPI_Get_count(&status, this->MessageType, &count);
-        recvCount++;
         int stat = status.MPI_TAG;
         switch(stat) {
           case IS_ELEMENT_TO_PROCESS: {
@@ -623,7 +624,7 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
           case FINISHED_ELEMENT: {
             globalElementCounter -= m_recv[0].Id1;
             if(globalElementCounter == 0) {
-              keepWorking = 0;
+              keepWorking = false;
               for(int i = 1; i < ttk::MPIsize_; i++) {
                 Message m = Message{-1, -1, -1, -1, 0, 0, 0, 0, -1};
                 this->pushMessage(m, i, STOP_WORKING);
@@ -670,7 +671,6 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
         MPI_Isend(message.m->data(), message.size, this->MessageType,
                   message.receiver, message.tag, this->MPIComm,
                   message.request);
-        sendCount++;
       }
     }
   }
@@ -877,7 +877,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 #if TTK_ENABLE_MPI
   taskCounter = seedNumber_;
   globalElementCounter = this->GlobalElementToCompute;
-  printMsg("MessageSize: " + std::to_string(messageSize_));
   if(ttk::MPIsize_ > 1) {
     multipleElementToSend.resize(ttk::MPIsize_);
     messageCount.resize(ttk::MPIsize_);
@@ -920,6 +919,9 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
           triangulation, chunk_trajectories, chunk_distanceFromSeed, offsets,
           scalars, chunk_identifier, taskNumber, rest, seeds);
       }
+
+      this->receiveMessages<dataType, triangulationType>(
+        triangulation, offsets, scalars);
     }
   }
   if(ttk::MPIsize_ > 1) {
@@ -939,8 +941,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
     }
   }
   {
-    printMsg("sendCount: " + std::to_string(sendCount)
-             + " recvCount:" + std::to_string(recvCount));
     std::stringstream msg;
     msg << "Processed " << vertexNumber_ << " points";
     this->printMsg(msg.str(), 1, t.getElapsedTime(), threadNumber_);
@@ -954,17 +954,20 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
 #if TTK_ENABLE_MPI
   taskCounter = seedNumber_;
   globalElementCounter = this->GlobalElementToCompute;
+  printMsg("About to iterate on neighbors");
   std::unordered_set<int> neighbors;
-  getNeighbors(neighbors, rankArray_, vertexNumber_);
-  neighborNumber_ = neighbors_.size();
+  getNeighbors<ttk::SimplexId>(neighbors, rankArray_, vertexNumber_);
+  neighborNumber_ = neighbors.size();
+  neighbors_.resize(neighborNumber_);
+  int idx = 0;
   for(int neighbor : neighbors) {
-    neighbors_.push_back(neighbor);
+    neighborsToId_[neighbor] = idx;
+    neighbors_[idx] = neighbor;
+    idx++;
   }
   if(ttk::MPIsize_ > 1) {
     toSend.resize(neighborNumber_);
-    for(int i = 0; i < neighborNumber_; i++) {
-      toSend[i].resize(threadNumber_);
-    }
+    printMsg("threadNumber: " + std::to_string(threadNumber_));
   }
 #endif
   const SimplexId *offsets = inputOffsets_;
@@ -976,11 +979,12 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
   std::vector<std::vector<double> *> chunk_distanceFromSeed(chunkSize_);
   std::vector<ttk::SimplexId> chunk_identifier(chunkSize_);
   int taskNumber = (int)seedNumber_ / chunkSize_;
+  printMsg("Start computation");
 #if TTK_ENABLE_MPI
 #pragma omp parallel shared(                                              \
   finishedElement, taskCounter, unfinishedDist, multipleElementToSend,    \
   unfinishedTraj, unfinishedSeed, messageCount, sendQueue, sentMessages_, \
-  sentRequests_) num_threads(threadNumber_)
+  sentRequests_, toSend) num_threads(threadNumber_)
   {
 #else
 // #pragma omp parallel
@@ -1002,87 +1006,79 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
       }
     }
   }
-  int finishedElementReceived = 0;
-  printMsg("First tasks created");
-  while(keepWorking) {
+  if(ttk::MPIsize_ > 1) {
+    int finishedElementReceived = 0;
+    MPI_Barrier(this->MPIComm);
+    printMsg("Tasks done");
     std::vector<int> sendMessageSize(neighborNumber_);
     std::vector<int> recvMessageSize(neighborNumber_);
     std::vector<std::vector<Message>> send_buf(neighborNumber_);
     std::vector<std::vector<Message>> recv_buf(neighborNumber_);
-    MPI_Reduce(&finishedElement, &finishedElementReceived, 1, MPI_INTEGER,
-               MPI_SUM, 0, this->MPIComm);
-    finishedElement = 0;
-    if(ttk::MPIrank_ == 0) {
-      globalElementCounter -= finishedElementReceived;
-      if(globalElementCounter == 0) {
-        keepWorking = 0;
-      }
-    }
-    MPI_Bcast(&keepWorking, 1, MPI_INTEGER, 0, this->MPIComm);
-    if(keepWorking) {
-      MPI_Status status;
+    int i;
+    std::vector<MPI_Request> requests(2 * neighborNumber_, MPI_REQUEST_NULL);
+    std::vector<MPI_Status> statuses(4 * neighborNumber_);
 
-      for(int i = 0; i < neighborNumber_; i++) {
-        send_buf[i].resize(0);
-        recv_buf[i].resize(0);
-        for(int j = 0; j < threadNumber_; j++) {
-          send_buf[i].insert(
-            send_buf[i].end(), toSend[i][j].begin(), toSend[i][j].end());
+    while(keepWorking) {
+      MPI_Reduce(&finishedElement, &finishedElementReceived, 1, MPI_INTEGER,
+                 MPI_SUM, 0, this->MPIComm);
+      finishedElement = 0;
+      if(ttk::MPIrank_ == 0) {
+        globalElementCounter -= finishedElementReceived;
+        if(globalElementCounter == 0) {
+          keepWorking = 0;
         }
-        toSend[i].resize(0);
-        sendMessageSize[i] = (int)send_buf[i].size();
       }
-      for(int i = 0; i < neighborNumber_; i++) {
-        MPI_Sendrecv(&sendMessageSize[i], 1, MPI_INTEGER, neighbors_[i],
-                     MESSAGE_SIZE, &recvMessageSize[i], 1, MPI_INTEGER,
-                     neighbors_[i], MESSAGE_SIZE, this->MPIComm, &status);
+      MPI_Bcast(&keepWorking, 1, MPI_INTEGER, 0, this->MPIComm);
+      MPI_Barrier(this->MPIComm);
+      printMsg("Broadcast done, keep working: " + std::to_string(keepWorking));
+      if(keepWorking) {
+        MPI_Status status;
+        printMsg("Start sending data size");
+        for(i = 0; i < neighborNumber_; i++) {
+          sendMessageSize[i] = (int)toSend[i].size();
+          MPI_Isend(&sendMessageSize[i], 1, MPI_INTEGER, neighbors_[i],
+                    MESSAGE_SIZE, this->MPIComm, &requests[2 * i]);
+          MPI_Irecv(&recvMessageSize[i], 1, MPI_INTEGER, neighbors_[i],
+                    MESSAGE_SIZE, this->MPIComm, &requests[2 * i + 1]);
+        }
+        MPI_Waitall(2 * neighborNumber_, requests.data(), statuses.data());
+        printMsg("Start sending data");
+        for(i = 0; i < neighborNumber_; i++) {
+          recv_buf[i].resize(recvMessageSize[i]);
+          MPI_Isend(toSend[i].data(), sendMessageSize[i], this->MessageType,
+                    neighbors_[i], IS_ELEMENT_TO_PROCESS, this->MPIComm,
+                    &requests[2 * i]);
+          MPI_Irecv(recv_buf[i].data(), recvMessageSize[i], this->MessageType,
+                    neighbors_[i], IS_ELEMENT_TO_PROCESS, this->MPIComm,
+                    &requests[2 * i + 1]);
+        }
+        MPI_Waitall(2 * neighborNumber_, requests.data(), statuses.data());
+        for(i = 0; i < neighborNumber_; i++) {
+          toSend[i].clear();
+        }
       }
-      for(int i = 0; i < neighborNumber_; i++) {
-        recv_buf[i].resize(recvMessageSize[i]);
-        // MPI_Send(send_buf[i].data(), sendMessageSize[i], this->MessageType,
-        // neighbors_[i], IS_ELEMENT_TO_PROCESS, this->MPIComm);
-        // MPI_recv(recv_buf[i], &recvMessageSize[i], this->MessageType,
-        // neighbors_[i], IS_ELEMENT_TO_PROCESS, this->MPIComm);
-        MPI_Sendrecv(send_buf[i].data(), sendMessageSize[i], this->MessageType,
-                     neighbors_[i], IS_ELEMENT_TO_PROCESS, &recv_buf[i],
-                     recvMessageSize[i], this->MessageType, neighbors_[i],
-                     IS_ELEMENT_TO_PROCESS, this->MPIComm, &status);
-      }
-    }
+      MPI_Barrier(this->MPIComm);
+      printMsg("Communication done");
 #pragma omp parallel shared(finishedElement, unfinishedDist, unfinishedTraj, \
-                            unfinishedSeed, sentMessages_, sentRequests_)    \
-  num_threads(threadNumber_)
-    {
-#pragma omp master
+                            unfinishedSeed, sentMessages_, sentRequests_,    \
+                            toSend) num_threads(threadNumber_)
       {
-        for(int i = 0; i < neighborNumber_; i++) {
-          for(int j = 0; j < recvMessageSize[i]; j++) {
-            this->receiveElementMethode1(
-              triangulation, recv_buf[i][j], offsets, scalars);
+#pragma omp master
+        {
+          for(i = 0; i < neighborNumber_; i++) {
+            for(int j = 0; j < recvMessageSize[i]; j++) {
+              this->receiveElementMethode1(
+                triangulation, recv_buf[i][j], offsets, scalars);
+            }
           }
+          MPI_Barrier(this->MPIComm);
+          printMsg("All elements received");
         }
       }
     }
   }
-  if(ttk::MPIsize_ > 1) {
-    std::vector<MPI_Status> dummyStatus(2 * TABULAR_SIZE);
-    std::list<std::array<MPI_Request, TABULAR_SIZE>>::iterator requestBlock
-      = sentRequests_->list.begin();
 
-    int sizeBlock = TABULAR_SIZE;
-    while(requestBlock != sentRequests_->list.end()) {
-      requestBlock++;
-      if(requestBlock == sentRequests_->list.end()) {
-        sizeBlock = std::min((int)TABULAR_SIZE, sentRequests_->numberOfElement);
-      }
-      requestBlock--;
-      MPI_Waitall(sizeBlock, requestBlock->data(), dummyStatus.data());
-      requestBlock++;
-    }
-  }
   {
-    printMsg("sendCount: " + std::to_string(sendCount)
-             + " recvCount:" + std::to_string(recvCount));
     std::stringstream msg;
     msg << "Processed " << vertexNumber_ << " points";
     this->printMsg(msg.str(), 1, t.getElapsedTime(), threadNumber_);
@@ -1150,7 +1146,7 @@ void ttk::IntegralLines::receiveElementMethode1(
     distanceFromSeed->push_back(m.DistanceFromSeed4);
 #pragma omp task firstprivate(identifier)
     {
-      this->executeAlgorithm<dataType, triangulationType>(
+      this->executeAlgorithmMethode1<dataType, triangulationType>(
         triangulation, trajectory, distanceFromSeed, offsets, scalars,
         identifier);
     }
