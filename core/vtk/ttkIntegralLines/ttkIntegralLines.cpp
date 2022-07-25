@@ -9,7 +9,7 @@
 #include <vtkDataArray.h>
 #include <vtkDataObject.h>
 #include <vtkDataSet.h>
-#include <vtkFloatArray.h>
+#include <vtkDoubleArray.h>
 #include <vtkInformation.h>
 #include <vtkMPI.h>
 #include <vtkMPICommunicator.h>
@@ -82,7 +82,7 @@ int ttkIntegralLines::getTrajectories(
 
   vtkNew<vtkUnstructuredGrid> ug{};
   vtkNew<vtkPoints> pts{};
-  vtkNew<vtkFloatArray> dist{};
+  vtkNew<vtkDoubleArray> dist{};
   vtkNew<vtkIdTypeArray> identifier{};
 
   dist->SetNumberOfComponents(1);
@@ -377,8 +377,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   // Write data to csv
 
   std::ofstream myfile;
-  myfile.open("/home/eveleguillou/experiment/IntegralLines/Correctness/"
-              "MeSU/"
+  myfile.open("/home/eveleguillou/experiment/IntegralLines/Benchmark/"
               + std::to_string(ttk::MPIsize_) + "_proc_integraLines_"
               + std::to_string(ttk::MPIrank_) + ".csv");
   myfile << "DistanceFromSeed,SeedIdentifier,GlobalPointIds,vtkGhostType\n";

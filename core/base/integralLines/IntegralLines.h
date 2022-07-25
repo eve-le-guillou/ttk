@@ -688,19 +688,20 @@ void ttk::IntegralLines::executeAlgorithm(
   bool isMax{};
   while(!isMax) {
     SimplexId vnext{-1};
-    float fnext = std::numeric_limits<float>::min();
+    ttk::SimplexId fnext = offsets[v];
     SimplexId neighborNumber = triangulation->getVertexNeighborNumber(v);
     for(SimplexId k = 0; k < neighborNumber; ++k) {
       SimplexId n;
       triangulation->getVertexNeighbor(v, k, n);
-
-      if((direction_ == static_cast<int>(Direction::Forward))
-         xor (offsets[n] < offsets[v])) {
-        const float f = getGradient<dataType, triangulationType>(
-          triangulation, v, n, scalars);
-        if(f > fnext) {
+      if(direction_ == static_cast<int>(Direction::Forward)) {
+        if(fnext < offsets[n]) {
           vnext = n;
-          fnext = f;
+          fnext = offsets[n];
+        }
+      } else {
+        if(fnext > offsets[n]) {
+          vnext = n;
+          fnext = offsets[n];
         }
       }
     }
@@ -745,19 +746,20 @@ void ttk::IntegralLines::executeAlgorithmMethode1(
   bool isMax{};
   while(!isMax) {
     SimplexId vnext{-1};
-    float fnext = std::numeric_limits<float>::min();
+    ttk::SimplexId fnext = offsets[v];
     SimplexId neighborNumber = triangulation->getVertexNeighborNumber(v);
     for(SimplexId k = 0; k < neighborNumber; ++k) {
       SimplexId n;
       triangulation->getVertexNeighbor(v, k, n);
-
-      if((direction_ == static_cast<int>(Direction::Forward))
-         xor (offsets[n] < offsets[v])) {
-        const float f = getGradient<dataType, triangulationType>(
-          triangulation, v, n, scalars);
-        if(f > fnext) {
+      if(direction_ == static_cast<int>(Direction::Forward)) {
+        if(fnext < offsets[n]) {
           vnext = n;
-          fnext = f;
+          fnext = offsets[n];
+        }
+      } else {
+        if(fnext > offsets[n]) {
+          vnext = n;
+          fnext = offsets[n];
         }
       }
     }
