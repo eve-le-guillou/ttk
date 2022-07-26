@@ -956,7 +956,8 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
   taskCounter = seedNumber_;
   globalElementCounter = this->GlobalElementToCompute;
   std::unordered_set<int> neighbors;
-  getNeighbors<ttk::SimplexId>(neighbors, rankArray_, vertexNumber_);
+  getNeighbors<ttk::SimplexId>(
+    neighbors, rankArray_, vertexNumber_, this->MPIComm);
   neighborNumber_ = neighbors.size();
   neighbors_.resize(neighborNumber_);
   int idx = 0;

@@ -498,9 +498,9 @@ void ttkAlgorithm::MPIPipelinePreconditioning(vtkDataSet *input) {
 
 void ttkAlgorithm::MPITriangulationPreconditioning(
   ttk::Triangulation *triangulation, vtkDataSet *input) {
-  triangulation->setGlobalIdsArray(static_cast<long int *>(
+  triangulation->setGlobalIdsArray(static_cast<ttk::LongSimplexId *>(
     ttkUtils::GetVoidPointer(input->GetPointData()->GetGlobalIds())));
-  triangulation->setGlobalIdsArray(static_cast<long int *>(
+  triangulation->setGlobalIdsArray(static_cast<ttk::LongSimplexId *>(
     ttkUtils::GetVoidPointer(input->GetPointData()->GetGlobalIds())));
   triangulation->preconditionDistributedVertices();
   triangulation->setRankArray(static_cast<int *>(

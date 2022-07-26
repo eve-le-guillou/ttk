@@ -3050,7 +3050,7 @@ int ttk::ImplicitTriangulation::preconditionDistributedCells() {
   if(this->hasPreconditionedDistributedCells_) {
     return 0;
   }
-  if(!ttk::isRunningWithMPI()) {
+  if(!ttk::isRunningWithMPI() && ttk::MPIsize_ > 1) {
     return -1;
   }
   if(this->cellGid_ == nullptr) {
@@ -3123,7 +3123,7 @@ int preconditionDistributedIntermediate(size_t &globalCount,
                                         const std::vector<int> &cellGidToRank,
                                         const Func &processCells) {
 
-  if(!ttk::isRunningWithMPI()) {
+  if(!ttk::isRunningWithMPI() && ttk::MPIsize_ > 1) {
     return -1;
   }
 
@@ -3193,7 +3193,7 @@ int ttk::ImplicitTriangulation::preconditionDistributedEdges() {
   if(this->hasPreconditionedDistributedEdges_) {
     return 0;
   }
-  if(!ttk::isRunningWithMPI()) {
+  if(!ttk::isRunningWithMPI() && ttk::MPIsize_ > 1) {
     return -1;
   }
   if(this->cellGid_ == nullptr) {
@@ -3266,7 +3266,7 @@ int ttk::ImplicitTriangulation::preconditionDistributedTriangles() {
   if(this->hasPreconditionedDistributedTriangles_) {
     return 0;
   }
-  if(!ttk::isRunningWithMPI()) {
+  if(!ttk::isRunningWithMPI() && ttk::MPIsize_ > 1) {
     return -1;
   }
   if(this->cellGid_ == nullptr) {
@@ -3342,7 +3342,7 @@ int ImplicitTriangulation::preconditionDistributedVertices() {
   if(this->hasPreconditionedDistributedVertices_) {
     return 0;
   }
-  if(!isRunningWithMPI()) {
+  if(!isRunningWithMPI() && ttk::MPIsize_ > 1) {
     return -1;
   }
   if(this->globalIdsArray_ == nullptr) {
