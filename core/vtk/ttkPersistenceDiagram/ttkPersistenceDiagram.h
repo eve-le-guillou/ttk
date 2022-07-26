@@ -37,7 +37,7 @@
 /// Herbert Edelsbrunner and John Harer \n
 /// American Mathematical Society, 2010
 ///
-/// Four backends are available for the computation:
+/// Five backends are available for the computation:
 ///
 ///  1) FTM \n
 /// \b Related \b publication \n
@@ -51,16 +51,24 @@
 /// Jules Vidal, Pierre Guillou, Julien Tierny\n
 /// IEEE Transactions on Visualization and Computer Graphics, 2021
 ///
-/// 3) Persistent Simplex \n
-/// This is a textbook (and very slow) algorithm, described in
-/// "Algorithm and Theory of Computation Handbook (Second Edition)
-/// - Special Topics and Techniques" by Atallah and Blanton on page 97.
+/// 3) Discrete Morse Sandwich (default) \n
+/// \b Related \b publication \n
+/// "Discrete Morse Sandwich: Fast Computation of Persistence Diagrams for
+/// Scalar Data -- An Algorithm and A Benchmark" \n
+/// Pierre Guillou, Jules Vidal, Julien Tierny \n
+/// Technical Report, arXiv:2206.13932, 2022 \n
+/// Fast and versatile algorithm for persistence diagram computation.
 ///
 /// 4) Approximate Approach \n
 /// \b Related \b publication \n
 /// "Fast Approximation of Persistence Diagrams with Guarantees" \n
 /// Jules Vidal, Julien Tierny\n
-/// IEEE Symposium on Large Data Visualization and Analysis (LDAV), 2021\n
+/// IEEE Symposium on Large Data Visualization and Analysis (LDAV), 2021
+///
+/// 5) Persistent Simplex \n
+/// This is a textbook (and very slow) algorithm, described in
+/// "Algorithm and Theory of Computation Handbook (Second Edition)
+/// - Special Topics and Techniques" by Atallah and Blanton on page 97.
 ///
 /// \sa ttkFTMTreePP
 /// \sa ttkPersistenceCurve
@@ -77,6 +85,9 @@
 ///   Learning Circles example</a> \n
 ///   href="https://topology-tool-kit.github.io/examples/2manifoldLearning/">
 ///   2-Manifold Learning example</a> \n
+///   - <a
+///   href="https://topology-tool-kit.github.io/examples/BuiltInExample1/">BuiltInExample1
+///   </a> \n
 ///   - <a href="https://topology-tool-kit.github.io/examples/ctBones/">CT Bones
 ///   example</a> \n
 ///   - <a href="https://topology-tool-kit.github.io/examples/dragon/">Dragon
@@ -87,6 +98,9 @@
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/imageProcessing/">Image
 ///   Processing example</a> \n
+///   - <a
+///   href="https://topology-tool-kit.github.io/examples/interactionSites/">
+///   Interaction sites</a> \n
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/karhunenLoveDigits64Dimensions//">Karhunen-Love
 ///   Digits 64-Dimensions example</a> \n
@@ -99,23 +113,33 @@
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/persistenceClustering0/">Persistence
 ///   clustering 0 example</a> \n
+///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/persistenceClustering0/">Persistence
 ///   clustering 1 example</a> \n
+///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/persistenceClustering0/">Persistence
 ///   clustering 2 example</a> \n
+///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/persistenceClustering0/">Persistence
 ///   clustering 3 example</a> \n
+///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/persistenceClustering0/">Persistence
 ///   clustering 4 example</a> \n
+///   - <a
+///   href="https://topology-tool-kit.github.io/examples/persistenceDiagramClustering/">Persistence
+///   Diagram Clustering example</a> \n
+///   - <a
+///   href="https://topology-tool-kit.github.io/examples/persistenceDiagramDistance/">Persistence
+///   Diagram Distance example</a> \n
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/tectonicPuzzle/">Tectonic
 ///   Puzzle example</a> \n
 ///   - <a
+///   href="https://topology-tool-kit.github.io/examples/tribute/">Tribute
+///   example</a> \n
+///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/uncertainStartingVortex/">
 ///   Uncertain Starting Vortex example</a> \n
-///   - <a
-///   href="https://topology-tool-kit.github.io/examples/interactionSites/">
-///   Interaction sites</a> \n
 ///
 
 #pragma once
@@ -167,6 +191,9 @@ public:
 
   vtkGetMacro(Epsilon, double);
   vtkSetMacro(Epsilon, double);
+
+  vtkSetMacro(IgnoreBoundary, bool);
+  vtkGetMacro(IgnoreBoundary, bool);
 
 protected:
   ttkPersistenceDiagram();

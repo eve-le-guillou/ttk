@@ -7,8 +7,11 @@
 #include <vtkFloatArray.h>
 #include <vtkPointData.h>
 #include <vtkThreshold.h>
+#include <vtkTransform.h>
+#include <vtkTransformFilter.h>
 #include <vtkUnsignedCharArray.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkVersion.h> // for VTK_VERSION_CHECK via ParaView 5.8.1
 
 int VTUToDiagram(ttk::DiagramType &diagram,
                  vtkUnstructuredGrid *vtu,
@@ -266,7 +269,8 @@ int DiagramToVTU(vtkUnstructuredGrid *vtu,
     persistence->SetTuple1(i, pair.persistence);
     birthScalars->SetTuple1(i, pair.birth.sfValue);
     isFinite->SetTuple1(i, pair.isFinite);
-    pairsDim->SetTuple1(i, pair.dim == 2 ? dim - 1 : pair.dim);
+    pairsDim->SetTuple1(
+      i, (pair.dim == 2 && pair.isFinite) ? dim - 1 : pair.dim);
   }
   offsets->SetTuple1(diagram.size(), connectivity->GetNumberOfTuples());
 
@@ -307,7 +311,13 @@ int ProjectDiagramInsideDomain(vtkUnstructuredGrid *const inputDiagram,
   threshold->SetInputArrayToProcess(0, 0, 0,
                                     vtkDataObject::FIELD_ASSOCIATION_CELLS,
                                     ttk::PersistencePairIdentifierName);
+#if VTK_VERSION_NUMBER < VTK_VERSION_CHECK(9, 2, 0)
   threshold->ThresholdByUpper(0);
+#else
+  threshold->SetThresholdFunction(vtkThreshold::THRESHOLD_UPPER);
+  threshold->SetUpperThreshold(0);
+#endif
+
   threshold->Update();
 
   auto diagonalLess = threshold->GetOutput();
@@ -431,6 +441,65 @@ int ProjectDiagramIn2D(vtkUnstructuredGrid *const inputDiagram,
 
   dbg.printMsg("Projected Persistence Diagram back to 2D", 1.0,
                tm.getElapsedTime(), dbg.getThreadNumber());
+
+  return 0;
+}
+
+int TranslateDiagram(vtkUnstructuredGrid *const diagram,
+                     const std::array<double, 3> &trans) {
+
+  vtkNew<vtkUnstructuredGrid> tmp{};
+  tmp->ShallowCopy(diagram);
+
+  vtkNew<vtkTransform> tr{};
+  tr->Translate(trans.data());
+
+  vtkNew<vtkTransformFilter> trf{};
+  trf->SetTransform(tr);
+  trf->SetInputData(tmp);
+  trf->Update();
+
+  diagram->ShallowCopy(trf->GetOutputDataObject(0));
+
+  return 0;
+}
+
+int ResetDiagramPosition(vtkUnstructuredGrid *const diagram,
+                         const ttk::Debug &dbg) {
+
+  const bool embedded
+    = diagram->GetPointData()->GetArray(ttk::PersistenceCoordinatesName)
+      == nullptr;
+
+  if(embedded) {
+    dbg.printWrn("Cannot reset embedded diagram position");
+    return 1;
+  }
+
+  // position of first point in diagram
+  std::array<double, 3> pos{};
+  diagram->GetPoint(diagram->GetCell(0)->GetPointId(0), pos.data());
+
+  // birth value of the first cell in the diagram
+  const auto firstBirth{
+    diagram->GetCellData()->GetArray(ttk::PersistenceBirthName)->GetTuple1(0)};
+
+  if((pos[0] != pos[1] && pos[0] != firstBirth) || pos[2] != 0) {
+    vtkNew<vtkUnstructuredGrid> tmp{};
+    tmp->ShallowCopy(diagram);
+
+    vtkNew<vtkTransform> tr{};
+    tr->Translate(firstBirth - pos[0], firstBirth - pos[1], -pos[2]);
+
+    vtkNew<vtkTransformFilter> trf{};
+    trf->SetTransform(tr);
+    trf->SetInputData(tmp);
+    trf->Update();
+
+    diagram->ShallowCopy(trf->GetOutputDataObject(0));
+
+    dbg.printMsg("Diagram reset to initial position");
+  }
 
   return 0;
 }

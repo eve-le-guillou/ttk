@@ -1084,6 +1084,9 @@ namespace ttk {
       SimplexId nid = vertexIndices_[vertexId];
       SimplexId localVertexId = vertexId - vertexIntervals_[nid - 1] - 1;
       ImplicitCluster *exnode = searchCache(nid);
+      if(exnode == nullptr) {
+        return -1;
+      }
       if(exnode->vertexNeighbors_.empty()) {
         getClusterVertexNeighbors(exnode);
       }
@@ -1335,10 +1338,9 @@ namespace ttk {
 #endif // TTK_ENABLE_KAMIKAZE
       return this->vertexLidToGid_[ltid];
     }
-    inline int TTK_TRIANGULATION_INTERNAL(getVertexGlobalIdMap)(
-      std::unordered_map<SimplexId, SimplexId> &map) const override {
-      map = this->vertexGidToLid_;
-      return 1;
+    inline const std::unordered_map<SimplexId, SimplexId> *
+      TTK_TRIANGULATION_INTERNAL(getVertexGlobalIdMap)() const override {
+      return &this->vertexGidToLid_;
     }
     inline SimplexId TTK_TRIANGULATION_INTERNAL(getVertexLocalId)(
       const SimplexId &gtid) const override {

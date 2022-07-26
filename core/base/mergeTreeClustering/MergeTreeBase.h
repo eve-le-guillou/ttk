@@ -875,10 +875,7 @@ namespace ttk {
           if(not isFM) {
             int index
               = getIndexNotMultiPers(children.size() - 1, tree, children);
-            if(index >= 0)
-              nodeParent.emplace_back(nodeOrigin, children[index]);
-            else
-              nodeParent.emplace_back(nodeOrigin, children[index]);
+            nodeParent.emplace_back(nodeOrigin, children[index]);
           } else
             nodeParent.emplace_back(children[0], node);
         } else {
@@ -1325,9 +1322,9 @@ namespace ttk {
       printTableVector<dataType>(vec);
     }
 
-    void printMatching(std::vector<asgnMatchingTuple> &matchings) {
+    void printMatching(std::vector<MatchingType> &matchings) {
       printMsg(debug::Separator::L2);
-      for(asgnMatchingTuple mTuple : matchings) {
+      for(const auto &mTuple : matchings) {
         std::stringstream ss;
         ss << std::get<0>(mTuple) << " - " << std::get<1>(mTuple) << " - "
            << std::get<2>(mTuple);

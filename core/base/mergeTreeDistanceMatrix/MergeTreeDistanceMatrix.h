@@ -5,6 +5,11 @@
 ///
 /// This VTK filter uses the ttk::MergeTreeDistanceMatrix module to compute the
 /// distance matrix of a group of merge trees.
+///
+/// \b Online \b examples: \n
+///   - <a
+///   href="https://topology-tool-kit.github.io/examples/mergeTreeClustering/">Merge
+///   Tree Clustering example</a> \n
 
 #pragma once
 
@@ -75,7 +80,7 @@ namespace ttk {
 #pragma omp task firstprivate(i) UNTIED() shared(distanceMatrix, trees)
         {
 #endif
-          if(i % (distanceMatrix.size() / 10) == 0) {
+          if(i % std::max(int(distanceMatrix.size() / 10), 1) == 0) {
             std::stringstream stream;
             stream << i << " / " << distanceMatrix.size();
             printMsg(stream.str());
