@@ -60,9 +60,9 @@ struct MessageAndMPIInfo {
 namespace ttk {
 
 #if TTK_ENABLE_MPI
-  static int finishedElement{0};
+  static int finishedElement;
   static int taskCounter;
-  static int keepWorking{1};
+  static int keepWorking;
   static int globalElementCounter;
   static std::vector<std::vector<SimplexId> *> unfinishedTraj;
   static std::vector<std::vector<double> *> unfinishedDist;
@@ -872,6 +872,8 @@ template <typename dataType, class triangulationType>
 int ttk::IntegralLines::execute(triangulationType *triangulation) {
 
 #if TTK_ENABLE_MPI
+  keepWorking = 1;
+  finishedElement = 0;
   taskCounter = seedNumber_;
   globalElementCounter = this->GlobalElementToCompute;
   if(ttk::MPIsize_ > 1) {
@@ -949,6 +951,8 @@ template <typename dataType, class triangulationType>
 int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
 
 #if TTK_ENABLE_MPI
+  keepWorking = 1;
+  finishedElement = 0;
   taskCounter = seedNumber_;
   globalElementCounter = this->GlobalElementToCompute;
   std::unordered_set<int> neighbors;
