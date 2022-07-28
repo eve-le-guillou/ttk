@@ -1045,12 +1045,19 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
         }
         for(i = 0; i < neighborNumber_; i++) {
           recv_buf[i].resize(recvMessageSize[i]);
-          MPI_Sendrecv(send_buf[i].data(), sendMessageSize[i],
-                       this->MessageType, neighbors_[i], IS_ELEMENT_TO_PROCESS,
-                       recv_buf[i].data(), recvMessageSize[i],
-                       this->MessageType, neighbors_[i], IS_ELEMENT_TO_PROCESS,
-                       this->MPIComm, MPI_STATUS_IGNORE);
+          if(recvMessageSize[i] > 0) {
+            MPI_Irecv(recv_buf[i].data(), recvMessageSize[i], this->MessageType,
+                      neighbors_[i], IS_ELEMENT_TO_PROCESS, this->MPIComm,
+                      &requests[2 * i]);
+          }
+
+          if(sendMessageSize[i] > 0) {
+            MPI_Isend(send_buf[i].data(), sendMessageSize[i], this->MessageType,
+                      neighbors_[i], IS_ELEMENT_TO_PROCESS, this->MPIComm,
+                      &requests[2 * i + 1]);
+          }
         }
+        MPI_Waitall(2 * neighborNumber_, requests.data(), MPI_STATUSES_IGNORE);
         for(i = 0; i < neighborNumber_; i++) {
           send_buf[i].clear();
         }
