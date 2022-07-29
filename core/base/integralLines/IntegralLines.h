@@ -1038,11 +1038,12 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
             toSend[i][j].clear();
           }
           sendMessageSize[i] = (int)send_buf[i].size();
-          MPI_Sendrecv(&sendMessageSize[i], 1, MPI_INTEGER, neighbors_[i],
-                       MESSAGE_SIZE, &recvMessageSize[i], 1, MPI_INTEGER,
-                       neighbors_[i], MESSAGE_SIZE, this->MPIComm,
-                       MPI_STATUS_IGNORE);
+          MPI_Isend(&sendMessageSize[i], 1, MPI_INTEGER, neighbors_[i],
+                    MESSAGE_SIZE, this->MPIComm, &requests[2 * i]);
+          MPI_Irecv(&recvMessageSize[i], 1, MPI_INTEGER, neighbors_[i],
+                    MESSAGE_SIZE, this->MPIComm, &requests[2 * i + 1]);
         }
+        MPI_Waitall(2 * neighborNumber_, requests.data(), MPI_STATUSES_IGNORE);
         for(i = 0; i < neighborNumber_; i++) {
           recv_buf[i].resize(recvMessageSize[i]);
           if(recvMessageSize[i] > 0) {
