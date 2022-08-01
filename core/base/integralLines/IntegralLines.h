@@ -191,7 +191,10 @@ namespace ttk {
       std::vector<std::vector<ttk::SimplexId> *> &chunk_trajectories,
       std::vector<std::vector<double> *> &chunk_distanceFromSeed,
       std::vector<ttk::SimplexId> &chunk_identifier,
-      int index) const;
+      int &index,
+      int taskSize,
+      const ttk::SimplexId *offsets,
+      dataType *scalars) const;
 
     inline void setVertexNumber(const SimplexId &vertexNumber) {
       vertexNumber_ = vertexNumber;
@@ -510,7 +513,10 @@ void ttk::IntegralLines::receiveElement(
   std::vector<std::vector<ttk::SimplexId> *> &chunk_trajectories,
   std::vector<std::vector<double> *> &chunk_distanceFromSeed,
   std::vector<ttk::SimplexId> &chunk_identifier,
-  int index) const {
+  int &index,
+  int taskSize,
+  const ttk::SimplexId *offsets,
+  dataType *scalars) const {
   ttk::SimplexId localId1 = -1;
   ttk::SimplexId identifier = m.SeedIdentifier;
   std::vector<ttk::SimplexId> *trajectory;
@@ -562,6 +568,27 @@ void ttk::IntegralLines::receiveElement(
     chunk_trajectories[index] = trajectory;
     chunk_identifier[index] = identifier;
     chunk_distanceFromSeed[index] = distanceFromSeed;
+    if(index == taskSize - 1) {
+#pragma omp atomic update seq_cst
+      taskCounter += taskSize;
+#pragma omp task firstprivate( \
+  chunk_trajectories, chunk_distanceFromSeed, chunk_identifier)
+      {
+        for(int j = 0; j < taskSize; j++) {
+          this->executeAlgorithm<dataType, triangulationType>(
+            triangulation, chunk_trajectories[j], chunk_distanceFromSeed[j],
+            offsets, scalars, chunk_identifier[j]);
+        }
+
+#pragma omp atomic update seq_cst
+        taskCounter -= taskSize;
+        this->checkEndOfComputation();
+      }
+      index = 0;
+    } else {
+      index++;
+    }
+
   } else {
 #pragma omp atomic update seq_cst
     finishedElement++;
@@ -599,50 +626,30 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
         switch(stat) {
           case IS_ELEMENT_TO_PROCESS: {
             index = 0;
+            taskSize = std::max(count / threadNumber_, std::min(count, 50));
+            taskNumber = (int)count / taskSize;
             for(int i = 0; i < count; i++) {
               this->receiveElement<dataType, triangulationType>(
                 triangulation, m_recv[i], chunk_trajectories,
-                chunk_distanceFromSeed, chunk_identifier, index);
-              index++;
+                chunk_distanceFromSeed, chunk_identifier, index, taskSize,
+                offsets, scalars);
             }
-            if(index == 0)
+            if(index <= 0)
               break;
-            taskSize = std::max(index / threadNumber_, std::min(index, 50));
-            taskNumber = (int)index / taskSize;
 #pragma omp atomic update seq_cst
             taskCounter += index;
-            for(int i = 0; i < taskNumber; i++) {
 #pragma omp task firstprivate( \
   chunk_trajectories, chunk_distanceFromSeed, chunk_identifier)
-              {
-                for(int j = 0; j < taskSize; j++) {
-                  this->executeAlgorithm<dataType, triangulationType>(
-                    triangulation, chunk_trajectories[i * taskSize + j],
-                    chunk_distanceFromSeed[i * taskSize + j], offsets, scalars,
-                    chunk_identifier[i * taskSize + j]);
-                }
-
-#pragma omp atomic update seq_cst
-                taskCounter -= taskSize;
-                this->checkEndOfComputation();
+            {
+              for(int j = 0; j < index; j++) {
+                this->executeAlgorithm<dataType, triangulationType>(
+                  triangulation, chunk_trajectories[j],
+                  chunk_distanceFromSeed[j], offsets, scalars,
+                  chunk_identifier[j]);
               }
-            }
-            rest = index - taskSize * taskNumber;
-            if(rest > 0) {
-#pragma omp task firstprivate( \
-  chunk_trajectories, chunk_distanceFromSeed, chunk_identifier)
-              {
-                for(int j = 0; j < rest; j++) {
-                  this->executeAlgorithm<dataType, triangulationType>(
-                    triangulation,
-                    chunk_trajectories[taskNumber * taskSize + j],
-                    chunk_distanceFromSeed[taskNumber * taskSize + j], offsets,
-                    scalars, chunk_identifier[taskNumber * taskSize + j]);
-                }
 #pragma omp atomic update seq_cst
-                taskCounter -= rest;
-                this->checkEndOfComputation();
-              }
+              taskCounter -= index;
+              this->checkEndOfComputation();
             }
             break;
           }
