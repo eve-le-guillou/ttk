@@ -71,8 +71,8 @@ namespace ttk {
   static int recvCount{0};
   static std::queue<MessageAndMPIInfo> sendQueue{};
   static std::vector<std::vector<std::vector<Message>>> toSend;
-  static std::vector<std::vector<Message>> multipleElementToSend;
-  static std::vector<int> messageCount;
+  static std::vector<std::vector<std::vector<Message>>> multipleElementToSend;
+  static std::vector<std::vector<int>> messageCount;
 #endif
 
   enum Direction { Forward = 0, Backward };
@@ -185,10 +185,13 @@ namespace ttk {
                  std::vector<SimplexId> *seeds) const;
 
     template <typename dataType, class triangulationType>
-    void receiveElement(const triangulationType *triangulation,
-                        Message &m,
-                        const ttk::SimplexId *offsets,
-                        dataType *scalars) const;
+    void receiveElement(
+      const triangulationType *triangulation,
+      Message &m,
+      std::vector<std::vector<ttk::SimplexId> *> &chunk_trajectories,
+      std::vector<std::vector<double> *> &chunk_distanceFromSeed,
+      std::vector<ttk::SimplexId> &chunk_identifier,
+      int index) const;
 
     inline void setVertexNumber(const SimplexId &vertexNumber) {
       vertexNumber_ = vertexNumber;
@@ -203,43 +206,33 @@ namespace ttk {
     }
 
     inline void pushMessage(Message m, int receiver, int tag) const {
-      std::vector<Message> *m_ptr;
-      MPI_Request *request;
       switch(tag) {
-        case IS_ELEMENT_TO_PROCESS:
-#pragma omp critical(sendMessageQueue)
-        {
-          multipleElementToSend[receiver][messageCount[receiver]] = m;
-          messageCount[receiver]++;
-          if(messageCount[receiver] >= messageSize_) {
-            messageCount[receiver] = 0;
-            m_ptr = this->sentMessages_->addArrayElement(
-              multipleElementToSend[receiver]);
-            request = this->sentRequests_->addArrayElement(
-              MPI_Request{MPI_REQUEST_NULL});
-            sendQueue.push(
-              MessageAndMPIInfo{m_ptr, receiver, tag, request, messageSize_});
+        case IS_ELEMENT_TO_PROCESS: {
+          int threadId = omp_get_thread_num();
+          multipleElementToSend[receiver][threadId]
+                               [messageCount[receiver][threadId]]
+            = m;
+          messageCount[receiver][threadId]++;
+          if(messageCount[receiver][threadId] >= messageSize_) {
+            messageCount[receiver][threadId] = 0;
+            MPI_Send(multipleElementToSend[receiver][threadId].data(),
+                     messageSize_, this->MessageType, receiver, tag,
+                     this->MPIComm);
           }
-        } break;
-        default:
-#pragma omp critical(sendMessageQueue)
-        {
-          m_ptr
-            = this->sentMessages_->addArrayElement(std::vector<Message>(1, m));
-          request = this->sentRequests_->addArrayElement(
-            MPI_Request{MPI_REQUEST_NULL});
-          sendQueue.push(MessageAndMPIInfo{m_ptr, receiver, tag, request, 1});
-        } break;
+          break;
+        }
+        default: {
+          MPI_Send(std::vector<Message>(1, m).data(), 1, this->MessageType,
+                   receiver, tag, this->MPIComm);
+          break;
+        }
       }
     };
 
     inline MessageAndMPIInfo popMessage() const {
       MessageAndMPIInfo m;
-#pragma omp critical(sendMessageQueue)
-      {
-        m = sendQueue.front();
-        sendQueue.pop();
-      }
+      m = sendQueue.front();
+      sendQueue.pop();
       return m;
     }
 
@@ -282,15 +275,9 @@ namespace ttk {
 void checkEndOfComputation() const {
       int tempTask;
       int seed;
-//#pragma omp critical(buf)
-//      {
 #pragma omp atomic read seq_cst
       tempTask = taskCounter;
       if(tempTask == 0) {
-// #pragma omp atomic read
-//           seed = finishedElement;
-// #pragma omp atomic update
-//           finishedElement -= seed;
 #pragma omp atomic capture seq_cst
         {
           seed = finishedElement;
@@ -506,11 +493,8 @@ void ttk::IntegralLines::sendTrajectoryIfNecessaryMethode1(
               }
             }
           }
-#pragma omp critical(sendMessage)
-          {
-            toSend[neighborsToId_.find(rankArray)->second][omp_get_thread_num()]
-              .push_back(m);
-          }
+          toSend[neighborsToId_.find(rankArray)->second][omp_get_thread_num()]
+            .push_back(m);
           isMax = true;
         }
       }
@@ -520,10 +504,13 @@ void ttk::IntegralLines::sendTrajectoryIfNecessaryMethode1(
 }
 
 template <typename dataType, class triangulationType>
-void ttk::IntegralLines::receiveElement(const triangulationType *triangulation,
-                                        Message &m,
-                                        const ttk::SimplexId *offsets,
-                                        dataType *scalars) const {
+void ttk::IntegralLines::receiveElement(
+  const triangulationType *triangulation,
+  Message &m,
+  std::vector<std::vector<ttk::SimplexId> *> &chunk_trajectories,
+  std::vector<std::vector<double> *> &chunk_distanceFromSeed,
+  std::vector<ttk::SimplexId> &chunk_identifier,
+  int index) const {
   ttk::SimplexId localId1 = -1;
   ttk::SimplexId identifier = m.SeedIdentifier;
   std::vector<ttk::SimplexId> *trajectory;
@@ -572,19 +559,9 @@ void ttk::IntegralLines::receiveElement(const triangulationType *triangulation,
   if(m.Id4 != -1) {
     trajectory->push_back(triangulation->getVertexLocalId(m.Id4));
     distanceFromSeed->push_back(m.DistanceFromSeed4);
-#pragma omp atomic update seq_cst
-    (taskCounter)++;
-#pragma omp task firstprivate(identifier)
-    {
-      this->executeAlgorithm<dataType, triangulationType>(
-        triangulation, trajectory, distanceFromSeed, offsets, scalars,
-        identifier);
-      if(ttk::MPIsize_ > 1) {
-#pragma omp atomic update seq_cst
-        taskCounter--;
-        this->checkEndOfComputation();
-      }
-    }
+    chunk_trajectories[index] = trajectory;
+    chunk_identifier[index] = identifier;
+    chunk_distanceFromSeed[index] = distanceFromSeed;
   } else {
 #pragma omp atomic update seq_cst
     finishedElement++;
@@ -601,10 +578,19 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
     MPI_Status status;
     std::vector<Message> m_recv(messageSize_);
     int count;
+    int probe;
+    int taskNumber;
+    int taskSize;
+    int rest;
+    std::vector<std::vector<ttk::SimplexId> *> chunk_trajectories(messageSize_);
+    std::vector<std::vector<double> *> chunk_distanceFromSeed(messageSize_);
+    std::vector<ttk::SimplexId> chunk_identifier(messageSize_);
+    int index;
     while(keepWorking) {
-      int probe;
+
       int out = MPI_Iprobe(
         MPI_ANY_SOURCE, MPI_ANY_TAG, this->MPIComm, &probe, &status);
+
       while(!out && probe) {
         MPI_Recv(m_recv.data(), messageSize_, this->MessageType, MPI_ANY_SOURCE,
                  MPI_ANY_TAG, this->MPIComm, &status);
@@ -612,9 +598,51 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
         int stat = status.MPI_TAG;
         switch(stat) {
           case IS_ELEMENT_TO_PROCESS: {
+            index = 0;
             for(int i = 0; i < count; i++) {
               this->receiveElement<dataType, triangulationType>(
-                triangulation, m_recv[i], offsets, scalars);
+                triangulation, m_recv[i], chunk_trajectories,
+                chunk_distanceFromSeed, chunk_identifier, index);
+              index++;
+            }
+            if(index == 0)
+              break;
+            taskSize = std::max(index / threadNumber_, std::min(index, 50));
+            taskNumber = (int)index / taskSize;
+#pragma omp atomic update seq_cst
+            taskCounter += index;
+            for(int i = 0; i < taskNumber; i++) {
+#pragma omp task firstprivate( \
+  chunk_trajectories, chunk_distanceFromSeed, chunk_identifier)
+              {
+                for(int j = 0; j < taskSize; j++) {
+                  this->executeAlgorithm<dataType, triangulationType>(
+                    triangulation, chunk_trajectories[i * taskSize + j],
+                    chunk_distanceFromSeed[i * taskSize + j], offsets, scalars,
+                    chunk_identifier[i * taskSize + j]);
+                }
+
+#pragma omp atomic update seq_cst
+                taskCounter -= taskSize;
+                this->checkEndOfComputation();
+              }
+            }
+            rest = index - taskSize * taskNumber;
+            if(rest > 0) {
+#pragma omp task firstprivate( \
+  chunk_trajectories, chunk_distanceFromSeed, chunk_identifier)
+              {
+                for(int j = 0; j < rest; j++) {
+                  this->executeAlgorithm<dataType, triangulationType>(
+                    triangulation,
+                    chunk_trajectories[taskNumber * taskSize + j],
+                    chunk_distanceFromSeed[taskNumber * taskSize + j], offsets,
+                    scalars, chunk_identifier[taskNumber * taskSize + j]);
+                }
+#pragma omp atomic update seq_cst
+                taskCounter -= rest;
+                this->checkEndOfComputation();
+              }
             }
             break;
           }
@@ -645,27 +673,19 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
       std::vector<Message> *m_ptr;
       MPI_Request *request;
       if(tempTask == 0) {
-#pragma omp critical(sendMessageQueue)
-        {
-          for(int i = 0; i < ttk::MPIsize_; i++) {
-            if(messageCount[i] > 0) {
+        for(int i = 0; i < ttk::MPIsize_; i++) {
+          for(int j = 0; j < threadNumber_; j++) {
+            if(messageCount[i][j] > 0) {
               m_ptr = this->sentMessages_->addArrayElement(
-                multipleElementToSend[i]);
+                multipleElementToSend[i][j]);
               request = this->sentRequests_->addArrayElement(
                 MPI_Request{MPI_REQUEST_NULL});
-              sendQueue.push(MessageAndMPIInfo{
-                m_ptr, i, IS_ELEMENT_TO_PROCESS, request, messageCount[i]});
-              messageCount[i] = 0;
+              MPI_Isend(m_ptr->data(), messageCount[i][j], this->MessageType, i,
+                        IS_ELEMENT_TO_PROCESS, this->MPIComm, request);
+              messageCount[i][j] = 0;
             }
           }
         }
-      }
-      MessageAndMPIInfo message;
-      while(!sendQueue.empty()) {
-        message = this->popMessage();
-        MPI_Isend(message.m->data(), message.size, this->MessageType,
-                  message.receiver, message.tag, this->MPIComm,
-                  message.request);
       }
     }
   }
@@ -880,7 +900,11 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
     multipleElementToSend.resize(ttk::MPIsize_);
     messageCount.resize(ttk::MPIsize_);
     for(int i = 0; i < ttk::MPIsize_; i++) {
-      multipleElementToSend[i].resize(messageSize_);
+      messageCount[i].resize(threadNumber_);
+      multipleElementToSend[i].resize(threadNumber_);
+      for(int j = 0; j < threadNumber_; j++) {
+        multipleElementToSend[i][j].resize(messageSize_);
+      }
     }
   }
 
