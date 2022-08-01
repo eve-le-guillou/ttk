@@ -71,8 +71,8 @@ namespace ttk {
   static int recvCount{0};
   static std::queue<MessageAndMPIInfo> sendQueue{};
   static std::vector<std::vector<std::vector<Message>>> toSend;
-  static std::vector<std::vector<std::vector<Message>>> multipleElementToSend;
-  static std::vector<std::vector<int>> messageCount;
+  static std::vector<std::vector<std::vector<Message>>> multipleElementToSend_;
+  static std::vector<std::vector<int>> messageCount_;
 #endif
 
   enum Direction { Forward = 0, Backward };
@@ -208,17 +208,26 @@ namespace ttk {
       direction_ = direction;
     }
 
+    inline void setMessageCount(std::vector<std::vector<int>> count) {
+      messageCount_ = count;
+    }
+
+    inline void setMultipleElementToSend(
+      std::vector<std::vector<std::vector<Message>>> toSend) {
+      multipleElementToSend_ = toSend;
+    }
+
     inline void pushMessage(Message m, int receiver, int tag) const {
       switch(tag) {
         case IS_ELEMENT_TO_PROCESS: {
           int threadId = omp_get_thread_num();
-          multipleElementToSend[receiver][threadId]
-                               [messageCount[receiver][threadId]]
+          multipleElementToSend_[receiver][threadId]
+                                [messageCount_[receiver][threadId]]
             = m;
-          messageCount[receiver][threadId]++;
-          if(messageCount[receiver][threadId] >= messageSize_) {
-            messageCount[receiver][threadId] = 0;
-            MPI_Send(multipleElementToSend[receiver][threadId].data(),
+          messageCount_[receiver][threadId]++;
+          if(messageCount_[receiver][threadId] >= messageSize_) {
+            messageCount_[receiver][threadId] = 0;
+            MPI_Send(multipleElementToSend_[receiver][threadId].data(),
                      messageSize_, this->MessageType, receiver, tag,
                      this->MPIComm);
           }
@@ -614,10 +623,8 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
     std::vector<ttk::SimplexId> chunk_identifier(messageSize_);
     int index;
     while(keepWorking) {
-
       int out = MPI_Iprobe(
         MPI_ANY_SOURCE, MPI_ANY_TAG, this->MPIComm, &probe, &status);
-
       while(!out && probe) {
         MPI_Recv(m_recv.data(), messageSize_, this->MessageType, MPI_ANY_SOURCE,
                  MPI_ANY_TAG, this->MPIComm, &status);
@@ -682,14 +689,14 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
       if(tempTask == 0) {
         for(int i = 0; i < ttk::MPIsize_; i++) {
           for(int j = 0; j < threadNumber_; j++) {
-            if(messageCount[i][j] > 0) {
+            if(messageCount_[i][j] > 0) {
               m_ptr = this->sentMessages_->addArrayElement(
-                multipleElementToSend[i][j]);
+                multipleElementToSend_[i][j]);
               request = this->sentRequests_->addArrayElement(
                 MPI_Request{MPI_REQUEST_NULL});
-              MPI_Isend(m_ptr->data(), messageCount[i][j], this->MessageType, i,
-                        IS_ELEMENT_TO_PROCESS, this->MPIComm, request);
-              messageCount[i][j] = 0;
+              MPI_Isend(m_ptr->data(), messageCount_[i][j], this->MessageType,
+                        i, IS_ELEMENT_TO_PROCESS, this->MPIComm, request);
+              messageCount_[i][j] = 0;
             }
           }
         }
@@ -903,18 +910,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   finishedElement = 0;
   taskCounter = seedNumber_;
   globalElementCounter = this->GlobalElementToCompute;
-  if(ttk::MPIsize_ > 1) {
-    multipleElementToSend.resize(ttk::MPIsize_);
-    messageCount.resize(ttk::MPIsize_);
-    for(int i = 0; i < ttk::MPIsize_; i++) {
-      messageCount[i].resize(threadNumber_);
-      multipleElementToSend[i].resize(threadNumber_);
-      for(int j = 0; j < threadNumber_; j++) {
-        multipleElementToSend[i][j].resize(messageSize_);
-      }
-    }
-  }
-
 #endif
 
   const SimplexId *offsets = inputOffsets_;
@@ -927,10 +922,9 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   std::vector<ttk::SimplexId> chunk_identifier(chunkSize_);
   int taskNumber = (int)seedNumber_ / chunkSize_;
 #if TTK_ENABLE_MPI
-#pragma omp parallel shared(                                              \
-  finishedElement, taskCounter, unfinishedDist, multipleElementToSend,    \
-  unfinishedTraj, unfinishedSeed, messageCount, sendQueue, sentMessages_, \
-  sentRequests_) num_threads(threadNumber_)
+#pragma omp parallel shared(                                            \
+  finishedElement, taskCounter, unfinishedDist, multipleElementToSend_, \
+  unfinishedTraj, unfinishedSeed, messageCount_) num_threads(threadNumber_)
   {
 #else
 #pragma omp parallel
@@ -955,7 +949,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
     }
   }
   if(ttk::MPIsize_ > 1) {
-    std::vector<MPI_Status> dummyStatus(2 * TABULAR_SIZE);
     std::list<std::array<MPI_Request, TABULAR_SIZE>>::iterator requestBlock
       = sentRequests_->list.begin();
 
@@ -966,7 +959,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
         sizeBlock = std::min((int)TABULAR_SIZE, sentRequests_->numberOfElement);
       }
       requestBlock--;
-      MPI_Waitall(sizeBlock, requestBlock->data(), dummyStatus.data());
+      MPI_Waitall(sizeBlock, requestBlock->data(), MPI_STATUSES_IGNORE);
       requestBlock++;
     }
   }
@@ -1014,9 +1007,9 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
   std::vector<ttk::SimplexId> chunk_identifier(chunkSize_);
   int taskNumber = (int)seedNumber_ / chunkSize_;
 #if TTK_ENABLE_MPI
-#pragma omp parallel shared(                                              \
-  finishedElement, taskCounter, unfinishedDist, multipleElementToSend,    \
-  unfinishedTraj, unfinishedSeed, messageCount, sendQueue, sentMessages_, \
+#pragma omp parallel shared(                                               \
+  finishedElement, taskCounter, unfinishedDist, multipleElementToSend_,    \
+  unfinishedTraj, unfinishedSeed, messageCount_, sendQueue, sentMessages_, \
   sentRequests_, toSend) num_threads(threadNumber_)
   {
 #else
