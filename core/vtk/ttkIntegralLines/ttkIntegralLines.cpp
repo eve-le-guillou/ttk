@@ -332,6 +332,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::ArrayLinkedList<std::vector<Message>, TABULAR_SIZE> sentMessages;
   std::vector<std::vector<std::vector<Message>>> multipleElementToSend(
     ttk::MPIsize_);
+  std::vector<std::vector<std::vector<Message>>> toSend(ttk::MPIsize_);
   std::vector<std::vector<int>> messageCount(ttk::MPIsize_);
   if(ttk::MPIsize_ > 1) {
     for(int i = 0; i < ttk::MPIsize_; i++) {
@@ -355,17 +356,29 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setChunkSize(
     std::max(std::min(1000, (int)numberOfPointsInSeeds),
              (int)numberOfPointsInSeeds / (threadNumber_ * 100)));
-  this->setMultipleElementToSend(multipleElementToSend);
+  this->setMultipleElementToSend(&multipleElementToSend);
   this->setMessageCount(messageCount);
   this->setSentMessages(&sentMessages);
   this->setSentRequests(&sentRequests);
+  this->initializeNeighbors();
+  if(ttk::MPIsize_ > 1) {
+    toSend.resize(this->neighborNumber_);
+    for(int i = 0; i < this->neighborNumber_; i++) {
+      toSend[i].resize(this->threadNumber_);
+      for(int j = 0; j < this->threadNumber_; j++) {
+        toSend[i][j].reserve((int)numberOfPointsInSeeds * 0.005
+                             / this->threadNumber_);
+      }
+    }
+  }
+  this->setToSend(&toSend);
   int status = 0;
   this->createMessageType();
 #ifdef TTK_ENABLE_MPI_TIME
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
   ttkVtkTemplateMacro(inputScalars->GetDataType(), triangulation->getType(),
-                      (status = this->execute<VTK_TT, TTK_TT>(
+                      (status = this->executeMethode1<VTK_TT, TTK_TT>(
                          static_cast<TTK_TT *>(triangulation->getData()))));
 
 #ifdef TTK_ENABLE_MPI_TIME
