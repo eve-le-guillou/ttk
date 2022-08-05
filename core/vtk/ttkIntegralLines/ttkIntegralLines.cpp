@@ -203,7 +203,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
 #if TTK_ENABLE_MPI
-  rankArray_ = triangulation->getRankArray();
+  vertRankArray_ = triangulation->getVertRankArray();
 
   if(ttk::MPIsize_ > 1) {
     int totalSeeds;
@@ -236,7 +236,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       ttk::SimplexId localId = -1;
       for(int i = 0; i < totalSeeds; i++) {
         localId = triangulation->getVertexLocalId(globalSeedsId->GetTuple1(i));
-        if(localId != -1 && rankArray_[localId] == ttk::MPIrank_) {
+        if(localId != -1 && vertRankArray_[localId] == ttk::MPIrank_) {
           inputIdentifiers.push_back(localId);
         }
       }
@@ -250,7 +250,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
       ttk::SimplexId localId = 0;
       for(int i = 0; i < numberOfPointsInSeeds; i++) {
         localId = triangulation->getVertexLocalId(inputIdentifierGlobalId[i]);
-        if(rankArray_[localId] == ttk::MPIrank_) {
+        if(vertRankArray_[localId] == ttk::MPIrank_) {
           inputIdentifiers.push_back(localId);
         }
       }
@@ -378,7 +378,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
   ttkVtkTemplateMacro(inputScalars->GetDataType(), triangulation->getType(),
-                      (status = this->executeMethode1<VTK_TT, TTK_TT>(
+                      (status = this->execute<VTK_TT, TTK_TT>(
                          static_cast<TTK_TT *>(triangulation->getData()))));
 
 #ifdef TTK_ENABLE_MPI_TIME

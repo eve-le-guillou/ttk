@@ -3619,23 +3619,6 @@ namespace ttk {
     ttk::LongSimplexId *globalIdsArray_{nullptr};
     int *rankArray_{nullptr};
 
-  public:
-    void setGlobalIdsArray(ttk::LongSimplexId *array) {
-      this->globalIdsArray_ = array;
-    }
-
-    ttk::LongSimplexId *getGlobalIdsArray() const {
-      return this->globalIdsArray_;
-    }
-
-    void setRankArray(int *rankArray) {
-      this->rankArray_ = rankArray;
-    }
-
-    int *getRankArray() const {
-      return this->rankArray_;
-    }
-
 #endif // TTK_ENABLE_MPI
 
     // only ttk::dcg::DiscreteGradient should use what's defined below.

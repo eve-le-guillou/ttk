@@ -231,7 +231,7 @@ namespace ttk {
     inline void initializeNeighbors() {
       std::unordered_set<int> neighbors;
       getNeighbors<ttk::SimplexId>(
-        neighbors, rankArray_, vertexNumber_, this->MPIComm);
+        neighbors, vertRankArray_, vertexNumber_, this->MPIComm);
       neighborNumber_ = neighbors.size();
       neighbors_.resize(neighborNumber_);
       int idx = 0;
@@ -388,7 +388,7 @@ void checkEndOfComputation() const {
     ArrayLinkedList<std::vector<double>, TABULAR_SIZE>
       *outputDistancesFromSeed_;
     ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> *outputSeedIdentifiers_;
-    int *rankArray_{nullptr};
+    const int *vertRankArray_{nullptr};
     ArrayLinkedList<MPI_Request, TABULAR_SIZE> *sentRequests_;
     ArrayLinkedList<std::vector<Message>, TABULAR_SIZE> *sentMessages_;
     int messageSize_;
@@ -412,17 +412,19 @@ void ttk::IntegralLines::sendTrajectoryIfNecessary(
     if(size > 1) {
       int rankArray;
       if(!(isMax && size == 3
-           && (rankArray_[trajectory->at(size - 1)] == ttk::MPIrank_)
-           && (rankArray_[trajectory->at(size - 2)] != ttk::MPIrank_)
-           && (rankArray_[trajectory->at(size - 3)] != ttk::MPIrank_))) {
-        if((isMax && (rankArray_[trajectory->at(size - 1)] != ttk::MPIrank_))
+           && (vertRankArray_[trajectory->at(size - 1)] == ttk::MPIrank_)
+           && (vertRankArray_[trajectory->at(size - 2)] != ttk::MPIrank_)
+           && (vertRankArray_[trajectory->at(size - 3)] != ttk::MPIrank_))) {
+        if((isMax
+            && (vertRankArray_[trajectory->at(size - 1)] != ttk::MPIrank_))
            || (size >= 3
-               && (rankArray_[trajectory->at(size - 2)] != ttk::MPIrank_))) {
+               && (vertRankArray_[trajectory->at(size - 2)]
+                   != ttk::MPIrank_))) {
           if(isMax) {
             m.Id4 = -1;
             m.DistanceFromSeed4 = 0;
             m.Id3 = triangulation->getVertexGlobalId(trajectory->back());
-            rankArray = rankArray_[trajectory->back()];
+            rankArray = vertRankArray_[trajectory->back()];
             m.DistanceFromSeed3 = distanceFromSeed->back();
             m.Id2 = triangulation->getVertexGlobalId(trajectory->at(size - 2));
             m.DistanceFromSeed2 = distanceFromSeed->at(size - 2);
@@ -447,10 +449,10 @@ void ttk::IntegralLines::sendTrajectoryIfNecessary(
             m.DistanceFromSeed2 = distanceFromSeed->at(size - 3);
             m.Id3 = triangulation->getVertexGlobalId(trajectory->at(size - 2));
             m.DistanceFromSeed3 = distanceFromSeed->at(size - 2);
-            rankArray = rankArray_[trajectory->at(size - 2)];
+            rankArray = vertRankArray_[trajectory->at(size - 2)];
             m.Id4 = triangulation->getVertexGlobalId(trajectory->at(size - 1));
             m.DistanceFromSeed4 = distanceFromSeed->at(size - 1);
-            if(rankArray_[trajectory->at(size - 1)] == ttk::MPIrank_) {
+            if(vertRankArray_[trajectory->at(size - 1)] == ttk::MPIrank_) {
 #pragma omp critical(unfinishedTrajectories)
               {
                 unfinishedDist.push_back(distanceFromSeed);
@@ -483,17 +485,19 @@ void ttk::IntegralLines::sendTrajectoryIfNecessaryMethode1(
     if(size > 1) {
       int rankArray;
       if(!(isMax && size == 3
-           && (rankArray_[trajectory->at(size - 1)] == ttk::MPIrank_)
-           && (rankArray_[trajectory->at(size - 2)] != ttk::MPIrank_)
-           && (rankArray_[trajectory->at(size - 3)] != ttk::MPIrank_))) {
-        if((isMax && (rankArray_[trajectory->at(size - 1)] != ttk::MPIrank_))
+           && (vertRankArray_[trajectory->at(size - 1)] == ttk::MPIrank_)
+           && (vertRankArray_[trajectory->at(size - 2)] != ttk::MPIrank_)
+           && (vertRankArray_[trajectory->at(size - 3)] != ttk::MPIrank_))) {
+        if((isMax
+            && (vertRankArray_[trajectory->at(size - 1)] != ttk::MPIrank_))
            || (size >= 3
-               && (rankArray_[trajectory->at(size - 2)] != ttk::MPIrank_))) {
+               && (vertRankArray_[trajectory->at(size - 2)]
+                   != ttk::MPIrank_))) {
           if(isMax) {
             m.Id4 = -1;
             m.DistanceFromSeed4 = 0;
             m.Id3 = triangulation->getVertexGlobalId(trajectory->back());
-            rankArray = rankArray_[trajectory->back()];
+            rankArray = vertRankArray_[trajectory->back()];
             m.DistanceFromSeed3 = distanceFromSeed->back();
             m.Id2 = triangulation->getVertexGlobalId(trajectory->at(size - 2));
             m.DistanceFromSeed2 = distanceFromSeed->at(size - 2);
@@ -518,10 +522,10 @@ void ttk::IntegralLines::sendTrajectoryIfNecessaryMethode1(
             m.DistanceFromSeed2 = distanceFromSeed->at(size - 3);
             m.Id3 = triangulation->getVertexGlobalId(trajectory->at(size - 2));
             m.DistanceFromSeed3 = distanceFromSeed->at(size - 2);
-            rankArray = rankArray_[trajectory->at(size - 2)];
+            rankArray = vertRankArray_[trajectory->at(size - 2)];
             m.Id4 = triangulation->getVertexGlobalId(trajectory->at(size - 1));
             m.DistanceFromSeed4 = distanceFromSeed->at(size - 1);
-            if(rankArray_[trajectory->at(size - 1)] == ttk::MPIrank_) {
+            if(vertRankArray_[trajectory->at(size - 1)] == ttk::MPIrank_) {
 #pragma omp critical(unfinishedTrajectories)
               {
                 unfinishedDist.push_back(distanceFromSeed);
@@ -559,7 +563,7 @@ void ttk::IntegralLines::receiveElement(
   bool isUnfinished = false;
   if(m.Id1 != -1) {
     localId1 = triangulation->getVertexLocalId(m.Id1);
-    if(rankArray_[localId1] == ttk::MPIrank_) {
+    if(vertRankArray_[localId1] == ttk::MPIrank_) {
       isUnfinished = true;
 #pragma omp critical(unfinishedTrajectories)
       {
@@ -766,7 +770,7 @@ void ttk::IntegralLines::executeAlgorithm(
     if(vnext == -1) {
       isMax = true;
 #if TTK_ENABLE_MPI
-      if(ttk::MPIsize_ > 1 && rankArray_[v] == ttk::MPIrank_) {
+      if(ttk::MPIsize_ > 1 && vertRankArray_[v] == ttk::MPIrank_) {
 #pragma omp atomic update seq_cst
         finishedElement++;
       }
@@ -824,7 +828,7 @@ void ttk::IntegralLines::executeAlgorithmMethode1(
     if(vnext == -1) {
       isMax = true;
 #if TTK_ENABLE_MPI
-      if(ttk::MPIsize_ > 1 && rankArray_[v] == ttk::MPIrank_) {
+      if(ttk::MPIsize_ > 1 && vertRankArray_[v] == ttk::MPIrank_) {
 #pragma omp atomic update seq_cst
         finishedElement++;
       }
@@ -1164,7 +1168,7 @@ void ttk::IntegralLines::receiveElementMethode1(
   bool isUnfinished = false;
   if(m.Id1 != -1) {
     localId1 = triangulation->getVertexLocalId(m.Id1);
-    if(rankArray_[localId1] == ttk::MPIrank_) {
+    if(vertRankArray_[localId1] == ttk::MPIrank_) {
       isUnfinished = true;
 #pragma omp critical(unfinishedTrajectories)
       {
