@@ -254,9 +254,9 @@ namespace ttk {
             std::vector<Message> *m_ptr;
             MPI_Request *request;
             messageCount_[receiver][threadId] = 0;
-            m_ptr = this->sentMessages_->addArrayElement(
+            m_ptr = this->sentMessages_->at(threadId).addArrayElement(
               multipleElementToSend_->at(receiver)[threadId]);
-            request = this->sentRequests_->addArrayElement(
+            request = this->sentRequests_->at(threadId).addArrayElement(
               MPI_Request{MPI_REQUEST_NULL});
             MPI_Isend(m_ptr->data(), messageSize_, this->MessageType, receiver,
                       IS_ELEMENT_TO_PROCESS, this->MPIComm, request);
@@ -279,12 +279,13 @@ namespace ttk {
     }
 
     inline void setSentRequests(
-      ArrayLinkedList<MPI_Request, TABULAR_SIZE> *sentRequests) {
+      std::vector<ArrayLinkedList<MPI_Request, TABULAR_SIZE>> *sentRequests) {
       sentRequests_ = sentRequests;
     }
 
     inline void setSentMessages(
-      ArrayLinkedList<std::vector<Message>, TABULAR_SIZE> *sentMessages) {
+      std::vector<ArrayLinkedList<std::vector<Message>, TABULAR_SIZE>>
+        *sentMessages) {
       sentMessages_ = sentMessages;
     }
 
@@ -394,8 +395,9 @@ void checkEndOfComputation() const {
       *outputDistancesFromSeed_;
     ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> *outputSeedIdentifiers_;
     const int *vertRankArray_{nullptr};
-    ArrayLinkedList<MPI_Request, TABULAR_SIZE> *sentRequests_;
-    ArrayLinkedList<std::vector<Message>, TABULAR_SIZE> *sentMessages_;
+    std::vector<ArrayLinkedList<MPI_Request, TABULAR_SIZE>> *sentRequests_;
+    std::vector<ArrayLinkedList<std::vector<Message>, TABULAR_SIZE>>
+      *sentMessages_;
     int messageSize_;
     int neighborNumber_;
     std::unordered_map<int, int> neighborsToId_;
@@ -722,9 +724,9 @@ void ttk::IntegralLines::receiveMessages(const triangulationType *triangulation,
         for(int i = 0; i < ttk::MPIsize_; i++) {
           for(int j = 0; j < threadNumber_; j++) {
             if(messageCount_[i][j] > 0) {
-              m_ptr = this->sentMessages_->addArrayElement(
+              m_ptr = this->sentMessages_->at(0).addArrayElement(
                 multipleElementToSend_->at(i)[j]);
-              request = this->sentRequests_->addArrayElement(
+              request = this->sentRequests_->at(0).addArrayElement(
                 MPI_Request{MPI_REQUEST_NULL});
               MPI_Isend(m_ptr->data(), messageCount_[i][j], this->MessageType,
                         i, IS_ELEMENT_TO_PROCESS, this->MPIComm, request);
@@ -981,18 +983,21 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
     }
   }
   if(ttk::MPIsize_ > 1) {
-    std::list<std::array<MPI_Request, TABULAR_SIZE>>::iterator requestBlock
-      = sentRequests_->list.begin();
+    for(int i = 0; i < threadNumber_; i++) {
+      std::list<std::array<MPI_Request, TABULAR_SIZE>>::iterator requestBlock
+        = sentRequests_->at(i).list.begin();
 
-    int sizeBlock = TABULAR_SIZE;
-    while(requestBlock != sentRequests_->list.end()) {
-      requestBlock++;
-      if(requestBlock == sentRequests_->list.end()) {
-        sizeBlock = std::min((int)TABULAR_SIZE, sentRequests_->numberOfElement);
+      int sizeBlock = TABULAR_SIZE;
+      while(requestBlock != sentRequests_->at(i).list.end()) {
+        requestBlock++;
+        if(requestBlock == sentRequests_->at(i).list.end()) {
+          sizeBlock
+            = std::min((int)TABULAR_SIZE, sentRequests_->at(i).numberOfElement);
+        }
+        requestBlock--;
+        MPI_Waitall(sizeBlock, requestBlock->data(), MPI_STATUSES_IGNORE);
+        requestBlock++;
       }
-      requestBlock--;
-      MPI_Waitall(sizeBlock, requestBlock->data(), MPI_STATUSES_IGNORE);
-      requestBlock++;
     }
   }
   {

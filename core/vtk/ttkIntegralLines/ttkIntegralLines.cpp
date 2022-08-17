@@ -328,8 +328,11 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> trajectories;
   ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> distancesFromSeed;
   ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> seedIdentifiers;
-  ttk::ArrayLinkedList<MPI_Request, TABULAR_SIZE> sentRequests;
-  ttk::ArrayLinkedList<std::vector<Message>, TABULAR_SIZE> sentMessages;
+  std::vector<ttk::ArrayLinkedList<MPI_Request, TABULAR_SIZE>> sentRequests;
+  sentRequests.resize(this->threadNumber_);
+  std::vector<ttk::ArrayLinkedList<std::vector<Message>, TABULAR_SIZE>>
+    sentMessages;
+  sentMessages.resize(this->threadNumber_);
   std::vector<std::vector<std::vector<Message>>> multipleElementToSend(
     ttk::MPIsize_);
   std::vector<std::vector<std::vector<Message>>> toSend(ttk::MPIsize_);
