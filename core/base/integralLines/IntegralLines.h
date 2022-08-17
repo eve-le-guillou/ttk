@@ -251,10 +251,15 @@ namespace ttk {
             = m;
           messageCount_[receiver][threadId]++;
           if(messageCount_[receiver][threadId] >= messageSize_) {
+            std::vector<Message> *m_ptr;
+            MPI_Request *request;
             messageCount_[receiver][threadId] = 0;
-            MPI_Send(multipleElementToSend_->at(receiver)[threadId].data(),
-                     messageSize_, this->MessageType, receiver, tag,
-                     this->MPIComm);
+            m_ptr = this->sentMessages_->addArrayElement(
+              multipleElementToSend_->at(receiver)[threadId]);
+            request = this->sentRequests_->addArrayElement(
+              MPI_Request{MPI_REQUEST_NULL});
+            MPI_Isend(m_ptr->data(), messageSize_, this->MessageType, receiver,
+                      IS_ELEMENT_TO_PROCESS, this->MPIComm, request);
           }
           break;
         }
