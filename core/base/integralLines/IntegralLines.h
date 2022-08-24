@@ -400,6 +400,11 @@ void checkEndOfComputation() const {
     int neighborNumber_;
     std::unordered_map<int, int> neighborsToId_;
     std::vector<int> neighbors_;
+
+  public:
+    double communicationTime;
+    double computationTime;
+    double firstComputationTime;
   };
 } // namespace ttk
 
@@ -1014,16 +1019,21 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
   finishedElement = 0;
   taskCounter = seedNumber_;
   globalElementCounter = this->GlobalElementToCompute;
+  communicationTime = 0;
+  firstComputationTime = 0;
+  computationTime = 0;
 #endif
   const SimplexId *offsets = inputOffsets_;
   std::vector<SimplexId> *seeds = vertexIdentifierScalarField_;
   dataType *scalars = static_cast<dataType *>(inputScalarField_);
   Timer t;
+  Timer profileTime;
 
   std::vector<std::vector<ttk::SimplexId> *> chunk_trajectories(chunkSize_);
   std::vector<std::vector<double> *> chunk_distanceFromSeed(chunkSize_);
   std::vector<ttk::SimplexId> chunk_identifier(chunkSize_);
   int taskNumber = (int)seedNumber_ / chunkSize_;
+  profileTime.reStart();
 #if TTK_ENABLE_MPI
 #pragma omp parallel shared(finishedElement, unfinishedDist, unfinishedTraj, \
                             unfinishedSeed, sentMessages_, sentRequests_,    \
@@ -1046,6 +1056,8 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
       }
     }
   }
+  firstComputationTime += profileTime.getElapsedTime();
+  profileTime.reStart();
   if(ttk::MPIsize_ > 1) {
     int finishedElementReceived = 0;
     std::vector<int> sendMessageSize(neighborNumber_);
@@ -1107,6 +1119,8 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
         for(i = 0; i < neighborNumber_; i++) {
           send_buf[i].clear();
         }
+        communicationTime += profileTime.getElapsedTime();
+        profileTime.reStart();
 #pragma omp parallel shared(finishedElement, unfinishedDist, unfinishedTraj, \
                             unfinishedSeed, sentMessages_, sentRequests_,    \
                             toSend_) num_threads(threadNumber_)
@@ -1143,6 +1157,8 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
             }
           }
         }
+        computationTime += profileTime.getElapsedTime();
+        profileTime.reStart();
       }
     }
   }

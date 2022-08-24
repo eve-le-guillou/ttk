@@ -381,7 +381,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
   ttkVtkTemplateMacro(inputScalars->GetDataType(), triangulation->getType(),
-                      (status = this->execute<VTK_TT, TTK_TT>(
+                      (status = this->executeMethode1<VTK_TT, TTK_TT>(
                          static_cast<TTK_TT *>(triangulation->getData()))));
 
 #ifdef TTK_ENABLE_MPI_TIME
@@ -389,6 +389,10 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   if(ttk::MPIrank_ == 0) {
     printMsg("Computation performed using " + std::to_string(ttk::MPIsize_)
              + " MPI processes lasted :" + std::to_string(elapsedTime));
+    printMsg("firstComputationTime: "
+             + std::to_string(this->firstComputationTime));
+    printMsg("computationTime: " + std::to_string(this->computationTime));
+    printMsg("communicationTime: " + std::to_string(this->communicationTime));
   }
 #endif
 #ifndef TTK_ENABLE_KAMIKAZE
@@ -401,29 +405,31 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
 
   // make the vtk trajectories
-  getTrajectories(domain, triangulation, trajectories, distancesFromSeed,
-                  seedIdentifiers, output);
+  // getTrajectories(domain, triangulation, trajectories, distancesFromSeed,
+  //                 seedIdentifiers, output);
 
   // Write data to csv
 
-  std::ofstream myfile;
-  myfile.open("/home/eveleguillou/experiment/IntegralLines/Benchmark/"
-              + std::to_string(ttk::MPIsize_) + "_proc_integraLines_"
-              + std::to_string(ttk::MPIrank_) + ".csv");
-  myfile << "DistanceFromSeed,SeedIdentifier,GlobalPointIds,vtkGhostType\n";
-  vtkDataArray *ghostArray = output->GetPointData()->GetArray("vtkGhostType");
-  vtkDataArray *seedIdentifier
-    = output->GetPointData()->GetArray("SeedIdentifier");
-  vtkDataArray *globalIdsForCsv
-    = output->GetPointData()->GetArray("GlobalPointIds");
-  vtkDataArray *distance = output->GetPointData()->GetArray("DistanceFromSeed");
-  for(int i = 0; i < ghostArray->GetNumberOfTuples(); i++) {
-    myfile << std::to_string(distance->GetTuple1(i)) + ","
-                + std::to_string(seedIdentifier->GetTuple1(i)) + ","
-                + std::to_string(globalIdsForCsv->GetTuple1(i)) + ","
-                + std::to_string(ghostArray->GetTuple1(i)) + "\n";
-  }
-  myfile.close();
+  // std::ofstream myfile;
+  // myfile.open("/home/eveleguillou/experiment/IntegralLines/Benchmark/"
+  //             + std::to_string(ttk::MPIsize_) + "_proc_integraLines_"
+  //             + std::to_string(ttk::MPIrank_) + ".csv");
+  // myfile << "DistanceFromSeed,SeedIdentifier,GlobalPointIds,vtkGhostType\n";
+  // vtkDataArray *ghostArray =
+  // output->GetPointData()->GetArray("vtkGhostType"); vtkDataArray
+  // *seedIdentifier
+  //   = output->GetPointData()->GetArray("SeedIdentifier");
+  // vtkDataArray *globalIdsForCsv
+  //   = output->GetPointData()->GetArray("GlobalPointIds");
+  // vtkDataArray *distance =
+  // output->GetPointData()->GetArray("DistanceFromSeed"); for(int i = 0; i <
+  // ghostArray->GetNumberOfTuples(); i++) {
+  //   myfile << std::to_string(distance->GetTuple1(i)) + ","
+  //               + std::to_string(seedIdentifier->GetTuple1(i)) + ","
+  //               + std::to_string(globalIdsForCsv->GetTuple1(i)) + ","
+  //               + std::to_string(ghostArray->GetTuple1(i)) + "\n";
+  // }
+  // myfile.close();
 
   return (int)(status == 0);
 }
