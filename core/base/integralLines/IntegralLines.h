@@ -67,8 +67,6 @@ namespace ttk {
   static std::vector<std::vector<SimplexId> *> unfinishedTraj;
   static std::vector<std::vector<double> *> unfinishedDist;
   static std::vector<int> unfinishedSeed;
-  static int sendCount{0};
-  static int recvCount{0};
   static std::queue<MessageAndMPIInfo> sendQueue{};
   static std::vector<std::vector<std::vector<Message>>> *toSend_;
   static std::vector<std::vector<std::vector<Message>>> *multipleElementToSend_;
@@ -1065,16 +1063,13 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
     int index;
     int totalMessageSize;
     while(keepWorking) {
-      MPI_Reduce(&finishedElement, &finishedElementReceived, 1, MPI_INTEGER,
-                 MPI_SUM, 0, this->MPIComm);
+      MPI_Allreduce(&finishedElement, &finishedElementReceived, 1, MPI_INTEGER,
+                    MPI_SUM, this->MPIComm);
       finishedElement = 0;
-      if(ttk::MPIrank_ == 0) {
-        globalElementCounter -= finishedElementReceived;
-        if(globalElementCounter == 0) {
-          keepWorking = 0;
-        }
+      globalElementCounter -= finishedElementReceived;
+      if(globalElementCounter == 0) {
+        keepWorking = 0;
       }
-      MPI_Bcast(&keepWorking, 1, MPI_INTEGER, 0, this->MPIComm);
       if(keepWorking) {
         totalMessageSize = 0;
         MPI_Status status;
