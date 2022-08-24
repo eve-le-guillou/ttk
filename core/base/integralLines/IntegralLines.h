@@ -405,6 +405,7 @@ void checkEndOfComputation() const {
     double communicationTime;
     double computationTime;
     double firstComputationTime;
+    int communicationRound;
   };
 } // namespace ttk
 
@@ -1022,6 +1023,7 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
   communicationTime = 0;
   firstComputationTime = 0;
   computationTime = 0;
+  communicationRound = 0;
 #endif
   const SimplexId *offsets = inputOffsets_;
   std::vector<SimplexId> *seeds = vertexIdentifierScalarField_;
@@ -1083,6 +1085,7 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
         keepWorking = 0;
       }
       if(keepWorking) {
+        communicationRound++;
         totalMessageSize = 0;
         MPI_Status status;
         for(i = 0; i < neighborNumber_; i++) {
