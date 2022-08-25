@@ -394,6 +394,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     printMsg("computationTime: " + std::to_string(this->computationTime));
     printMsg("communicationTime: " + std::to_string(this->communicationTime));
     printMsg("communicationRound: " + std::to_string(this->communicationRound));
+    printMsg("messageSizeCounter: " + std::to_string(this->messageSizeCounter));
   }
 #endif
 #ifndef TTK_ENABLE_KAMIKAZE

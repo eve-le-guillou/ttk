@@ -406,6 +406,7 @@ void checkEndOfComputation() const {
     double computationTime;
     double firstComputationTime;
     int communicationRound;
+    int messageSizeCounter;
   };
 } // namespace ttk
 
@@ -1024,6 +1025,7 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
   firstComputationTime = 0;
   computationTime = 0;
   communicationRound = 0;
+  messageSizeCounter = 0;
 #endif
   const SimplexId *offsets = inputOffsets_;
   std::vector<SimplexId> *seeds = vertexIdentifierScalarField_;
@@ -1076,6 +1078,7 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
     int taskSize;
     int index;
     int totalMessageSize;
+    int localMessageSize;
     while(keepWorking) {
       MPI_Allreduce(&finishedElement, &finishedElementReceived, 1, MPI_INTEGER,
                     MPI_SUM, this->MPIComm);
@@ -1101,6 +1104,16 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
                     MESSAGE_SIZE, this->MPIComm, &requests[2 * i + 1]);
         }
         MPI_Waitall(2 * neighborNumber_, requests.data(), MPI_STATUSES_IGNORE);
+        computationTime += profileTime.getElapsedTime();
+        localMessageSize = 0;
+        for(i = 0; i < neighborNumber_; i++) {
+          localMessageSize += sendMessageSize[i];
+        }
+        int messageSizeBuffer;
+        MPI_Reduce(&localMessageSize, &messageSizeBuffer, 1, MPI_INT, MPI_SUM,
+                   0, this->MPIComm);
+        messageSizeCounter += messageSizeBuffer;
+        profileTime.reStart();
         for(i = 0; i < neighborNumber_; i++) {
           if(recv_buf[i].size() < recvMessageSize[i]) {
             recv_buf[i].resize(recvMessageSize[i]);
