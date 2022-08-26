@@ -389,12 +389,13 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   if(ttk::MPIrank_ == 0) {
     printMsg("Computation performed using " + std::to_string(ttk::MPIsize_)
              + " MPI processes lasted :" + std::to_string(elapsedTime));
-    printMsg("firstComputationTime: "
-             + std::to_string(this->firstComputationTime));
-    printMsg("computationTime: " + std::to_string(this->computationTime));
-    printMsg("communicationTime: " + std::to_string(this->communicationTime));
-    printMsg("communicationRound: " + std::to_string(this->communicationRound));
-    printMsg("messageSizeCounter: " + std::to_string(this->messageSizeCounter));
+  }
+  printMsg("firstComputationTime: "
+           + std::to_string(this->firstComputationTime));
+  printMsg("computationTime: " + std::to_string(this->computationTime));
+  for(int i = 0; i < 9; i++) {
+    printMsg("communicationTime-" + std::to_string(i) + ": "
+             + std::to_string(this->communicationTime[i]));
   }
 #endif
 #ifndef TTK_ENABLE_KAMIKAZE

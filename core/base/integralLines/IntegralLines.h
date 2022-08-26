@@ -402,11 +402,10 @@ void checkEndOfComputation() const {
     std::vector<int> neighbors_;
 
   public:
-    double communicationTime;
+    double communicationTime[9];
     double computationTime;
     double firstComputationTime;
     int communicationRound;
-    int messageSizeCounter;
   };
 } // namespace ttk
 
@@ -1021,11 +1020,12 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
   finishedElement = 0;
   taskCounter = seedNumber_;
   globalElementCounter = this->GlobalElementToCompute;
-  communicationTime = 0;
+  for(int i = 0; i < 9; i++) {
+    communicationTime[i] = 0;
+  }
   firstComputationTime = 0;
   computationTime = 0;
   communicationRound = 0;
-  messageSizeCounter = 0;
 #endif
   const SimplexId *offsets = inputOffsets_;
   std::vector<SimplexId> *seeds = vertexIdentifierScalarField_;
@@ -1079,9 +1079,12 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
     int index;
     int totalMessageSize;
     int localMessageSize;
+    communicationTime[0] += profileTime.getElapsedTime();
+    profileTime.reStart();
     while(keepWorking) {
       MPI_Allreduce(&finishedElement, &finishedElementReceived, 1, MPI_INTEGER,
                     MPI_SUM, this->MPIComm);
+      communicationTime[1] += profileTime.getElapsedTime();
       finishedElement = 0;
       globalElementCounter -= finishedElementReceived;
       if(globalElementCounter == 0) {
@@ -1092,32 +1095,31 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
         totalMessageSize = 0;
         MPI_Status status;
         for(i = 0; i < neighborNumber_; i++) {
+          profileTime.reStart();
           for(int j = 0; j < threadNumber_; j++) {
             send_buf[i].insert(send_buf[i].end(), toSend_->at(i)[j].begin(),
                                toSend_->at(i)[j].end());
             toSend_->at(i)[j].clear();
           }
           sendMessageSize[i] = (int)send_buf[i].size();
+          communicationTime[2] += profileTime.getElapsedTime();
+          profileTime.reStart();
           MPI_Isend(&sendMessageSize[i], 1, MPI_INTEGER, neighbors_[i],
                     MESSAGE_SIZE, this->MPIComm, &requests[2 * i]);
           MPI_Irecv(&recvMessageSize[i], 1, MPI_INTEGER, neighbors_[i],
                     MESSAGE_SIZE, this->MPIComm, &requests[2 * i + 1]);
+          communicationTime[3] += profileTime.getElapsedTime();
         }
-        MPI_Waitall(2 * neighborNumber_, requests.data(), MPI_STATUSES_IGNORE);
-        computationTime += profileTime.getElapsedTime();
-        localMessageSize = 0;
-        for(i = 0; i < neighborNumber_; i++) {
-          localMessageSize += sendMessageSize[i];
-        }
-        int messageSizeBuffer;
-        MPI_Reduce(&localMessageSize, &messageSizeBuffer, 1, MPI_INT, MPI_SUM,
-                   0, this->MPIComm);
-        messageSizeCounter += messageSizeBuffer;
         profileTime.reStart();
+        MPI_Waitall(2 * neighborNumber_, requests.data(), MPI_STATUSES_IGNORE);
+        communicationTime[4] += profileTime.getElapsedTime();
         for(i = 0; i < neighborNumber_; i++) {
+          profileTime.reStart();
           if(recv_buf[i].size() < recvMessageSize[i]) {
             recv_buf[i].resize(recvMessageSize[i]);
           }
+          communicationTime[5] += profileTime.getElapsedTime();
+          profileTime.reStart();
           if(recvMessageSize[i] > 0) {
             MPI_Irecv(recv_buf[i].data(), recvMessageSize[i], this->MessageType,
                       neighbors_[i], IS_ELEMENT_TO_PROCESS, this->MPIComm,
@@ -1130,12 +1132,16 @@ int ttk::IntegralLines::executeMethode1(triangulationType *triangulation) {
                       neighbors_[i], IS_ELEMENT_TO_PROCESS, this->MPIComm,
                       &requests[2 * i + 1]);
           }
+          communicationTime[6] += profileTime.getElapsedTime();
         }
+        profileTime.reStart();
         MPI_Waitall(2 * neighborNumber_, requests.data(), MPI_STATUSES_IGNORE);
+        communicationTime[7] += profileTime.getElapsedTime();
+        profileTime.reStart();
         for(i = 0; i < neighborNumber_; i++) {
           send_buf[i].clear();
         }
-        communicationTime += profileTime.getElapsedTime();
+        communicationTime[8] += profileTime.getElapsedTime();
         profileTime.reStart();
 #pragma omp parallel shared(finishedElement, unfinishedDist, unfinishedTraj, \
                             unfinishedSeed, sentMessages_, sentRequests_,    \
