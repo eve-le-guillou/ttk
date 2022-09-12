@@ -92,9 +92,6 @@ namespace ttk {
       this->MPIComm = comm;
     }
 #endif
-    void setGlobalElementToCompute(int number) {
-      this->GlobalElementToCompute = number;
-    }
 
     void setGlobalIdsArray(long int *array) {
       this->GlobalIdsArray = array;
