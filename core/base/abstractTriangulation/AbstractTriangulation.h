@@ -3616,9 +3616,6 @@ namespace ttk {
     bool hasPreconditionedDistributedTriangles_{false};
     bool hasPreconditionedDistributedVertices_{false};
 
-    ttk::LongSimplexId *globalIdsArray_{nullptr};
-    int *rankArray_{nullptr};
-
 #endif // TTK_ENABLE_MPI
 
     // only ttk::dcg::DiscreteGradient should use what's defined below.

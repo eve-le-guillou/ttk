@@ -7,7 +7,6 @@
 
 #pragma once
 
-#include <BaseClass.h>
 #include <Debug.h>
 
 namespace ttk {

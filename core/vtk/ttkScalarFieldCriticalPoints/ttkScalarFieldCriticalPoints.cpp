@@ -2,23 +2,17 @@
 
 #include <vtkInformation.h>
 
-#include <vtkCellData.h>
 #include <vtkDoubleArray.h>
 #include <vtkFloatArray.h>
 #include <vtkIdTypeArray.h>
-#include <vtkInformationVector.h>
 #include <vtkIntArray.h>
-#include <vtkMPIController.h>
-#include <vtkMultiProcessController.h>
 #include <vtkNew.h>
 #include <vtkPointData.h>
 #include <vtkPolyData.h>
 #include <vtkSignedCharArray.h>
-#include <vtkUnsignedCharArray.h>
 
 #include <ttkMacros.h>
 #include <ttkUtils.h>
-#include <DataSetAttributes.h>
 
 using namespace std;
 using namespace ttk;
@@ -59,7 +53,6 @@ int ttkScalarFieldCriticalPoints::RequestData(
   vtkInformationVector *outputVector) {
 
   vtkDataSet *input = vtkDataSet::GetData(inputVector[0]);
-
   vtkPolyData *output = vtkPolyData::GetData(outputVector, 0);
 
   ttk::Triangulation *triangulation = ttkAlgorithm::GetTriangulation(input);
@@ -93,12 +86,16 @@ int ttkScalarFieldCriticalPoints::RequestData(
   printMsg("Starting computation...");
   printMsg({{"  Scalar Array", inputScalarField->GetName()},
             {"  Offset Array", offsetField ? offsetField->GetName() : "None"}});
+
   int status = 0;
   ttkTemplateMacro(
     triangulation->getType(),
     (status = this->execute(
        static_cast<SimplexId *>(ttkUtils::GetVoidPointer(offsetField)),
        (TTK_TT *)triangulation->getData())));
+
+  if(status < 0)
+    return 0;
 
 #ifdef TTK_ENABLE_MPI_TIME
   double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
@@ -149,6 +146,7 @@ int ttkScalarFieldCriticalPoints::RequestData(
   } else {
     output->GetPointData()->RemoveArray("IsOnBoundary");
   }
+
   if(VertexIds) {
     vtkNew<ttkSimplexIdTypeArray> vertexIds{};
     vertexIds->SetNumberOfComponents(1);
@@ -171,6 +169,7 @@ int ttkScalarFieldCriticalPoints::RequestData(
   } else {
     output->GetPointData()->RemoveArray(ttk::VertexScalarFieldName);
   }
+
   if(VertexScalars) {
     for(SimplexId i = 0; i < input->GetPointData()->GetNumberOfArrays(); i++) {
 
@@ -193,5 +192,6 @@ int ttkScalarFieldCriticalPoints::RequestData(
         input->GetPointData()->GetArray(i)->GetName());
     }
   }
+
   return 1;
 }

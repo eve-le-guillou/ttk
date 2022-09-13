@@ -209,9 +209,6 @@ protected:
   ttkAlgorithm();
   ~ttkAlgorithm() override;
 
-  void MPIPreconditioning(vtkInformation *request,
-                          vtkInformationVector **inputVectors,
-                          vtkInformationVector *outputVector);
   /**
    * This method is called in GetTriangulation, after the triangulation as been
    * created. It verifies that several attributes necessary for MPI computation

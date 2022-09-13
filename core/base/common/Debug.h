@@ -23,6 +23,7 @@
 #pragma once
 
 #include <BaseClass.h>
+
 #include <algorithm>
 #include <cerrno>
 #include <fstream>
@@ -31,16 +32,11 @@
 #include <string>
 #include <vector>
 
-#if TTK_ENABLE_MPI
-  #include <mpi.h>
-#endif
-
 namespace ttk {
 
   COMMON_EXPORTS extern bool welcomeMsg_;
   COMMON_EXPORTS extern bool goodbyeMsg_;
   COMMON_EXPORTS extern int globalDebugLevel_;
-  COMMON_EXPORTS extern int MPIrank_;
 
   namespace debug {
     enum class Priority : int {
@@ -87,6 +83,7 @@ namespace ttk {
 
     const int LINEWIDTH = 80;
   } // namespace debug
+
   class Debug : public BaseClass {
 
   public:

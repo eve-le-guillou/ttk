@@ -55,9 +55,6 @@
  * `#else` blocks. It can be inserted anywhere in the function body.
  */
 #define TTK_FORCE_USE(x) (void)(x)
-#ifdef TTK_ENABLE_MPI
-#include <mpi.h>
-#endif
 
 namespace ttk {
 
@@ -72,37 +69,12 @@ namespace ttk {
 
   class BaseClass {
   public:
-    int GlobalElementToCompute;
-    long int *GlobalIdsArray;
-    unsigned char *PointGhostArray;
-    int *RankArray;
-#if TTK_ENABLE_MPI
-    MPI_Comm MPIComm;
-    MPI_Datatype MessageType;
-#endif
     BaseClass();
 
     virtual ~BaseClass() = default;
 
     int getThreadNumber() const {
       return threadNumber_;
-    }
-#if TTK_ENABLE_MPI
-    void setMPIComm(MPI_Comm comm) {
-      this->MPIComm = comm;
-    }
-#endif
-
-    void setGlobalIdsArray(long int *array) {
-      this->GlobalIdsArray = array;
-    }
-
-    void setPointGhostArray(unsigned char *array) {
-      this->PointGhostArray = array;
-    }
-
-    void setRankArray(int *rankArray) {
-      this->RankArray = rankArray;
     }
 
     virtual int setThreadNumber(const int threadNumber) {

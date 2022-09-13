@@ -46,7 +46,6 @@
 #include <ProgressiveTopology.h>
 #include <Triangulation.h>
 #include <UnionFind.h>
-#include <DataSetAttributes.h>
 
 namespace ttk {
 
@@ -171,7 +170,7 @@ int ttk::ScalarFieldCriticalPoints::execute(
   const SimplexId *const offsets, const triangulationType *triangulation) {
 
   checkProgressivityRequirement(triangulation);
-  int ret = 0;
+
   switch(BackEnd) {
 
     case BACKEND::PROGRESSIVE_TOPOLOGY:
@@ -179,7 +178,7 @@ int ttk::ScalarFieldCriticalPoints::execute(
       break;
 
     case BACKEND::GENERIC:
-      ret = this->executeLegacy(offsets, triangulation);
+      this->executeLegacy(offsets, triangulation);
       break;
 
     default:
@@ -187,7 +186,7 @@ int ttk::ScalarFieldCriticalPoints::execute(
   }
 
   printMsg(ttk::debug::Separator::L1);
-  return ret;
+  return 0;
 }
 
 template <class triangulationType>
@@ -349,7 +348,7 @@ int ttk::ScalarFieldCriticalPoints::executeLegacy(
   criticalPoints_->reserve(vertexNumber_);
   for(SimplexId i = 0; i < vertexNumber_; i++) {
     if(vertexTypes[i] != (char)(CriticalType::Regular)) {
-      criticalPoints_->emplace_back(i, vertexTypes[i]); // i: ttkVertexScalarField (local)
+      criticalPoints_->emplace_back(i, vertexTypes[i]);
     }
   }
 
@@ -520,18 +519,7 @@ char ttk::ScalarFieldCriticalPoints::getCriticalType(
   getNumberOfLowerUpperComponents(vertexId, offsets, triangulation,
                                   lowerComponentNumber, upperComponentNumber,
                                   isLowerOnBoundary, isUpperOnBoundary);
-  // if (this->GlobalIdsArray[vertexId] == 5 || this->GlobalIdsArray[vertexId]
-  // == 6){
-  //   printMsg("globalId: "+std::to_string(this->GlobalIdsArray[vertexId]));
-  //   printMsg("myrank: "+std::to_string(this->MyRank)+ " lowerComponentNumber:
-  //   "+std::to_string(lowerComponentNumber)); printMsg("myrank:
-  //   "+std::to_string(this->MyRank)+ " upperComponentNumber:
-  //   "+std::to_string(upperComponentNumber)); printMsg("myrank:
-  //   "+std::to_string(this->MyRank)+ " isLowerOnBoundary:
-  //   "+std::to_string(isLowerOnBoundary)); printMsg("myrank:
-  //   "+std::to_string(this->MyRank)+ " isUpperOnBoundary:
-  //   "+std::to_string(isUpperOnBoundary));
-  // }
+
   if(lowerComponentNumber == 0 && upperComponentNumber == 1) {
     return (char)(CriticalType::Local_minimum);
   } else if(lowerComponentNumber == 1 && upperComponentNumber == 0) {

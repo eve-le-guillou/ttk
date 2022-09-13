@@ -33,8 +33,7 @@ Debug::~Debug() {
 }
 
 int Debug::welcomeMsg(ostream &stream) {
-  
-  #if TTK_ENABLE_MPI
+#if TTK_ENABLE_MPI
   if(MPIrank_ != 0) {
     ttk::welcomeMsg_ = false;
   }

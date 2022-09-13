@@ -3,7 +3,6 @@
 #include <ttkUtils.h>
 
 #include <ArrayLinkedList.h>
-#include <DataSetAttributes.h>
 #include <vtkCellData.h>
 #include <vtkCommunicator.h>
 #include <vtkDataArray.h>
@@ -12,8 +11,6 @@
 #include <vtkDoubleArray.h>
 #include <vtkInformation.h>
 #include <vtkMPI.h>
-#include <vtkMPICommunicator.h>
-#include <vtkMPIController.h>
 #include <vtkMultiProcessController.h>
 #include <vtkObjectFactory.h>
 #include <vtkPartitionedDataSet.h>
@@ -29,23 +26,6 @@ ttkIntegralLines::ttkIntegralLines() {
   this->SetNumberOfInputPorts(2);
   this->SetNumberOfOutputPorts(1);
 }
-
-#if TTK_ENABLE_MPI
-MPI_Comm MPIGetComm() {
-  MPI_Comm comm = MPI_COMM_NULL;
-  vtkMultiProcessController *controller
-    = vtkMultiProcessController::GetGlobalController();
-  vtkMPICommunicator *vtkComm
-    = vtkMPICommunicator::SafeDownCast(controller->GetCommunicator());
-  if(vtkComm) {
-    if(vtkComm->GetMPIComm()) {
-      comm = *(vtkComm->GetMPIComm()->GetHandle());
-    }
-  }
-
-  return comm;
-}
-#endif
 
 ttkIntegralLines::~ttkIntegralLines() = default;
 
@@ -73,7 +53,6 @@ int ttkIntegralLines::getTrajectories(
   ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
   ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> &seedIdentifiers,
   vtkUnstructuredGrid *output) {
-  printMsg("enter getTrajectories");
   if(input == nullptr || output == nullptr
      || input->GetPointData() == nullptr) {
     this->printErr("Null pointers in getTrajectories parameters");
@@ -174,14 +153,6 @@ int ttkIntegralLines::getTrajectories(
 int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
                                   vtkInformationVector **inputVector,
                                   vtkInformationVector *outputVector) {
-#if TTK_ENABLE_MPI
-  // Get processes information
-  vtkMPIController *controller = vtkMPIController::SafeDownCast(
-    vtkMultiProcessController::GetGlobalController());
-  MPI_Comm comm = MPI_COMM_NULL;
-  comm = MPIGetComm();
-  this->setMPIComm(comm);
-#endif
 
   vtkDataSet *domain = vtkDataSet::GetData(inputVector[0], 0);
   vtkPointSet *seeds = vtkPointSet::GetData(inputVector[1], 0);
@@ -206,16 +177,16 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   vertRankArray_ = triangulation->getVertRankArray();
   int totalSeeds;
   if(ttk::MPIsize_ > 1) {
-    controller->Reduce(
-      &numberOfPointsInSeeds, &totalSeeds, 1, vtkCommunicator::SUM_OP, 0);
+    MPI_Reduce(&numberOfPointsInSeeds, &totalSeeds, 1, MPI_INTEGER, MPI_SUM, 0,
+               ttk::MPIcomm_);
     int isDistributed;
 
     if(ttk::MPIrank_ == 0) {
       isDistributed = numberOfPointsInSeeds != totalSeeds;
     }
+    MPI_Bcast(&isDistributed, 1, MPI_INTEGER, 0, ttk::MPIcomm_);
+    MPI_Bcast(&totalSeeds, 1, MPI_INTEGER, 0, ttk::MPIcomm_);
 
-    controller->Broadcast(&isDistributed, 1, 0);
-    controller->Broadcast(&totalSeeds, 1, 0);
     if(!isDistributed) {
       this->setGlobalElementCounter(totalSeeds);
       vtkDataArray *globalSeedsId;
@@ -229,7 +200,9 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         globalSeedsId->SetNumberOfComponents(1);
         globalSeedsId->SetNumberOfTuples(totalSeeds);
       }
-      controller->Broadcast(globalSeedsId, 0);
+      ttk::LongSimplexId id = 0;
+      MPI_Bcast(ttkUtils::GetPointer<ttk::LongSimplexId>(globalSeedsId),
+                totalSeeds, ttk::getMPIType(id), 0, ttk::MPIcomm_);
       ttk::SimplexId localId = -1;
       for(int i = 0; i < totalSeeds; i++) {
         localId = triangulation->getVertexLocalId(globalSeedsId->GetTuple1(i));
@@ -252,8 +225,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         }
       }
       numberOfPointsInSeeds = inputIdentifiers.size();
-      controller->AllReduce(
-        &numberOfPointsInSeeds, &totalSeeds, 1, vtkCommunicator::SUM_OP);
+      MPI_Allreduce(&numberOfPointsInSeeds, &totalSeeds, 1, MPI_INTEGER,
+                    MPI_SUM, ttk::MPIcomm_);
       this->setGlobalElementCounter(totalSeeds);
     }
   } else {

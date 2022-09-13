@@ -15,7 +15,6 @@
 
 // base code includes
 #include <ArrayLinkedList.h>
-#include <DataSetAttributes.h>
 #include <Geometry.h>
 #include <Triangulation.h>
 // std includes
@@ -179,7 +178,7 @@ namespace ttk {
     inline void initializeNeighbors() {
       std::unordered_set<int> neighbors;
       getNeighbors<ttk::SimplexId>(
-        neighbors, vertRankArray_, vertexNumber_, this->MPIComm);
+        neighbors, vertRankArray_, vertexNumber_, ttk::MPIcomm_);
       neighborNumber_ = neighbors.size();
       neighbors_.resize(neighborNumber_);
       int idx = 0;
@@ -280,6 +279,7 @@ namespace ttk {
     std::vector<int> neighbors_;
     SimplexId keepWorking_;
     SimplexId globalElementCounter_;
+    MPI_Datatype MessageType;
 #endif
   };
 } // namespace ttk
@@ -631,7 +631,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
     while(keepWorking_) {
       // Exchange of the number of integral lines finished on all processes
       MPI_Allreduce(&finishedElement_, &finishedElementReceived, 1, MPI_INTEGER,
-                    MPI_SUM, this->MPIComm);
+                    MPI_SUM, ttk::MPIcomm_);
       finishedElement_ = 0;
       // Update the number of integral lines left to compute
       globalElementCounter_ -= finishedElementReceived;
@@ -651,9 +651,9 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
           }
           sendMessageSize[i] = (int)send_buf[i].size();
           MPI_Isend(&sendMessageSize[i], 1, MPI_INTEGER, neighbors_[i],
-                    IS_MESSAGE_SIZE, this->MPIComm, &requests[2 * i]);
+                    IS_MESSAGE_SIZE, ttk::MPIcomm_, &requests[2 * i]);
           MPI_Irecv(&recvMessageSize[i], 1, MPI_INTEGER, neighbors_[i],
-                    IS_MESSAGE_SIZE, this->MPIComm, &requests[2 * i + 1]);
+                    IS_MESSAGE_SIZE, ttk::MPIcomm_, &requests[2 * i + 1]);
         }
         MPI_Waitall(2 * neighborNumber_, requests.data(), MPI_STATUSES_IGNORE);
         // Exchange of the data
@@ -663,14 +663,14 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
           }
           if(recvMessageSize[i] > 0) {
             MPI_Irecv(recv_buf[i].data(), recvMessageSize[i], this->MessageType,
-                      neighbors_[i], IS_ELEMENT_TO_PROCESS, this->MPIComm,
+                      neighbors_[i], IS_ELEMENT_TO_PROCESS, ttk::MPIcomm_,
                       &requests[2 * i]);
             totalMessageSize += recvMessageSize[i];
           }
 
           if(sendMessageSize[i] > 0) {
             MPI_Isend(send_buf[i].data(), sendMessageSize[i], this->MessageType,
-                      neighbors_[i], IS_ELEMENT_TO_PROCESS, this->MPIComm,
+                      neighbors_[i], IS_ELEMENT_TO_PROCESS, ttk::MPIcomm_,
                       &requests[2 * i + 1]);
           }
         }
