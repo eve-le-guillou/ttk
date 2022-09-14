@@ -5,8 +5,6 @@
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
 #include <vtkInformation.h>
-#include <vtkMPIController.h>
-#include <vtkMultiProcessController.h>
 #include <vtkObjectFactory.h>
 #include <vtkPointData.h>
 
@@ -54,10 +52,6 @@ int ttkScalarFieldNormalizer::normalize(vtkDataArray *input,
     return -2;
 
   double min = 0, max = 0;
-#pragma omp parallel for reduction(max                     \
-                                   : max) reduction(min    \
-                                                    : min) \
-  num_threads(threadNumber_)
   for(SimplexId i = 0; i < input->GetNumberOfTuples(); i++) {
 
     double value = input->GetTuple1(i);
