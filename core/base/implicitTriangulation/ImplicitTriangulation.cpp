@@ -3052,9 +3052,7 @@ int ttk::ImplicitTriangulation::preconditionDistributedCells() {
   if(this->hasPreconditionedDistributedCells_) {
     return 0;
   }
-  if(!ttk::isRunningWithMPI() && ttk::MPIsize_ > 1) {
-    return -1;
-  }
+
   if(this->cellGid_ == nullptr) {
     this->printWrn("Missing global identifiers on cells");
     return -2;
@@ -3244,9 +3242,6 @@ int ttk::ImplicitTriangulation::preconditionDistributedCellRanges() {
 size_t ttk::ImplicitTriangulation::computeCellRangeOffsets(
   std::vector<size_t> &nSimplicesPerRange) const {
 
-  if(!ttk::isRunningWithMPI() && ttk::MPIsize_ > 1) {
-    return -1;
-  }
   // 1. send to rank 0 number of edges per cell range
 
   std::vector<std::vector<size_t>> nSimplicesPerRangePerRank{};
@@ -3390,9 +3385,7 @@ int ttk::ImplicitTriangulation::preconditionDistributedEdges() {
   if(this->hasPreconditionedDistributedEdges_) {
     return 0;
   }
-  if(!ttk::isRunningWithMPI() && ttk::MPIsize_ > 1) {
-    return -1;
-  }
+
   if(this->cellGid_ == nullptr) {
     this->printWrn("Missing global identifiers on cells");
     return -2;
@@ -3539,9 +3532,7 @@ int ttk::ImplicitTriangulation::preconditionDistributedTriangles() {
   if(this->hasPreconditionedDistributedTriangles_) {
     return 0;
   }
-  if(!ttk::isRunningWithMPI() && ttk::MPIsize_ > 1) {
-    return -1;
-  }
+
   if(this->cellGid_ == nullptr) {
     this->printWrn("Missing global identifiers on cells");
     return -2;
@@ -3676,9 +3667,7 @@ int ImplicitTriangulation::preconditionDistributedVertices() {
   if(this->hasPreconditionedDistributedVertices_) {
     return 0;
   }
-  if(!isRunningWithMPI() && ttk::MPIsize_ > 1) {
-    return -1;
-  }
+
   if(this->vertGid_ == nullptr) {
     this->printWrn("Missing global identifiers array!");
     return -2;
