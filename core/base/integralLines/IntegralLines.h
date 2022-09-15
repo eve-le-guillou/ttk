@@ -375,7 +375,7 @@ void ttk::IntegralLines::storeToSendIfNecessary(
 #if TTK_ENABLE_MPI
   ElementToBeSent element
     = ElementToBeSent{-1, -1, -1, -1, 0, 0, 0, 0, seedIdentifier};
-  if(ttk::MPIsize_ > 1) {
+  if(ttk::isRunningWithMPI()) {
     int size = trajectory->size();
     if(size > 1) {
       int rankArray;
@@ -489,7 +489,7 @@ void ttk::IntegralLines::computeIntegralLine(
     if(vnext == -1) {
       isMax = true;
 #if TTK_ENABLE_MPI
-      if(ttk::MPIsize_ > 1 && vertRankArray_[v] == ttk::MPIrank_) {
+      if(ttk::isRunningWithMPI() && vertRankArray_[v] == ttk::MPIrank_) {
 #pragma omp atomic update seq_cst
         finishedElement_++;
       }
@@ -612,7 +612,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   }
 #endif
 #ifdef TTK_ENABLE_MPI
-  if(ttk::MPIsize_ > 1) {
+  if(ttk::isRunningWithMPI()) {
     int i;
     int finishedElementReceived = 0;
     std::vector<int> sendMessageSize(neighborNumber_);

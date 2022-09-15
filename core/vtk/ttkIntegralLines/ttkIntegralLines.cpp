@@ -3,17 +3,12 @@
 #include <ttkUtils.h>
 
 #include <ArrayLinkedList.h>
-#include <vtkCellData.h>
-#include <vtkCommunicator.h>
 #include <vtkDataArray.h>
 #include <vtkDataObject.h>
 #include <vtkDataSet.h>
 #include <vtkDoubleArray.h>
 #include <vtkInformation.h>
-#include <vtkMPI.h>
-#include <vtkMultiProcessController.h>
 #include <vtkObjectFactory.h>
-#include <vtkPartitionedDataSet.h>
 #include <vtkPointData.h>
 #include <vtkPointSet.h>
 #include <vtkUnstructuredGrid.h>
