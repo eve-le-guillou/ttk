@@ -84,13 +84,16 @@ public:
   vtkSetMacro(ForceInputOffsetScalarField, bool);
   vtkGetMacro(ForceInputOffsetScalarField, bool);
 
+  template <typename triangulationType>
   int getTrajectories(
     vtkDataSet *input,
-    ttk::Triangulation *triangulation,
+    triangulationType *triangulation,
     ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>
       &trajectories,
     ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
     ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> &seedIdentifiers,
+    ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>
+      &edgeIdentifiers,
     vtkUnstructuredGrid *output);
 
 protected:

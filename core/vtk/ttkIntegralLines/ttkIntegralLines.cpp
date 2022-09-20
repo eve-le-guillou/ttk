@@ -3,6 +3,7 @@
 #include <ttkUtils.h>
 
 #include <ArrayLinkedList.h>
+#include <vtkCellData.h>
 #include <vtkDataArray.h>
 #include <vtkDataObject.h>
 #include <vtkDataSet.h>
@@ -41,12 +42,15 @@ int ttkIntegralLines::FillOutputPortInformation(int port,
   return 1;
 }
 
+template <typename triangulationType>
 int ttkIntegralLines::getTrajectories(
   vtkDataSet *input,
-  ttk::Triangulation *triangulation,
+  triangulationType *triangulation,
   ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> &trajectories,
   ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
   ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> &seedIdentifiers,
+  ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>
+    &edgeIdentifiers,
   vtkUnstructuredGrid *output) {
   if(input == nullptr || output == nullptr
      || input->GetPointData() == nullptr) {
@@ -58,11 +62,18 @@ int ttkIntegralLines::getTrajectories(
   vtkNew<vtkPoints> pts{};
   vtkNew<vtkDoubleArray> dist{};
   vtkNew<vtkIdTypeArray> identifier{};
+  vtkNew<vtkIdTypeArray> vtkEdgeIdentifiers{};
+  vtkNew<vtkIntArray> vtkRankArray{};
 
   dist->SetNumberOfComponents(1);
   dist->SetName("DistanceFromSeed");
   identifier->SetNumberOfComponents(1);
   identifier->SetName("SeedIdentifier");
+
+  vtkEdgeIdentifiers->SetNumberOfComponents(1);
+  vtkEdgeIdentifiers->SetName("GlobalEdgeIds");
+  vtkRankArray->SetNumberOfComponents(1);
+  vtkRankArray->SetName("RankArray");
 
   const auto numberOfArrays = input->GetPointData()->GetNumberOfArrays();
 
@@ -83,7 +94,8 @@ int ttkIntegralLines::getTrajectories(
     inputScalars[k]->SetNumberOfComponents(1);
     inputScalars[k]->SetName(scalarArrays[k]->GetName());
   }
-
+  const int *cellRankArray = triangulation->getCellRankArray();
+  const int *vertRankArray = triangulation->getVertRankArray();
   std::array<float, 3> p;
   std::array<vtkIdType, 2> ids;
   std::list<std::array<std::vector<ttk::SimplexId>, TABULAR_SIZE>>::iterator trajectory
@@ -92,6 +104,9 @@ int ttkIntegralLines::getTrajectories(
     = distancesFromSeed.list.begin();
   std::list<std::array<ttk::SimplexId, TABULAR_SIZE>>::iterator seedIdentifier
     = seedIdentifiers.list.begin();
+  std::list<std::array<std::vector<ttk::SimplexId>, TABULAR_SIZE>>::iterator
+    edgeIdentifier
+    = edgeIdentifiers.list.begin();
   while(trajectory != trajectories.list.end()) {
     for(int i = 0; i < TABULAR_SIZE; i++) {
       if((*trajectory)[i].size() > 0) {
@@ -120,7 +135,36 @@ int ttkIntegralLines::getTrajectories(
               scalarArrays[k]->GetTuple1(vertex));
 
           ug->InsertNextCell(VTK_LINE, 2, ids.data());
-
+          vtkEdgeIdentifiers->InsertNextTuple1((*edgeIdentifier)[i].at(j));
+          if(vertRankArray[(*trajectory)[i].at(j - 1)]
+             == vertRankArray[vertex]) {
+            vtkRankArray->InsertNextTuple1(vertRankArray[vertex]);
+          } else {
+            ttk::SimplexId localEdgeId
+              = triangulation->getEdgeLocalId((*edgeIdentifier)[i].at(j));
+            int starNumber = triangulation->getEdgeStarNumber(localEdgeId);
+            ttk::SimplexId starId;
+            std::vector<int> occurenceOfRank;
+            std::vector<int> rank;
+            triangulation->getEdgeStar(localEdgeId, 0, starId);
+            rank.push_back(cellRankArray[starId / 6]);
+            occurenceOfRank.push_back(1);
+            std::vector<int>::iterator it;
+            for(int k = 1; k < starNumber; k++) {
+              triangulation->getEdgeStar(localEdgeId, k, starId);
+              it = find(rank.begin(), rank.end(), cellRankArray[starId / 6]);
+              if(it != rank.end()) {
+                occurenceOfRank[it - rank.begin()]++;
+              } else {
+                occurenceOfRank.push_back(1);
+                rank.push_back(cellRankArray[starId / 6]);
+              }
+            }
+            it = std::max_element(
+              occurenceOfRank.begin(), occurenceOfRank.end());
+            vtkRankArray->InsertNextTuple1(
+              rank[std::distance(occurenceOfRank.begin(), it)]);
+          }
           // iteration
           ids[0] = ids[1];
         }
@@ -131,11 +175,14 @@ int ttkIntegralLines::getTrajectories(
     trajectory++;
     distanceFromSeed++;
     seedIdentifier++;
+    edgeIdentifier++;
   }
 
   ug->SetPoints(pts);
   ug->GetPointData()->AddArray(dist);
   ug->GetPointData()->AddArray(identifier);
+  ug->GetCellData()->AddArray(vtkRankArray);
+  ug->GetCellData()->AddArray(vtkEdgeIdentifiers);
   for(unsigned int k = 0; k < scalarArrays.size(); ++k) {
     ug->GetPointData()->AddArray(inputScalars[k]);
   }
@@ -227,6 +274,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   } else {
     this->setGlobalElementCounter(numberOfPointsInSeeds);
     inputIdentifiers.resize(numberOfPointsInSeeds);
+    totalSeeds = numberOfPointsInSeeds;
     std::vector<ttk::SimplexId> idSpareStorage{};
     ttk::SimplexId *inputIdentifierGlobalId;
     inputIdentifierGlobalId = this->GetIdentifierArrayPtr(
@@ -254,6 +302,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> trajectories;
   ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> distancesFromSeed;
   ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> seedIdentifiers;
+  ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>
+    edgeIdentifiers;
 
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);
@@ -264,6 +314,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setOutputTrajectories(&trajectories);
   this->setOutputDistancesFromSeed(&distancesFromSeed);
   this->setOutputSeedIdentifiers(&seedIdentifiers);
+  this->setOutputEdgeIdentifiers(&edgeIdentifiers);
   this->preconditionTriangulation(triangulation);
   this->setChunkSize(
     std::max(std::min(1000, (int)numberOfPointsInSeeds),
@@ -350,8 +401,11 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
 
   // make the vtk trajectories
-  getTrajectories(domain, triangulation, trajectories, distancesFromSeed,
-                  seedIdentifiers, output);
+  ttkTemplateMacro(
+    triangulation->getType(),
+    (getTrajectories<TTK_TT>(
+      domain, static_cast<TTK_TT *>(triangulation->getData()), trajectories,
+      distancesFromSeed, seedIdentifiers, edgeIdentifiers, output)));
 
   // Write data to csv
 
@@ -371,6 +425,18 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
                 + std::to_string(seedIdentifier->GetTuple1(i)) + ","
                 + std::to_string(globalIdsForCsv->GetTuple1(i)) + ","
                 + std::to_string(ghostArray->GetTuple1(i)) + "\n";
+  }
+  myfile.close();
+
+  myfile.open("/home/eveleguillou/experiment/IntegralLines/Benchmark/"
+              + std::to_string(ttk::MPIsize_) + "_proc_integraLinesCellData_"
+              + std::to_string(ttk::MPIrank_) + ".csv");
+  myfile << "GlobalEdgeIds,RankArray\n";
+  vtkDataArray *edgeId = output->GetCellData()->GetArray("GlobalEdgeIds");
+  vtkDataArray *rankArray = output->GetCellData()->GetArray("RankArray");
+  for(int i = 0; i < edgeId->GetNumberOfTuples(); i++) {
+    myfile << std::to_string(edgeId->GetTuple1(i)) + ","
+                + std::to_string(rankArray->GetTuple1(i)) + "\n";
   }
   myfile.close();
 
