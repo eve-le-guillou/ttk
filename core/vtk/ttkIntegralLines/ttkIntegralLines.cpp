@@ -71,7 +71,7 @@ int ttkIntegralLines::getTrajectories(
   identifier->SetName("SeedIdentifier");
 
   vtkEdgeIdentifiers->SetNumberOfComponents(1);
-  vtkEdgeIdentifiers->SetName("GlobalEdgeIds");
+  vtkEdgeIdentifiers->SetName("GlobalCellIds");
   vtkRankArray->SetNumberOfComponents(1);
   vtkRankArray->SetName("RankArray");
 
@@ -431,8 +431,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   myfile.open("/home/eveleguillou/experiment/IntegralLines/Benchmark/"
               + std::to_string(ttk::MPIsize_) + "_proc_integraLinesCellData_"
               + std::to_string(ttk::MPIrank_) + ".csv");
-  myfile << "GlobalEdgeIds,RankArray\n";
-  vtkDataArray *edgeId = output->GetCellData()->GetArray("GlobalEdgeIds");
+  myfile << "GlobalCellIds,RankArray\n";
+  vtkDataArray *edgeId = output->GetCellData()->GetArray("GlobalCellIds");
   vtkDataArray *rankArray = output->GetCellData()->GetArray("RankArray");
   for(int i = 0; i < edgeId->GetNumberOfTuples(); i++) {
     myfile << std::to_string(edgeId->GetTuple1(i)) + ","

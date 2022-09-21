@@ -64,45 +64,45 @@ int ttkGhostCellPreconditioning::RequestData(
   this->printMsg("#Points: " + std::to_string(nVertices));
   this->printMsg("#Cells: " + std::to_string(nCells));
 
-  auto *verticesGlobalIds
-    = ttkUtils::GetPointer<ttk::LongSimplexId>(pointData->GetGlobalIds());
+  auto *verticesGlobalIds = ttkUtils::GetPointer<ttk::LongSimplexId>(
+    pointData->GetArray("GlobalPointIds"));
   auto *verticesGhostCells
     = ttkUtils::GetPointer<unsigned char>(pointData->GetArray("vtkGhostType"));
-  auto *cellsGlobalIds
-    = ttkUtils::GetPointer<ttk::LongSimplexId>(cellData->GetGlobalIds());
+  auto *cellsGlobalIds = ttkUtils::GetPointer<ttk::LongSimplexId>(
+    cellData->GetArray("GlobalCellIds"));
   auto *cellsGhostCells
     = ttkUtils::GetPointer<unsigned char>(cellData->GetArray("vtkGhostType"));
 
   if(verticesGlobalIds != nullptr && verticesGhostCells != nullptr
      && cellsGlobalIds != nullptr && cellsGhostCells != nullptr) {
 #ifdef TTK_ENABLE_MPI
-    if(ttk::isRunningWithMPI()) {
-      if(ttk::MPIrank_ == 0)
-        this->printMsg(
-          "Global Point Ids and Ghost Cells exist, therefore we can continue!");
-      this->printMsg("#Ranks " + std::to_string(ttk::MPIsize_)
-                     + ", this is rank " + std::to_string(ttk::MPIrank_));
-      std::vector<int> verticesRankArray(nVertices, 0);
-      std::vector<int> cellsRankArray(nCells, 0);
-      double *boundingBox = input->GetBounds();
+    // if(ttk::isRunningWithMPI()) {
+    if(ttk::MPIrank_ == 0)
+      this->printMsg(
+        "Global Point Ids and Ghost Cells exist, therefore we can continue!");
+    this->printMsg("#Ranks " + std::to_string(ttk::MPIsize_) + ", this is rank "
+                   + std::to_string(ttk::MPIrank_));
+    std::vector<int> verticesRankArray(nVertices, 0);
+    std::vector<int> cellsRankArray(nCells, 0);
+    double *boundingBox = input->GetBounds();
 
-      ttk::produceRankArray(verticesRankArray, verticesGlobalIds,
-                            verticesGhostCells, nVertices, boundingBox);
-      ttk::produceRankArray(
-        cellsRankArray, cellsGlobalIds, cellsGhostCells, nCells, boundingBox);
+    ttk::produceRankArray(verticesRankArray, verticesGlobalIds,
+                          verticesGhostCells, nVertices, boundingBox);
+    ttk::produceRankArray(
+      cellsRankArray, cellsGlobalIds, cellsGhostCells, nCells, boundingBox);
 
-      vtkNew<vtkIntArray> vtkVerticesRankArray{};
-      vtkVerticesRankArray->SetName("RankArray");
-      vtkVerticesRankArray->SetNumberOfComponents(1);
-      vtkVerticesRankArray->SetNumberOfTuples(nVertices);
+    vtkNew<vtkIntArray> vtkVerticesRankArray{};
+    vtkVerticesRankArray->SetName("RankArray");
+    vtkVerticesRankArray->SetNumberOfComponents(1);
+    vtkVerticesRankArray->SetNumberOfTuples(nVertices);
 
-      vtkNew<vtkIntArray> vtkCellsRankArray{};
-      vtkCellsRankArray->SetName("RankArray");
-      vtkCellsRankArray->SetNumberOfComponents(1);
-      vtkCellsRankArray->SetNumberOfTuples(nCells);
+    vtkNew<vtkIntArray> vtkCellsRankArray{};
+    vtkCellsRankArray->SetName("RankArray");
+    vtkCellsRankArray->SetNumberOfComponents(1);
+    vtkCellsRankArray->SetNumberOfTuples(nCells);
 
-      for(int i = 0; i < nVertices; i++) {
-        vtkVerticesRankArray->SetComponent(i, 0, verticesRankArray[i]);
+    for(int i = 0; i < nVertices; i++) {
+      vtkVerticesRankArray->SetComponent(i, 0, verticesRankArray[i]);
       }
       for(int i = 0; i < nCells; i++) {
         vtkCellsRankArray->SetComponent(i, 0, cellsRankArray[i]);
@@ -115,11 +115,13 @@ int ttkGhostCellPreconditioning::RequestData(
                      this->threadNumber_);
 
       return 1;
-    } else {
-      this->printMsg("Necessary arrays are present,  TTK is built with MPI "
-                     "support, but not run with mpirun. Running sequentially.");
-      return 0;
-    }
+      // } else {
+      //   this->printMsg("Necessary arrays are present,  TTK is built with MPI
+      //   "
+      //                  "support, but not run with mpirun. Running
+      //                  sequentially.");
+      //   return 0;
+      // }
 #else
     this->printMsg(
       "Necessary arrays are present, but TTK is not built with MPI support");
