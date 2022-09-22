@@ -147,23 +147,32 @@ int ttkIntegralLines::getTrajectories(
             std::vector<int> occurenceOfRank;
             std::vector<int> rank;
             triangulation->getEdgeStar(localEdgeId, 0, starId);
-            rank.push_back(cellRankArray[starId / 6]);
+            ttk::SimplexId vtkId;
+            triangulation->getCellVTKID(starId, vtkId);
+            rank.push_back(cellRankArray[vtkId]);
             occurenceOfRank.push_back(1);
             std::vector<int>::iterator it;
             for(int k = 1; k < starNumber; k++) {
               triangulation->getEdgeStar(localEdgeId, k, starId);
-              it = find(rank.begin(), rank.end(), cellRankArray[starId / 6]);
+              triangulation->getCellVTKID(starId, vtkId);
+              it = find(rank.begin(), rank.end(), cellRankArray[vtkId]);
               if(it != rank.end()) {
                 occurenceOfRank[it - rank.begin()]++;
               } else {
                 occurenceOfRank.push_back(1);
-                rank.push_back(cellRankArray[starId / 6]);
+                rank.push_back(cellRankArray[vtkId]);
               }
             }
             it = std::max_element(
               occurenceOfRank.begin(), occurenceOfRank.end());
-            vtkRankArray->InsertNextTuple1(
-              rank[std::distance(occurenceOfRank.begin(), it)]);
+            int indexMax = std::distance(occurenceOfRank.begin(), it);
+            if(vertRankArray[(*trajectory)[i].at(j - 1)] != rank[indexMax]
+               && vertRankArray[vertex] != rank[indexMax]) {
+              vtkRankArray->InsertNextTuple1(vertRankArray[vertex]);
+            } else {
+              vtkRankArray->InsertNextTuple1(
+                rank[std::distance(occurenceOfRank.begin(), it)]);
+            }
           }
           // iteration
           ids[0] = ids[1];
