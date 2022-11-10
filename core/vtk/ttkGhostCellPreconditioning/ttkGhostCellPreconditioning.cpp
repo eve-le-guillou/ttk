@@ -64,12 +64,12 @@ int ttkGhostCellPreconditioning::RequestData(
   this->printMsg("#Points: " + std::to_string(nVertices));
   this->printMsg("#Cells: " + std::to_string(nCells));
 
-  auto *verticesGlobalIds = ttkUtils::GetPointer<ttk::LongSimplexId>(
-    pointData->GetArray("GlobalPointIds"));
+  auto *verticesGlobalIds
+    = ttkUtils::GetPointer<ttk::LongSimplexId>(pointData->GetGlobalIds());
   auto *verticesGhostCells
     = ttkUtils::GetPointer<unsigned char>(pointData->GetArray("vtkGhostType"));
-  auto *cellsGlobalIds = ttkUtils::GetPointer<ttk::LongSimplexId>(
-    cellData->GetArray("GlobalCellIds"));
+  auto *cellsGlobalIds
+    = ttkUtils::GetPointer<ttk::LongSimplexId>(cellData->GetGlobalIds());
   auto *cellsGhostCells
     = ttkUtils::GetPointer<unsigned char>(cellData->GetArray("vtkGhostType"));
 
@@ -115,13 +115,11 @@ int ttkGhostCellPreconditioning::RequestData(
                      this->threadNumber_);
 
       return 1;
-      // } else {
-      //   this->printMsg("Necessary arrays are present,  TTK is built with MPI
-      //   "
-      //                  "support, but not run with mpirun. Running
-      //                  sequentially.");
-      //   return 0;
-      // }
+    } else {
+      this->printMsg("Necessary arrays are present,  TTK is built with MPI "
+                     "support, but not run with mpirun. Running sequentially.");
+      return 0;
+    }
 #else
     this->printMsg(
       "Necessary arrays are present, but TTK is not built with MPI support");
