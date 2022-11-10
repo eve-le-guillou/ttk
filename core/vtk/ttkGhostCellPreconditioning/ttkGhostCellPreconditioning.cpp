@@ -76,33 +76,33 @@ int ttkGhostCellPreconditioning::RequestData(
   if(verticesGlobalIds != nullptr && verticesGhostCells != nullptr
      && cellsGlobalIds != nullptr && cellsGhostCells != nullptr) {
 #ifdef TTK_ENABLE_MPI
-    // if(ttk::isRunningWithMPI()) {
-    if(ttk::MPIrank_ == 0)
-      this->printMsg(
-        "Global Point Ids and Ghost Cells exist, therefore we can continue!");
-    this->printMsg("#Ranks " + std::to_string(ttk::MPIsize_) + ", this is rank "
-                   + std::to_string(ttk::MPIrank_));
-    std::vector<int> verticesRankArray(nVertices, 0);
-    std::vector<int> cellsRankArray(nCells, 0);
-    double *boundingBox = input->GetBounds();
+    if(ttk::hasInitializedMPI()) {
+      if(ttk::MPIrank_ == 0)
+        this->printMsg(
+          "Global Point Ids and Ghost Cells exist, therefore we can continue!");
+      this->printMsg("#Ranks " + std::to_string(ttk::MPIsize_)
+                     + ", this is rank " + std::to_string(ttk::MPIrank_));
+      std::vector<int> verticesRankArray(nVertices, 0);
+      std::vector<int> cellsRankArray(nCells, 0);
+      double *boundingBox = input->GetBounds();
 
-    ttk::produceRankArray(verticesRankArray, verticesGlobalIds,
-                          verticesGhostCells, nVertices, boundingBox);
-    ttk::produceRankArray(
-      cellsRankArray, cellsGlobalIds, cellsGhostCells, nCells, boundingBox);
+      ttk::produceRankArray(verticesRankArray, verticesGlobalIds,
+                            verticesGhostCells, nVertices, boundingBox);
+      ttk::produceRankArray(
+        cellsRankArray, cellsGlobalIds, cellsGhostCells, nCells, boundingBox);
 
-    vtkNew<vtkIntArray> vtkVerticesRankArray{};
-    vtkVerticesRankArray->SetName("RankArray");
-    vtkVerticesRankArray->SetNumberOfComponents(1);
-    vtkVerticesRankArray->SetNumberOfTuples(nVertices);
+      vtkNew<vtkIntArray> vtkVerticesRankArray{};
+      vtkVerticesRankArray->SetName("RankArray");
+      vtkVerticesRankArray->SetNumberOfComponents(1);
+      vtkVerticesRankArray->SetNumberOfTuples(nVertices);
 
-    vtkNew<vtkIntArray> vtkCellsRankArray{};
-    vtkCellsRankArray->SetName("RankArray");
-    vtkCellsRankArray->SetNumberOfComponents(1);
-    vtkCellsRankArray->SetNumberOfTuples(nCells);
+      vtkNew<vtkIntArray> vtkCellsRankArray{};
+      vtkCellsRankArray->SetName("RankArray");
+      vtkCellsRankArray->SetNumberOfComponents(1);
+      vtkCellsRankArray->SetNumberOfTuples(nCells);
 
-    for(int i = 0; i < nVertices; i++) {
-      vtkVerticesRankArray->SetComponent(i, 0, verticesRankArray[i]);
+      for(int i = 0; i < nVertices; i++) {
+        vtkVerticesRankArray->SetComponent(i, 0, verticesRankArray[i]);
       }
       for(int i = 0; i < nCells; i++) {
         vtkCellsRankArray->SetComponent(i, 0, cellsRankArray[i]);

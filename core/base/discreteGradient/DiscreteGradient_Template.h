@@ -1605,14 +1605,14 @@ int DiscreteGradient::filterSaddleConnectors(
     = static_cast<const dataType *>(inputScalarField_.first);
   const auto *const offsets = inputOffsets_;
 
-  contourTree_.setDebugLevel(debugLevel_);
-  contourTree_.setVertexScalars(scalars);
-  contourTree_.setTreeType(ftm::TreeType::Contour);
-  contourTree_.setVertexSoSoffsets(offsets);
-  contourTree_.setThreadNumber(threadNumber_);
-  contourTree_.setSegmentation(false);
-  contourTree_.build<dataType>(&triangulation);
-  ftm::FTMTree_MT *tree = contourTree_.getTree(ftm::TreeType::Contour);
+  contourTree_->setDebugLevel(debugLevel_);
+  contourTree_->setVertexScalars(scalars);
+  contourTree_->setTreeType(ftm::TreeType::Contour);
+  contourTree_->setVertexSoSoffsets(offsets);
+  contourTree_->setThreadNumber(threadNumber_);
+  contourTree_->setSegmentation(false);
+  contourTree_->build<dataType>(&triangulation);
+  ftm::FTMTree_MT *tree = contourTree_->getTree(ftm::TreeType::Contour);
 
   const SimplexId numberOfNodes = tree->getNumberOfNodes();
   for(SimplexId nodeId = 0; nodeId < numberOfNodes; ++nodeId) {
@@ -1960,6 +1960,7 @@ inline void DiscreteGradient::pairCells(
       triangulation.getVertexEdge(alpha.id_, i, b);
       if(b == beta.id_) {
         localBId = i;
+        break;
       }
     }
   } else if(beta.dim_ == 2) {
@@ -1975,6 +1976,7 @@ inline void DiscreteGradient::pairCells(
       triangulation.getEdgeTriangle(alpha.id_, i, b);
       if(b == beta.id_) {
         localBId = i;
+        break;
       }
     }
   } else {
@@ -1990,6 +1992,7 @@ inline void DiscreteGradient::pairCells(
       triangulation.getTriangleStar(alpha.id_, i, b);
       if(b == beta.id_) {
         localBId = i;
+        break;
       }
     }
   }
@@ -2189,7 +2192,10 @@ SimplexId
   if(cell.dim_ == 0) {
     if(!isReverse) {
 #ifdef TTK_ENABLE_DCG_OPTIMIZE_MEMORY
-      triangulation.getVertexEdge(cell.id_, (*gradient_)[0][cell.id_], id);
+      const auto locId{(*gradient_)[0][cell.id_]};
+      if(locId != -1) {
+        triangulation.getVertexEdge(cell.id_, locId, id);
+      }
 #else
       id = (*gradient_)[0][cell.id_];
 #endif
@@ -2199,13 +2205,19 @@ SimplexId
   else if(cell.dim_ == 1) {
     if(isReverse) {
 #ifdef TTK_ENABLE_DCG_OPTIMIZE_MEMORY
-      triangulation.getEdgeVertex(cell.id_, (*gradient_)[1][cell.id_], id);
+      const auto locId{(*gradient_)[1][cell.id_]};
+      if(locId != -1) {
+        triangulation.getEdgeVertex(cell.id_, locId, id);
+      }
 #else
       id = (*gradient_)[1][cell.id_];
 #endif
     } else {
 #ifdef TTK_ENABLE_DCG_OPTIMIZE_MEMORY
-      triangulation.getEdgeTriangle(cell.id_, (*gradient_)[2][cell.id_], id);
+      const auto locId{(*gradient_)[2][cell.id_]};
+      if(locId != -1) {
+        triangulation.getEdgeTriangle(cell.id_, locId, id);
+      }
 #else
       id = (*gradient_)[2][cell.id_];
 #endif
@@ -2215,13 +2227,19 @@ SimplexId
   else if(cell.dim_ == 2) {
     if(isReverse) {
 #ifdef TTK_ENABLE_DCG_OPTIMIZE_MEMORY
-      triangulation.getTriangleEdge(cell.id_, (*gradient_)[3][cell.id_], id);
+      const auto locId{(*gradient_)[3][cell.id_]};
+      if(locId != -1) {
+        triangulation.getTriangleEdge(cell.id_, locId, id);
+      }
 #else
       id = (*gradient_)[3][cell.id_];
 #endif
     } else {
 #ifdef TTK_ENABLE_DCG_OPTIMIZE_MEMORY
-      triangulation.getTriangleStar(cell.id_, (*gradient_)[4][cell.id_], id);
+      const auto locId{(*gradient_)[4][cell.id_]};
+      if(locId != -1) {
+        triangulation.getTriangleStar(cell.id_, locId, id);
+      }
 #else
       id = (*gradient_)[4][cell.id_];
 #endif
@@ -2231,7 +2249,10 @@ SimplexId
   else if(cell.dim_ == 3) {
     if(isReverse) {
 #ifdef TTK_ENABLE_DCG_OPTIMIZE_MEMORY
-      triangulation.getCellTriangle(cell.id_, (*gradient_)[5][cell.id_], id);
+      const auto locId{(*gradient_)[5][cell.id_]};
+      if(locId != -1) {
+        triangulation.getCellTriangle(cell.id_, locId, id);
+      }
 #else
       id = (*gradient_)[5][cell.id_];
 #endif
@@ -2735,7 +2756,8 @@ int DiscreteGradient::getAscendingWall(
 
 template <typename triangulationType>
 int DiscreteGradient::reverseAscendingPath(
-  const std::vector<Cell> &vpath, const triangulationType &triangulation) {
+  const std::vector<Cell> &vpath,
+  const triangulationType &triangulation) const {
 
   if(dimensionality_ == 2) {
     // assume that the first cell is an edge
@@ -2803,7 +2825,8 @@ int DiscreteGradient::reverseAscendingPath(
 
 template <typename triangulationType>
 int DiscreteGradient::reverseDescendingPath(
-  const std::vector<Cell> &vpath, const triangulationType &triangulation) {
+  const std::vector<Cell> &vpath,
+  const triangulationType &triangulation) const {
 
   // assume that the first cell is an edge
   for(size_t i = 0; i < vpath.size(); i += 2) {
@@ -2841,7 +2864,8 @@ int DiscreteGradient::reverseDescendingPath(
 
 template <typename triangulationType>
 int DiscreteGradient::reverseAscendingPathOnWall(
-  const std::vector<Cell> &vpath, const triangulationType &triangulation) {
+  const std::vector<Cell> &vpath,
+  const triangulationType &triangulation) const {
 
   if(dimensionality_ == 3) {
     // assume that the first cell is an edge
@@ -2880,7 +2904,8 @@ int DiscreteGradient::reverseAscendingPathOnWall(
 
 template <typename triangulationType>
 int DiscreteGradient::reverseDescendingPathOnWall(
-  const std::vector<Cell> &vpath, const triangulationType &triangulation) {
+  const std::vector<Cell> &vpath,
+  const triangulationType &triangulation) const {
 
   if(dimensionality_ == 3) {
     // assume that the first cell is a triangle
