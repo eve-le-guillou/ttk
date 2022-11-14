@@ -16,9 +16,11 @@
 // base code includes
 #include <ArrayLinkedList.h>
 #include <Geometry.h>
+#include <ScalarFieldCriticalPoints.h>
 #include <Triangulation.h>
 // std includes
 #include <algorithm>
+#include <csignal>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -41,6 +43,7 @@ namespace ttk {
 
 #if TTK_ENABLE_MPI
   static int finishedElement_;
+  static int addedElement_;
   static std::vector<ttk::IntegralLine> unfinishedIntegralLines;
 
   /*
@@ -209,12 +212,15 @@ namespace ttk {
 
 #endif
 
-    int preconditionTriangulation(
-      ttk::AbstractTriangulation *triangulation) const {
+    int preconditionTriangulation(ttk::AbstractTriangulation *triangulation) {
       int status = triangulation->preconditionVertexNeighbors();
       status += triangulation->preconditionEdges();
       status += triangulation->preconditionEdgeStars();
       status += triangulation->preconditionVertexEdges();
+      // For critical points computation
+      status += triangulation->preconditionVertexStars();
+      status += triangulation->preconditionBoundaryVertices();
+      this->scalarFieldCriticalPoints_.setDomainDimension(2);
       return status;
     }
 
@@ -265,6 +271,10 @@ namespace ttk {
       chunkSize_ = size;
     }
 
+    inline void buildScalarFieldCriticalPoints() {
+      this->scalarFieldCriticalPoints_ = ttk::ScalarFieldCriticalPoints();
+    }
+
   protected:
     SimplexId vertexNumber_;
     SimplexId seedNumber_;
@@ -280,6 +290,7 @@ namespace ttk {
     ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> *outputSeedIdentifiers_;
     ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>
       *outputEdgeIdentifiers_;
+    ttk::ScalarFieldCriticalPoints scalarFieldCriticalPoints_;
 
 #ifdef TTK_ENABLE_MPI
     const int *vertRankArray_{nullptr};
@@ -334,21 +345,30 @@ void ttk::IntegralLines::receiveElement(
         }
       }
     } else {
-      integralLine.trajectory = outputTrajectories_->addArrayElement(
-        std::vector<ttk::SimplexId>(1, localId1));
-      integralLine.distanceFromSeed = outputDistancesFromSeed_->addArrayElement(
-        std::vector<double>(1, element.DistanceFromSeed1));
-      integralLine.edgeIdentifier = outputEdgeIdentifiers_->addArrayElement(
-        std::vector<ttk::SimplexId>(1, element.EdgeIdentifier1));
+#pragma omp critical(addTrajectories)
+      {
+        integralLine.trajectory = outputTrajectories_->addArrayElement(
+          std::vector<ttk::SimplexId>(1, localId1));
+        integralLine.distanceFromSeed
+          = outputDistancesFromSeed_->addArrayElement(
+            std::vector<double>(1, element.DistanceFromSeed1));
+        integralLine.edgeIdentifier = outputEdgeIdentifiers_->addArrayElement(
+          std::vector<ttk::SimplexId>(1, element.EdgeIdentifier1));
+        outputSeedIdentifiers_->addArrayElement(identifier);
+      }
     }
   }
   if(localId1 == -1) {
-    integralLine.trajectory
-      = outputTrajectories_->addArrayElement(std::vector<ttk::SimplexId>(0));
-    integralLine.distanceFromSeed
-      = outputDistancesFromSeed_->addArrayElement(std::vector<double>(0));
-    integralLine.edgeIdentifier
-      = outputEdgeIdentifiers_->addArrayElement(std::vector<ttk::SimplexId>(0));
+#pragma omp critical(addTrajectories)
+    {
+      integralLine.trajectory
+        = outputTrajectories_->addArrayElement(std::vector<ttk::SimplexId>(0));
+      integralLine.distanceFromSeed
+        = outputDistancesFromSeed_->addArrayElement(std::vector<double>(0));
+      integralLine.edgeIdentifier = outputEdgeIdentifiers_->addArrayElement(
+        std::vector<ttk::SimplexId>(0));
+      outputSeedIdentifiers_->addArrayElement(identifier);
+    }
   }
 
   if(!isUnfinished) {
@@ -360,7 +380,7 @@ void ttk::IntegralLines::receiveElement(
       triangulation->getVertexLocalId(element.Id3));
     integralLine.distanceFromSeed->push_back(element.DistanceFromSeed3);
     integralLine.edgeIdentifier->push_back(element.EdgeIdentifier3);
-    outputSeedIdentifiers_->addArrayElement(identifier);
+    // outputSeedIdentifiers_->addArrayElement(identifier);
   }
   if(element.Id4 != -1) {
     integralLine.trajectory->push_back(
@@ -417,6 +437,15 @@ void ttk::IntegralLines::storeToSendIfNecessary(
             element.Id3 = triangulation->getVertexGlobalId(
               integralLine.trajectory->back());
             rankArray = vertRankArray_[integralLine.trajectory->back()];
+            if(integralLine.trajectory->back() == -1) {
+              printMsg("rankArray: " + std::to_string(rankArray));
+              printMsg("integralLine.trajectory->back(): "
+                       + std::to_string(integralLine.trajectory->back()));
+              printMsg("size: "
+                       + std::to_string(integralLine.trajectory->size()));
+              printMsg("first element: "
+                       + std::to_string(integralLine.trajectory->at(0)));
+            }
             element.DistanceFromSeed3 = integralLine.distanceFromSeed->back();
             element.EdgeIdentifier3 = integralLine.edgeIdentifier->back();
             ;
@@ -460,6 +489,9 @@ void ttk::IntegralLines::storeToSendIfNecessary(
             element.DistanceFromSeed3
               = integralLine.distanceFromSeed->at(size - 2);
             element.EdgeIdentifier3 = integralLine.edgeIdentifier->at(size - 2);
+            // printMsg("integralLine.trajectory->at(size - 2):
+            // "+std::to_string(integralLine.trajectory->at(size - 2)));
+
             rankArray = vertRankArray_[integralLine.trajectory->at(size - 2)];
             element.Id4 = triangulation->getVertexGlobalId(
               integralLine.trajectory->at(size - 1));
@@ -498,9 +530,9 @@ void ttk::IntegralLines::computeIntegralLine(
   triangulation->getVertexPoint(v, p0[0], p0[1], p0[2]);
   bool isMax{};
   while(!isMax) {
-    SimplexId vnext{-1};
-    ttk::SimplexId fnext = offsets[v];
-    ttk::SimplexId edgeId{-1};
+    SimplexId vnext[2] = {-1, -1};
+    ttk::SimplexId fnext[2] = {offsets[v], offsets[v]};
+    ttk::SimplexId edgeId[2] = {-1, -1};
     SimplexId edgeNumber = triangulation->getVertexEdgeNumber(v);
     for(SimplexId k = 0; k < edgeNumber; ++k) {
       SimplexId e{-1};
@@ -511,20 +543,50 @@ void ttk::IntegralLines::computeIntegralLine(
         triangulation->getEdgeVertex(e, 1, n);
       }
       if(direction_ == static_cast<int>(Direction::Forward)) {
-        if(fnext < offsets[n]) {
-          vnext = n;
-          fnext = offsets[n];
-          edgeId = e;
+        if(fnext[0] < offsets[n]) {
+          if(fnext[1] < fnext[0]) {
+            vnext[1] = vnext[0];
+            fnext[1] = fnext[0];
+            edgeId[1] = edgeId[0];
+          }
+          vnext[0] = n;
+          fnext[0] = offsets[n];
+          edgeId[0] = e;
+        } else {
+          if(fnext[1] < offsets[n]) {
+            vnext[1] = n;
+            fnext[1] = offsets[n];
+            edgeId[1] = e;
+          }
         }
       } else {
-        if(fnext > offsets[n]) {
-          vnext = n;
-          fnext = offsets[n];
-          edgeId = e;
+        if(fnext[0] > offsets[n]) {
+          if(fnext[1] > fnext[0]) {
+            vnext[1] = vnext[0];
+            fnext[1] = fnext[0];
+            edgeId[1] = edgeId[0];
+          }
+          vnext[0] = n;
+          fnext[0] = offsets[n];
+          edgeId[0] = e;
+        } else {
+          if(fnext[1] > offsets[n]) {
+            vnext[1] = n;
+            fnext[1] = offsets[n];
+            edgeId[1] = e;
+          }
         }
       }
     }
-    if(vnext == -1) {
+    // if (v == 727468){
+    //   printMsg("HERE WE ARE");
+    //   printMsg("vnext[0]: "+std::to_string(vnext[0])+", vnext[1]:
+    //   "+std::to_string(vnext[1]));
+    // }
+    // if (vnext[0] == 727468 || vnext[1] == 727468){
+    //   printMsg("DAAAA");
+    // }
+    if(vnext[0] == -1) {
       isMax = true;
 #if TTK_ENABLE_MPI
       if(ttk::isRunningWithMPI() && vertRankArray_[v] == ttk::MPIrank_) {
@@ -533,17 +595,70 @@ void ttk::IntegralLines::computeIntegralLine(
       }
 #endif
     } else {
-      v = vnext;
-      triangulation->getVertexPoint(v, p1[0], p1[1], p1[2]);
-      distance += Geometry::distance(p0, p1, 3);
-      integralLine.trajectory->push_back(v);
+      // GET CRITICAL TYPE
+      char criticalType
+        = this->scalarFieldCriticalPoints_.getCriticalType<triangulationType>(
+          v, offsets, triangulation);
+      if(criticalType == (char)CriticalType::Saddle1
+         || criticalType == (char)CriticalType::Saddle2
+         || criticalType == (char)CriticalType::Degenerate) {
+        if(v == 727468) {
+          printMsg("HERE WE ARE In critical type");
+          printMsg("In critical type: vnext[0]: " + std::to_string(vnext[0])
+                   + ", vnext[1]: " + std::to_string(vnext[1]));
+        }
+        // The vertex is a saddle point, therefore we fork the integral line
+        // into two Second saddle point: we create a new integral line
+        ttk::IntegralLine integralLineFork = ttk::IntegralLine{
+          nullptr, nullptr, nullptr, triangulation->getVertexGlobalId(v)};
+        triangulation->getVertexPoint(vnext[1], p1[0], p1[1], p1[2]);
+        double distanceFork = Geometry::distance(p0, p1, 3);
+        // POTENTIAL IMPROVEMENT: add to vector, create integral line object
+        // later (no critical zone)
+#pragma omp atomic update seq_cst
+        addedElement_++;
+#pragma omp critical(addTrajectory)
+        {
+          integralLineFork.trajectory = outputTrajectories_->addArrayElement(
+            std::vector<ttk::SimplexId>({v, vnext[1]}));
+          integralLineFork.distanceFromSeed
+            = outputDistancesFromSeed_->addArrayElement(
+              std::vector<double>({0, distanceFork}));
+          integralLineFork.edgeIdentifier
+            = outputEdgeIdentifiers_->addArrayElement(
+              std::vector<ttk::SimplexId>(
+                {integralLine.edgeIdentifier->back(), edgeId[1]}));
+        }
+#pragma omp task firstprivate(integralLineFork)
+        {
+          this->computeIntegralLine<dataType, triangulationType>(
+            triangulation, integralLineFork, offsets);
+        }
+        // First saddle point: we simply continue normally the computation
+        v = vnext[0];
+        triangulation->getVertexPoint(v, p1[0], p1[1], p1[2]);
+        distance += Geometry::distance(p0, p1, 3);
+        integralLine.trajectory->push_back(v);
 
-      p0[0] = p1[0];
-      p0[1] = p1[1];
-      p0[2] = p1[2];
-      integralLine.distanceFromSeed->push_back(distance);
-      integralLine.edgeIdentifier->push_back(
-        triangulation->getEdgeGlobalId(edgeId));
+        p0[0] = p1[0];
+        p0[1] = p1[1];
+        p0[2] = p1[2];
+        integralLine.distanceFromSeed->push_back(distance);
+        integralLine.edgeIdentifier->push_back(
+          triangulation->getEdgeGlobalId(edgeId[0]));
+      } else {
+        v = vnext[0];
+        triangulation->getVertexPoint(v, p1[0], p1[1], p1[2]);
+        distance += Geometry::distance(p0, p1, 3);
+        integralLine.trajectory->push_back(v);
+
+        p0[0] = p1[0];
+        p0[1] = p1[1];
+        p0[2] = p1[2];
+        integralLine.distanceFromSeed->push_back(distance);
+        integralLine.edgeIdentifier->push_back(
+          triangulation->getEdgeGlobalId(edgeId[0]));
+      }
     }
 #ifdef TTK_ENABLE_MPI
     this->storeToSendIfNecessary<triangulationType>(
@@ -566,20 +681,23 @@ void ttk::IntegralLines::prepareForTask(
 
   for(SimplexId j = 0; j < nbElement; j++) {
     SimplexId v{seeds->at(j + startingIndex)};
-    chunkIntegralLine[j].trajectory
-      = outputTrajectories_->addArrayElement(std::vector<ttk::SimplexId>(1, v));
-    chunkIntegralLine[j].distanceFromSeed
-      = outputDistancesFromSeed_->addArrayElement(std::vector<double>(1, 0));
-    chunkIntegralLine[j].edgeIdentifier
-      = outputEdgeIdentifiers_->addArrayElement(
-        std::vector<ttk::SimplexId>(1, -1));
 #if TTK_ENABLE_MPI
     chunkIntegralLine[j].seedIdentifier = triangulation->getVertexGlobalId(v);
 #else
     chunkIntegralLine[j].seedIdentifier = v;
 #endif
-    outputSeedIdentifiers_->addArrayElement(
-      chunkIntegralLine[j].seedIdentifier);
+#pragma omp critical(addTrajectory)
+    {
+      chunkIntegralLine[j].trajectory = outputTrajectories_->addArrayElement(
+        std::vector<ttk::SimplexId>(1, v));
+      chunkIntegralLine[j].distanceFromSeed
+        = outputDistancesFromSeed_->addArrayElement(std::vector<double>(1, 0));
+      chunkIntegralLine[j].edgeIdentifier
+        = outputEdgeIdentifiers_->addArrayElement(
+          std::vector<ttk::SimplexId>(1, -1));
+      outputSeedIdentifiers_->addArrayElement(
+        chunkIntegralLine[j].seedIdentifier);
+    }
   }
 }
 
@@ -605,6 +723,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 #if TTK_ENABLE_MPI
   keepWorking_ = 1;
   finishedElement_ = 0;
+  addedElement_ = 0;
 #endif
 
   const SimplexId *offsets = inputOffsets_;
@@ -616,7 +735,7 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
 #ifdef TTK_ENABLE_OPENMP
 #ifdef TTK_ENABLE_MPI
 #pragma omp parallel shared(finishedElement_, unfinishedIntegralLines, \
-                            toSend_) num_threads(threadNumber_)
+                            toSend_, addedElement_) num_threads(threadNumber_)
   {
 #else
 #pragma omp parallel num_threads(threadNumber_)
@@ -660,8 +779,19 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
     int taskSize;
     int index;
     int totalMessageSize;
+    int receivedAddedElement = 0;
     while(keepWorking_) {
+      // std::raise(SIGINT);
+      printMsg("One round");
+      printMsg("finishedElement: " + std::to_string(finishedElement_)
+               + ", globalElementCounter_: "
+               + std::to_string(globalElementCounter_));
       // Exchange of the number of integral lines finished on all processes
+      MPI_Allreduce(&addedElement_, &receivedAddedElement, 1, MPI_INTEGER,
+                    MPI_SUM, ttk::MPIcomm_);
+      globalElementCounter_ += receivedAddedElement;
+      addedElement_ = 0;
+
       MPI_Allreduce(&finishedElement_, &finishedElementReceived, 1, MPI_INTEGER,
                     MPI_SUM, ttk::MPIcomm_);
       finishedElement_ = 0;
