@@ -46,10 +46,13 @@ template <typename triangulationType>
 int ttkIntegralLines::getTrajectories(
   vtkDataSet *input,
   triangulationType *triangulation,
-  ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> &trajectories,
-  ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> &distancesFromSeed,
-  ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> &seedIdentifiers,
-  ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>
+  std::vector<ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
+    &trajectories,
+  std::vector<ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE>>
+    &distancesFromSeed,
+  std::vector<ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE>>
+    &seedIdentifiers,
+  std::vector<ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
     &edgeIdentifiers,
   vtkUnstructuredGrid *output) {
   if(input == nullptr || output == nullptr
@@ -57,7 +60,7 @@ int ttkIntegralLines::getTrajectories(
     this->printErr("Null pointers in getTrajectories parameters");
     return 0;
   }
-
+  ttk::SimplexId threadNumber = trajectories.size();
   vtkNew<vtkUnstructuredGrid> ug{};
   vtkNew<vtkPoints> pts{};
   vtkNew<vtkDoubleArray> dist{};
@@ -98,93 +101,98 @@ int ttkIntegralLines::getTrajectories(
   const int *vertRankArray = triangulation->getVertRankArray();
   std::array<float, 3> p;
   std::array<vtkIdType, 2> ids;
-  std::list<std::array<std::vector<ttk::SimplexId>, TABULAR_SIZE>>::iterator trajectory
-    = trajectories.list.begin();
-  std::list<std::array<std::vector<double>, TABULAR_SIZE>>::iterator distanceFromSeed
-    = distancesFromSeed.list.begin();
-  std::list<std::array<ttk::SimplexId, TABULAR_SIZE>>::iterator seedIdentifier
-    = seedIdentifiers.list.begin();
-  std::list<std::array<std::vector<ttk::SimplexId>, TABULAR_SIZE>>::iterator
-    edgeIdentifier
-    = edgeIdentifiers.list.begin();
-  while(trajectory != trajectories.list.end()) {
-    for(int i = 0; i < TABULAR_SIZE; i++) {
-      if((*trajectory)[i].size() > 0) {
-        ttk::SimplexId vertex = (*trajectory)[i].at(0);
-        // init
-        triangulation->getVertexPoint(vertex, p[0], p[1], p[2]);
-        ids[0] = pts->InsertNextPoint(p.data());
-        // distanceScalars
-        dist->InsertNextTuple1((*distanceFromSeed)[i].at(0));
-        identifier->InsertNextTuple1((*seedIdentifier)[i]);
-        // inputScalars
-        for(size_t k = 0; k < scalarArrays.size(); ++k) {
-          inputScalars[k]->InsertNextTuple1(scalarArrays[k]->GetTuple1(vertex));
-        }
-        for(size_t j = 1; j < (*trajectory)[i].size(); ++j) {
-          vertex = (*trajectory)[i].at(j);
+  for(int thread = 0; thread < threadNumber; thread++) {
+    std::list<std::array<std::vector<ttk::SimplexId>, TABULAR_SIZE>>::iterator
+      trajectory
+      = trajectories[thread].list.begin();
+    std::list<std::array<std::vector<double>, TABULAR_SIZE>>::iterator
+      distanceFromSeed
+      = distancesFromSeed[thread].list.begin();
+    std::list<std::array<ttk::SimplexId, TABULAR_SIZE>>::iterator seedIdentifier
+      = seedIdentifiers[thread].list.begin();
+    std::list<std::array<std::vector<ttk::SimplexId>, TABULAR_SIZE>>::iterator
+      edgeIdentifier
+      = edgeIdentifiers[thread].list.begin();
+    while(trajectory != trajectories[thread].list.end()) {
+      for(int i = 0; i < TABULAR_SIZE; i++) {
+        if((*trajectory)[i].size() > 0) {
+          ttk::SimplexId vertex = (*trajectory)[i].at(0);
+          // init
           triangulation->getVertexPoint(vertex, p[0], p[1], p[2]);
-          ids[1] = pts->InsertNextPoint(p.data());
+          ids[0] = pts->InsertNextPoint(p.data());
           // distanceScalars
-          dist->InsertNextTuple1((*distanceFromSeed)[i].at(j));
+          dist->InsertNextTuple1((*distanceFromSeed)[i].at(0));
           identifier->InsertNextTuple1((*seedIdentifier)[i]);
-
           // inputScalars
-          for(unsigned int k = 0; k < scalarArrays.size(); ++k)
+          for(size_t k = 0; k < scalarArrays.size(); ++k) {
             inputScalars[k]->InsertNextTuple1(
               scalarArrays[k]->GetTuple1(vertex));
+          }
+          for(size_t j = 1; j < (*trajectory)[i].size(); ++j) {
+            vertex = (*trajectory)[i].at(j);
+            triangulation->getVertexPoint(vertex, p[0], p[1], p[2]);
+            ids[1] = pts->InsertNextPoint(p.data());
+            // distanceScalars
+            dist->InsertNextTuple1((*distanceFromSeed)[i].at(j));
+            identifier->InsertNextTuple1((*seedIdentifier)[i]);
 
-          ug->InsertNextCell(VTK_LINE, 2, ids.data());
-          vtkEdgeIdentifiers->InsertNextTuple1((*edgeIdentifier)[i].at(j));
-          if(vertRankArray[(*trajectory)[i].at(j - 1)]
-             == vertRankArray[vertex]) {
-            vtkRankArray->InsertNextTuple1(vertRankArray[vertex]);
-          } else {
-            ttk::SimplexId localEdgeId
-              = triangulation->getEdgeLocalId((*edgeIdentifier)[i].at(j));
-            int starNumber = triangulation->getEdgeStarNumber(localEdgeId);
-            ttk::SimplexId starId;
-            std::vector<int> occurenceOfRank;
-            std::vector<int> rank;
-            triangulation->getEdgeStar(localEdgeId, 0, starId);
-            ttk::SimplexId vtkId;
-            triangulation->getCellVTKID(starId, vtkId);
-            rank.push_back(cellRankArray[vtkId]);
-            occurenceOfRank.push_back(1);
-            std::vector<int>::iterator it;
-            for(int k = 1; k < starNumber; k++) {
-              triangulation->getEdgeStar(localEdgeId, k, starId);
-              triangulation->getCellVTKID(starId, vtkId);
-              it = find(rank.begin(), rank.end(), cellRankArray[vtkId]);
-              if(it != rank.end()) {
-                occurenceOfRank[it - rank.begin()]++;
-              } else {
-                occurenceOfRank.push_back(1);
-                rank.push_back(cellRankArray[vtkId]);
-              }
-            }
-            it = std::max_element(
-              occurenceOfRank.begin(), occurenceOfRank.end());
-            int indexMax = std::distance(occurenceOfRank.begin(), it);
-            if(vertRankArray[(*trajectory)[i].at(j - 1)] != rank[indexMax]
-               && vertRankArray[vertex] != rank[indexMax]) {
+            // inputScalars
+            for(unsigned int k = 0; k < scalarArrays.size(); ++k)
+              inputScalars[k]->InsertNextTuple1(
+                scalarArrays[k]->GetTuple1(vertex));
+
+            ug->InsertNextCell(VTK_LINE, 2, ids.data());
+            vtkEdgeIdentifiers->InsertNextTuple1((*edgeIdentifier)[i].at(j));
+            if(vertRankArray[(*trajectory)[i].at(j - 1)]
+               == vertRankArray[vertex]) {
               vtkRankArray->InsertNextTuple1(vertRankArray[vertex]);
             } else {
-              vtkRankArray->InsertNextTuple1(
-                rank[std::distance(occurenceOfRank.begin(), it)]);
+              ttk::SimplexId localEdgeId
+                = triangulation->getEdgeLocalId((*edgeIdentifier)[i].at(j));
+              int starNumber = triangulation->getEdgeStarNumber(localEdgeId);
+              ttk::SimplexId starId;
+              std::vector<int> occurenceOfRank;
+              std::vector<int> rank;
+              triangulation->getEdgeStar(localEdgeId, 0, starId);
+              ttk::SimplexId vtkId;
+              triangulation->getCellVTKID(starId, vtkId);
+              rank.push_back(cellRankArray[vtkId]);
+              occurenceOfRank.push_back(1);
+              std::vector<int>::iterator it;
+              for(int k = 1; k < starNumber; k++) {
+                triangulation->getEdgeStar(localEdgeId, k, starId);
+                triangulation->getCellVTKID(starId, vtkId);
+                it = find(rank.begin(), rank.end(), cellRankArray[vtkId]);
+                if(it != rank.end()) {
+                  occurenceOfRank[it - rank.begin()]++;
+                } else {
+                  occurenceOfRank.push_back(1);
+                  rank.push_back(cellRankArray[vtkId]);
+                }
+              }
+              it = std::max_element(
+                occurenceOfRank.begin(), occurenceOfRank.end());
+              int indexMax = std::distance(occurenceOfRank.begin(), it);
+              if(vertRankArray[(*trajectory)[i].at(j - 1)] != rank[indexMax]
+                 && vertRankArray[vertex] != rank[indexMax]) {
+                vtkRankArray->InsertNextTuple1(vertRankArray[vertex]);
+              } else {
+                vtkRankArray->InsertNextTuple1(
+                  rank[std::distance(occurenceOfRank.begin(), it)]);
+              }
             }
+            // iteration
+            ids[0] = ids[1];
           }
-          // iteration
-          ids[0] = ids[1];
+        } else {
+          break;
         }
-      } else {
-        break;
       }
+      trajectory++;
+      distanceFromSeed++;
+      seedIdentifier++;
+      edgeIdentifier++;
     }
-    trajectory++;
-    distanceFromSeed++;
-    seedIdentifier++;
-    edgeIdentifier++;
   }
 
   ug->SetPoints(pts);
@@ -308,11 +316,20 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   isSeed.clear();
 #endif
 
-  ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE> trajectories;
-  ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE> distancesFromSeed;
-  ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE> seedIdentifiers;
-  ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>
-    edgeIdentifiers;
+  std::vector<ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
+    trajectories(
+      threadNumber_,
+      ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>());
+  std::vector<ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE>>
+    distancesFromSeed(
+      threadNumber_, ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE>());
+  std::vector<ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE>>
+    seedIdentifiers(
+      threadNumber_, ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE>());
+  std::vector<ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
+    edgeIdentifiers(
+      threadNumber_,
+      ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>());
 
   this->setVertexNumber(numberOfPointsInDomain);
   this->setSeedNumber(numberOfPointsInSeeds);
@@ -331,7 +348,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #ifdef TTK_ENABLE_MPI
   std::vector<std::vector<std::vector<ttk::ElementToBeSent>>> toSend(
     ttk::MPIsize_);
-  this->initializeNeighbors();
+  this->setNeighbors(triangulation->getNeighborRanks());
   if(ttk::MPIsize_ > 1) {
     toSend.resize(this->neighborNumber_);
     for(int i = 0; i < this->neighborNumber_; i++) {
