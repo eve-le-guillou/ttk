@@ -504,7 +504,8 @@ int ttk::ScalarFieldCriticalPoints::getNumberOfLowerUpperComponents(
   // We retrieve the lower and upper components if we want them
   if(upperComponents != nullptr && lowerComponents != nullptr) {
     std::vector<UnionFind *> upperUnionFind;
-    upperComponents->push_back(std::vector<ttk::SimplexId>(upperNeighbors[0]));
+    upperComponents->push_back(
+      std::vector<ttk::SimplexId>(1, upperNeighbors[0]));
     upperUnionFind.push_back(upperList[0]);
     for(ttk::SimplexId i = 1; i < (SimplexId)upperNeighbors.size(); i++) {
       it
@@ -514,12 +515,13 @@ int ttk::ScalarFieldCriticalPoints::getNumberOfLowerUpperComponents(
           .push_back(upperNeighbors[i]);
       } else {
         upperComponents->push_back(
-          std::vector<ttk::SimplexId>(upperNeighbors[i]));
+          std::vector<ttk::SimplexId>(1, upperNeighbors[i]));
         upperUnionFind.push_back(upperList[i]);
       }
     }
     std::vector<UnionFind *> lowerUnionFind;
-    lowerComponents->push_back(std::vector<ttk::SimplexId>(lowerNeighbors[0]));
+    lowerComponents->push_back(
+      std::vector<ttk::SimplexId>(1, lowerNeighbors[0]));
     lowerUnionFind.push_back(lowerList[0]);
     for(ttk::SimplexId i = 1; i < (SimplexId)lowerNeighbors.size(); i++) {
       it
@@ -529,7 +531,7 @@ int ttk::ScalarFieldCriticalPoints::getNumberOfLowerUpperComponents(
           .push_back(lowerNeighbors[i]);
       } else {
         lowerComponents->push_back(
-          std::vector<ttk::SimplexId>(lowerNeighbors[i]));
+          std::vector<ttk::SimplexId>(1, lowerNeighbors[i]));
         lowerUnionFind.push_back(lowerList[i]);
       }
     }

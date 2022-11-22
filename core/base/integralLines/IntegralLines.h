@@ -390,7 +390,7 @@ void ttk::IntegralLines::computeIntegralLine(
     // GET CRITICAL TYPE
     char criticalType
       = this->scalarFieldCriticalPoints_.getCriticalType<triangulationType>(
-        v, offsets, triangulation);
+        v, offsets, triangulation, &upperComponents, &lowerComponents);
     if((criticalType == (char)CriticalType::Local_maximum
         && direction_ == static_cast<int>(Direction::Forward))
        || (criticalType == (char)CriticalType::Local_minimum
@@ -403,15 +403,15 @@ void ttk::IntegralLines::computeIntegralLine(
       }
 #endif
     } else {
+      components = &(lowerComponents);
       if(criticalType == (char)CriticalType::Saddle1
          || criticalType == (char)CriticalType::Saddle2
          || criticalType == (char)CriticalType::Degenerate) {
         if(direction_ == static_cast<int>(Direction::Forward)) {
           components = &(upperComponents);
-        } else {
-          components = &(lowerComponents);
         }
       } else {
+        components->clear();
         ttk::SimplexId neighborNumber
           = triangulation->getVertexNeighborNumber(v);
         components->push_back(std::vector<ttk::SimplexId>());
@@ -421,7 +421,8 @@ void ttk::IntegralLines::computeIntegralLine(
           components->at(0).push_back(id);
         }
       }
-      for(int i = 0; i < components->size(); i++) {
+      ttk::SimplexId numberOfComponents = components->size();
+      for(int i = 0; i < numberOfComponents; i++) {
         SimplexId vnext = -1;
         ttk::SimplexId fnext = offsets[v];
         ttk::SimplexId elementInComponentNumber = components->at(i).size();
@@ -440,7 +441,7 @@ void ttk::IntegralLines::computeIntegralLine(
         }
         // FIND EDGE ID
         edgeId = this->findEdgeId<triangulationType>(v, vnext, triangulation);
-        if(i == components->size() - 1) {
+        if(i == numberOfComponents - 1) {
           triangulation->getVertexPoint(vnext, p1[0], p1[1], p1[2]);
           distance += Geometry::distance(p0, p1, 3);
           integralLine.trajectory->push_back(vnext);
@@ -484,6 +485,7 @@ void ttk::IntegralLines::computeIntegralLine(
 #endif
   }
   }
+
   template <class triangulationType>
   ttk::SimplexId ttk::IntegralLines::findEdgeId(
     ttk::SimplexId &v1,
@@ -504,6 +506,7 @@ void ttk::IntegralLines::computeIntegralLine(
     }
     return -1;
   }
+
 template <typename dataType, class triangulationType>
 void ttk::IntegralLines::prepareForTask(
 #ifdef TTK_ENABLE_MPI
@@ -523,20 +526,17 @@ void ttk::IntegralLines::prepareForTask(
 #else
     chunkIntegralLine[j].seedIdentifier = v;
 #endif
-#pragma omp critical(addTrajectory)
-    {
-      chunkIntegralLine[j].trajectory
-        = outputTrajectories_->at(omp_get_thread_num())
-            .addArrayElement(std::vector<ttk::SimplexId>(1, v));
-      chunkIntegralLine[j].distanceFromSeed
-        = outputDistancesFromSeed_->at(omp_get_thread_num())
-            .addArrayElement(std::vector<double>(1, 0));
-      chunkIntegralLine[j].edgeIdentifier
-        = outputEdgeIdentifiers_->at(omp_get_thread_num())
-            .addArrayElement(std::vector<ttk::SimplexId>(1, -1));
-      outputSeedIdentifiers_->at(omp_get_thread_num())
-        .addArrayElement(chunkIntegralLine[j].seedIdentifier);
-    }
+    chunkIntegralLine[j].trajectory
+      = outputTrajectories_->at(omp_get_thread_num())
+          .addArrayElement(std::vector<ttk::SimplexId>(1, v));
+    chunkIntegralLine[j].distanceFromSeed
+      = outputDistancesFromSeed_->at(omp_get_thread_num())
+          .addArrayElement(std::vector<double>(1, 0));
+    chunkIntegralLine[j].edgeIdentifier
+      = outputEdgeIdentifiers_->at(omp_get_thread_num())
+          .addArrayElement(std::vector<ttk::SimplexId>(1, -1));
+    outputSeedIdentifiers_->at(omp_get_thread_num())
+      .addArrayElement(chunkIntegralLine[j].seedIdentifier);
   }
 }
 
@@ -620,11 +620,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
     int totalMessageSize;
     int receivedAddedElement = 0;
     while(keepWorking_) {
-      // std::raise(SIGINT);
-      printMsg("One round");
-      printMsg("finishedElement: " + std::to_string(finishedElement_)
-               + ", globalElementCounter_: "
-               + std::to_string(globalElementCounter_));
       // Exchange of the number of integral lines finished on all processes
       MPI_Allreduce(&addedElement_, &receivedAddedElement, 1, MPI_INTEGER,
                     MPI_SUM, ttk::MPIcomm_);
