@@ -353,14 +353,14 @@ void ttk::IntegralLines::storeToSendIfNecessary(
       if(rankArray != ttk::MPIrank_) {
         ElementToBeSent element
           = ElementToBeSent{-1, -1, 0, 0, -1, -1, integralLine.seedIdentifier};
-        element.Id1
+        element.Id2
           = triangulation->getVertexGlobalId(integralLine.trajectory->back());
-        element.Id2 = triangulation->getVertexGlobalId(
+        element.Id1 = triangulation->getVertexGlobalId(
           integralLine.trajectory->at(size - 2));
-        element.DistanceFromSeed1 = integralLine.distanceFromSeed->back();
-        element.DistanceFromSeed2 = integralLine.distanceFromSeed->at(size - 2);
-        element.EdgeIdentifier1 = integralLine.edgeIdentifier->back();
-        element.EdgeIdentifier2 = integralLine.edgeIdentifier->at(size - 2);
+        element.DistanceFromSeed2 = integralLine.distanceFromSeed->back();
+        element.DistanceFromSeed1 = integralLine.distanceFromSeed->at(size - 2);
+        element.EdgeIdentifier2 = integralLine.edgeIdentifier->back();
+        element.EdgeIdentifier1 = integralLine.edgeIdentifier->at(size - 2);
         toSend_
           ->at(neighborsToId_.find(rankArray)->second)[omp_get_thread_num()]
           .push_back(element);
@@ -449,12 +449,12 @@ void ttk::IntegralLines::computeIntegralLine(
           p0[1] = p1[1];
           p0[2] = p1[2];
           integralLine.distanceFromSeed->push_back(distance);
-          integralLine.edgeIdentifier->push_back(
-            triangulation->getEdgeGlobalId(edgeId));
+          integralLine.edgeIdentifier->push_back(edgeId);
           v = vnext;
         } else {
-          ttk::IntegralLine integralLineFork = ttk::IntegralLine{
-            nullptr, nullptr, nullptr, triangulation->getVertexGlobalId(vnext)};
+          ttk::SimplexId seedIdentifier = triangulation->getVertexGlobalId(v);
+          ttk::IntegralLine integralLineFork
+            = ttk::IntegralLine{nullptr, nullptr, nullptr, seedIdentifier};
           triangulation->getVertexPoint(vnext, p1[0], p1[1], p1[2]);
           double distanceFork = Geometry::distance(p0, p1, 3);
           // POTENTIAL IMPROVEMENT: add to vector, create integral line object
@@ -469,8 +469,9 @@ void ttk::IntegralLines::computeIntegralLine(
                 .addArrayElement(std::vector<double>({0, distanceFork}));
           integralLineFork.edgeIdentifier
             = outputEdgeIdentifiers_->at(omp_get_thread_num())
-                .addArrayElement(std::vector<ttk::SimplexId>(
-                  {integralLine.edgeIdentifier->back(), edgeId}));
+                .addArrayElement(std::vector<ttk::SimplexId>({-1, edgeId}));
+          outputSeedIdentifiers_->at(omp_get_thread_num())
+            .addArrayElement(seedIdentifier);
 #pragma omp task firstprivate(integralLineFork)
           {
             this->computeIntegralLine<dataType, triangulationType>(
@@ -501,7 +502,7 @@ void ttk::IntegralLines::computeIntegralLine(
         triangulation->getEdgeVertex(edgeId, 1, v);
       }
       if(v == v2) {
-        return edgeId;
+        return triangulation->getEdgeGlobalId(edgeId);
       }
     }
     return -1;
