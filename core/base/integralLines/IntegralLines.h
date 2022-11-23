@@ -474,8 +474,13 @@ void ttk::IntegralLines::computeIntegralLine(
             .addArrayElement(seedIdentifier);
 #pragma omp task firstprivate(integralLineFork)
           {
-            this->computeIntegralLine<dataType, triangulationType>(
-              triangulation, integralLineFork, offsets);
+            bool hasBeenSent = false;
+            this->storeToSendIfNecessary<triangulationType>(
+              triangulation, integralLineFork, hasBeenSent);
+            if(!hasBeenSent) {
+              this->computeIntegralLine<dataType, triangulationType>(
+                triangulation, integralLineFork, offsets);
+            }
           }
         }
       }
