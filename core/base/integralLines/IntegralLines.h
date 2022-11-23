@@ -308,21 +308,23 @@ void ttk::IntegralLines::receiveElement(
   ttk::IntegralLine integralLine
     = ttk::IntegralLine{nullptr, nullptr, nullptr, element.SeedIdentifier};
   // Create integral line object on this process
-  integralLine.trajectory
-    = outputTrajectories_->at(omp_get_thread_num())
-        .addArrayElement(std::vector<ttk::SimplexId>(
-          {triangulation->getVertexLocalId(element.Id1),
-           triangulation->getVertexLocalId(element.Id2)}));
+  int threadNum{0};
+#if TTK_ENABLE_OPENMP
+  threadNum = omp_get_thread_num();
+#endif
+  integralLine.trajectory = outputTrajectories_->at(threadNum).addArrayElement(
+    std::vector<ttk::SimplexId>(
+      {triangulation->getVertexLocalId(element.Id1),
+       triangulation->getVertexLocalId(element.Id2)}));
   integralLine.distanceFromSeed
-    = outputDistancesFromSeed_->at(omp_get_thread_num())
-        .addArrayElement(std::vector<double>(
-          {element.DistanceFromSeed1, element.DistanceFromSeed2}));
+    = outputDistancesFromSeed_->at(threadNum).addArrayElement(
+      std::vector<double>(
+        {element.DistanceFromSeed1, element.DistanceFromSeed2}));
   integralLine.edgeIdentifier
-    = outputEdgeIdentifiers_->at(omp_get_thread_num())
-        .addArrayElement(std::vector<ttk::SimplexId>(
-          {element.EdgeIdentifier1, element.EdgeIdentifier2}));
-  outputSeedIdentifiers_->at(omp_get_thread_num())
-    .addArrayElement(element.SeedIdentifier);
+    = outputEdgeIdentifiers_->at(threadNum).addArrayElement(
+      std::vector<ttk::SimplexId>(
+        {element.EdgeIdentifier1, element.EdgeIdentifier2}));
+  outputSeedIdentifiers_->at(threadNum).addArrayElement(element.SeedIdentifier);
 
   // Add to chunks for task granularity
   chunkIntegralLine[index].trajectory = integralLine.trajectory;
@@ -361,9 +363,14 @@ void ttk::IntegralLines::storeToSendIfNecessary(
         element.DistanceFromSeed1 = integralLine.distanceFromSeed->at(size - 2);
         element.EdgeIdentifier2 = integralLine.edgeIdentifier->back();
         element.EdgeIdentifier1 = integralLine.edgeIdentifier->at(size - 2);
+#if TTK_ENABLE_OPENMP
         toSend_
           ->at(neighborsToId_.find(rankArray)->second)[omp_get_thread_num()]
           .push_back(element);
+#else
+        toSend_->at(neighborsToId_.find(rankArray)->second)[0].push_back(
+          element);
+#endif
         isMax = true;
       }
     }
@@ -461,17 +468,20 @@ void ttk::IntegralLines::computeIntegralLine(
           // later (no critical zone)
 #pragma omp atomic update seq_cst
           addedElement_++;
+          int threadNum{0};
+#if TTK_ENABLE_OPENMP
+          threadNum = omp_get_thread_num();
+#endif
           integralLineFork.trajectory
-            = outputTrajectories_->at(omp_get_thread_num())
-                .addArrayElement(std::vector<ttk::SimplexId>({v, vnext}));
+            = outputTrajectories_->at(threadNum).addArrayElement(
+              std::vector<ttk::SimplexId>({v, vnext}));
           integralLineFork.distanceFromSeed
-            = outputDistancesFromSeed_->at(omp_get_thread_num())
-                .addArrayElement(std::vector<double>({0, distanceFork}));
+            = outputDistancesFromSeed_->at(threadNum).addArrayElement(
+              std::vector<double>({0, distanceFork}));
           integralLineFork.edgeIdentifier
-            = outputEdgeIdentifiers_->at(omp_get_thread_num())
-                .addArrayElement(std::vector<ttk::SimplexId>({-1, edgeId}));
-          outputSeedIdentifiers_->at(omp_get_thread_num())
-            .addArrayElement(seedIdentifier);
+            = outputEdgeIdentifiers_->at(threadNum).addArrayElement(
+              std::vector<ttk::SimplexId>({-1, edgeId}));
+          outputSeedIdentifiers_->at(threadNum).addArrayElement(seedIdentifier);
 #pragma omp task firstprivate(integralLineFork)
           {
             bool hasBeenSent = false;
@@ -532,17 +542,21 @@ void ttk::IntegralLines::prepareForTask(
 #else
     chunkIntegralLine[j].seedIdentifier = v;
 #endif
+    int threadNum{0};
+#if TTK_ENABLE_OPENMP
+    threadNum = omp_get_thread_num();
+#endif
     chunkIntegralLine[j].trajectory
-      = outputTrajectories_->at(omp_get_thread_num())
-          .addArrayElement(std::vector<ttk::SimplexId>(1, v));
+      = outputTrajectories_->at(threadNum).addArrayElement(
+        std::vector<ttk::SimplexId>(1, v));
     chunkIntegralLine[j].distanceFromSeed
-      = outputDistancesFromSeed_->at(omp_get_thread_num())
-          .addArrayElement(std::vector<double>(1, 0));
+      = outputDistancesFromSeed_->at(threadNum).addArrayElement(
+        std::vector<double>(1, 0));
     chunkIntegralLine[j].edgeIdentifier
-      = outputEdgeIdentifiers_->at(omp_get_thread_num())
-          .addArrayElement(std::vector<ttk::SimplexId>(1, -1));
-    outputSeedIdentifiers_->at(omp_get_thread_num())
-      .addArrayElement(chunkIntegralLine[j].seedIdentifier);
+      = outputEdgeIdentifiers_->at(threadNum).addArrayElement(
+        std::vector<ttk::SimplexId>(1, -1));
+    outputSeedIdentifiers_->at(threadNum).addArrayElement(
+      chunkIntegralLine[j].seedIdentifier);
   }
 }
 
@@ -626,12 +640,9 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
     int totalMessageSize;
     int receivedAddedElement = 0;
     while(keepWorking_) {
-      // Exchange of the number of integral lines finished on all processes
-      MPI_Allreduce(&addedElement_, &receivedAddedElement, 1, MPI_INTEGER,
-                    MPI_SUM, ttk::MPIcomm_);
-      globalElementCounter_ += receivedAddedElement;
+      finishedElement_ -= addedElement_;
       addedElement_ = 0;
-
+      // Exchange of the number of integral lines finished on all processes
       MPI_Allreduce(&finishedElement_, &finishedElementReceived, 1, MPI_INTEGER,
                     MPI_SUM, ttk::MPIcomm_);
       finishedElement_ = 0;

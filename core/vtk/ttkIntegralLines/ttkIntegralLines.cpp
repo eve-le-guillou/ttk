@@ -147,39 +147,11 @@ int ttkIntegralLines::getTrajectories(
                == vertRankArray[vertex]) {
               vtkRankArray->InsertNextTuple1(vertRankArray[vertex]);
             } else {
-              ttk::SimplexId localEdgeId
-                = triangulation->getEdgeLocalId((*edgeIdentifier)[i].at(j));
-              int starNumber = triangulation->getEdgeStarNumber(localEdgeId);
-              ttk::SimplexId starId;
-              std::vector<int> occurenceOfRank;
-              std::vector<int> rank;
-              triangulation->getEdgeStar(localEdgeId, 0, starId);
-              ttk::SimplexId vtkId;
-              triangulation->getCellVTKID(starId, vtkId);
-              rank.push_back(cellRankArray[vtkId]);
-              occurenceOfRank.push_back(1);
-              std::vector<int>::iterator it;
-              for(int k = 1; k < starNumber; k++) {
-                triangulation->getEdgeStar(localEdgeId, k, starId);
-                triangulation->getCellVTKID(starId, vtkId);
-                it = find(rank.begin(), rank.end(), cellRankArray[vtkId]);
-                if(it != rank.end()) {
-                  occurenceOfRank[it - rank.begin()]++;
-                } else {
-                  occurenceOfRank.push_back(1);
-                  rank.push_back(cellRankArray[vtkId]);
-                }
-              }
-              it = std::max_element(
-                occurenceOfRank.begin(), occurenceOfRank.end());
-              int indexMax = std::distance(occurenceOfRank.begin(), it);
-              if(vertRankArray[(*trajectory)[i].at(j - 1)] != rank[indexMax]
-                 && vertRankArray[vertex] != rank[indexMax]) {
-                vtkRankArray->InsertNextTuple1(vertRankArray[vertex]);
-              } else {
-                vtkRankArray->InsertNextTuple1(
-                  rank[std::distance(occurenceOfRank.begin(), it)]);
-              }
+              int id = std::min(
+                triangulation->getVertexGlobalId((*trajectory)[i].at(j - 1)),
+                triangulation->getVertexGlobalId((*trajectory)[i].at(j)));
+              vtkRankArray->InsertNextTuple1(
+                vertRankArray[triangulation->getVertexLocalId(id)]);
             }
             // iteration
             ids[0] = ids[1];
