@@ -94,10 +94,8 @@ public:
       &distancesFromSeed,
     std::vector<ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE>>
       &seedIdentifiers,
-#if TTK_ENABLE_MPI
     std::vector<ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
       &edgeIdentifiers,
-#endif
     vtkUnstructuredGrid *output);
 
 protected:

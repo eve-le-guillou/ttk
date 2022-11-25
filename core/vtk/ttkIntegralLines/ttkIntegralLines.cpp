@@ -52,10 +52,8 @@ int ttkIntegralLines::getTrajectories(
     &distancesFromSeed,
   std::vector<ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE>>
     &seedIdentifiers,
-#if TTK_ENABLE_MPI
   std::vector<ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
     &edgeIdentifiers,
-#endif
   vtkUnstructuredGrid *output) {
   if(input == nullptr || output == nullptr
      || input->GetPointData() == nullptr) {
@@ -75,11 +73,14 @@ int ttkIntegralLines::getTrajectories(
   identifier->SetNumberOfComponents(1);
   identifier->SetName("SeedIdentifier");
 
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
   vtkEdgeIdentifiers->SetNumberOfComponents(1);
   vtkEdgeIdentifiers->SetName("GlobalCellIds");
   vtkRankArray->SetNumberOfComponents(1);
   vtkRankArray->SetName("RankArray");
+#else
+  vtkEdgeIdentifiers->SetNumberOfComponents(1);
+  vtkEdgeIdentifiers->SetName("EdgeIdentifiers");
 #endif
   const auto numberOfArrays = input->GetPointData()->GetNumberOfArrays();
 
@@ -100,7 +101,7 @@ int ttkIntegralLines::getTrajectories(
     inputScalars[k]->SetNumberOfComponents(1);
     inputScalars[k]->SetName(scalarArrays[k]->GetName());
   }
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
   const int *vertRankArray = triangulation->getVertRankArray();
 #endif
   std::array<float, 3> p;
@@ -114,11 +115,9 @@ int ttkIntegralLines::getTrajectories(
       = distancesFromSeed[thread].list.begin();
     std::list<std::array<ttk::SimplexId, TABULAR_SIZE>>::iterator seedIdentifier
       = seedIdentifiers[thread].list.begin();
-#if TTK_ENABLE_MPI
     std::list<std::array<std::vector<ttk::SimplexId>, TABULAR_SIZE>>::iterator
       edgeIdentifier
       = edgeIdentifiers[thread].list.begin();
-#endif
     while(trajectory != trajectories[thread].list.end()) {
       for(int i = 0; i < TABULAR_SIZE; i++) {
         if((*trajectory)[i].size() > 0) {
@@ -148,8 +147,8 @@ int ttkIntegralLines::getTrajectories(
                 scalarArrays[k]->GetTuple1(vertex));
 
             ug->InsertNextCell(VTK_LINE, 2, ids.data());
-#if TTK_ENABLE_MPI
             vtkEdgeIdentifiers->InsertNextTuple1((*edgeIdentifier)[i].at(j));
+#ifdef TTK_ENABLE_MPI
             if(vertRankArray[(*trajectory)[i].at(j - 1)]
                == vertRankArray[vertex]) {
               vtkRankArray->InsertNextTuple1(vertRankArray[vertex]);
@@ -171,19 +170,17 @@ int ttkIntegralLines::getTrajectories(
       trajectory++;
       distanceFromSeed++;
       seedIdentifier++;
-#if TTK_ENABLE_MPI
       edgeIdentifier++;
-#endif
     }
   }
 
   ug->SetPoints(pts);
   ug->GetPointData()->AddArray(dist);
   ug->GetPointData()->AddArray(identifier);
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
   ug->GetCellData()->AddArray(vtkRankArray);
-  ug->GetCellData()->AddArray(vtkEdgeIdentifiers);
 #endif
+  ug->GetCellData()->AddArray(vtkEdgeIdentifiers);
   for(unsigned int k = 0; k < scalarArrays.size(); ++k) {
     ug->GetPointData()->AddArray(inputScalars[k]);
   }
@@ -215,7 +212,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   ttk::Timer t_mpi;
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
   // Necessary when using MPI
   std::vector<ttk::SimplexId> inputIdentifiers{};
   vertRankArray_ = triangulation->getVertRankArray();
@@ -325,9 +322,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   this->setOutputTrajectories(&trajectories);
   this->setOutputDistancesFromSeed(&distancesFromSeed);
   this->setOutputSeedIdentifiers(&seedIdentifiers);
-#if TTK_ENABLE_MPI
   this->setOutputEdgeIdentifiers(&edgeIdentifiers);
-#endif
   this->preconditionTriangulation(triangulation);
   this->setChunkSize(
     std::max(std::min(1000, (int)numberOfPointsInSeeds),
@@ -413,7 +408,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   }
 #endif
   // make the vtk trajectories
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
   ttkTemplateMacro(
     triangulation->getType(),
     (getTrajectories<TTK_TT>(
@@ -428,38 +423,36 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
 
   // Write data to csv
-  // std::ofstream myfile;
-  // myfile.open("/home/eveleguillou/experiment/IntegralLines/Benchmark/"
-  //             + std::to_string(ttk::MPIsize_) + "_proc_integraLines_"
-  //             + std::to_string(ttk::MPIrank_) + ".csv");
-  // myfile << "DistanceFromSeed,SeedIdentifier,GlobalPointIds,vtkGhostType\n";
-  // vtkDataArray *ghostArray =
-  // output->GetPointData()->GetArray("vtkGhostType"); vtkDataArray
-  // *seedIdentifier
-  //   = output->GetPointData()->GetArray("SeedIdentifier");
-  // vtkDataArray *globalIdsForCsv
-  //   = output->GetPointData()->GetArray("GlobalPointIds");
-  // vtkDataArray *distance =
-  // output->GetPointData()->GetArray("DistanceFromSeed"); for(int i = 0; i <
-  // ghostArray->GetNumberOfTuples(); i++) {
-  //   myfile << std::to_string(distance->GetTuple1(i)) + ","
-  //               + std::to_string(seedIdentifier->GetTuple1(i)) + ","
-  //               + std::to_string(globalIdsForCsv->GetTuple1(i)) + ","
-  //               + std::to_string(ghostArray->GetTuple1(i)) + "\n";
-  // }
-  // myfile.close();
+  std::ofstream myfile;
+  myfile.open("/home/eveleguillou/experiment/IntegralLines/Benchmark/"
+              + std::to_string(ttk::MPIsize_) + "_proc_integraLines_"
+              + std::to_string(ttk::MPIrank_) + ".csv");
+  myfile << "DistanceFromSeed,SeedIdentifier,GlobalPointIds,vtkGhostType\n";
+  vtkDataArray *ghostArray = output->GetPointData()->GetArray("vtkGhostType");
+  vtkDataArray *seedIdentifier
+    = output->GetPointData()->GetArray("SeedIdentifier");
+  vtkDataArray *globalIdsForCsv
+    = output->GetPointData()->GetArray("GlobalPointIds");
+  vtkDataArray *distance = output->GetPointData()->GetArray("DistanceFromSeed");
+  for(int i = 0; i < ghostArray->GetNumberOfTuples(); i++) {
+    myfile << std::to_string(distance->GetTuple1(i)) + ","
+                + std::to_string(seedIdentifier->GetTuple1(i)) + ","
+                + std::to_string(globalIdsForCsv->GetTuple1(i)) + ","
+                + std::to_string(ghostArray->GetTuple1(i)) + "\n";
+  }
+  myfile.close();
 
-  // myfile.open("/home/eveleguillou/experiment/IntegralLines/Benchmark/"
-  //             + std::to_string(ttk::MPIsize_) + "_proc_integraLinesCellData_"
-  //             + std::to_string(ttk::MPIrank_) + ".csv");
-  // myfile << "GlobalCellIds,RankArray\n";
-  // vtkDataArray *edgeId = output->GetCellData()->GetArray("GlobalCellIds");
-  // vtkDataArray *rankArray = output->GetCellData()->GetArray("RankArray");
-  // for(int i = 0; i < edgeId->GetNumberOfTuples(); i++) {
-  //   myfile << std::to_string(edgeId->GetTuple1(i)) + ","
-  //               + std::to_string(rankArray->GetTuple1(i)) + "\n";
-  // }
-  // myfile.close();
+  myfile.open("/home/eveleguillou/experiment/IntegralLines/Benchmark/"
+              + std::to_string(ttk::MPIsize_) + "_proc_integraLinesCellData_"
+              + std::to_string(ttk::MPIrank_) + ".csv");
+  myfile << "GlobalCellIds,RankArray\n";
+  vtkDataArray *edgeId = output->GetCellData()->GetArray("GlobalCellIds");
+  vtkDataArray *rankArray = output->GetCellData()->GetArray("RankArray");
+  for(int i = 0; i < edgeId->GetNumberOfTuples(); i++) {
+    myfile << std::to_string(edgeId->GetTuple1(i)) + ","
+                + std::to_string(rankArray->GetTuple1(i)) + "\n";
+  }
+  myfile.close();
 
   return (int)(status == 0);
 }

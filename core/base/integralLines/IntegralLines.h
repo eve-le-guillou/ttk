@@ -26,7 +26,7 @@
 #include <limits>
 #include <unordered_set>
 #define TABULAR_SIZE 50
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
 #define IS_ELEMENT_TO_PROCESS 0
 #define IS_MESSAGE_SIZE 1
 #include <mpi.h>
@@ -37,13 +37,11 @@ namespace ttk {
   struct IntegralLine {
     std::vector<ttk::SimplexId> *trajectory;
     std::vector<double> *distanceFromSeed;
-#if TTK_ENABLE_MPI
     std::vector<ttk::SimplexId> *edgeIdentifier;
-#endif
     ttk::SimplexId seedIdentifier;
   };
 
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
   static int finishedElement_;
   static int addedElement_;
   static std::vector<ttk::IntegralLine> unfinishedIntegralLines;
@@ -133,7 +131,7 @@ namespace ttk {
       direction_ = direction;
     }
 
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
 
     /**
      * Checks if an integral line should be continued on another process or not.
@@ -348,7 +346,7 @@ void ttk::IntegralLines::storeToSendIfNecessary(
   const triangulationType *triangulation,
   ttk::IntegralLine integralLine,
   bool &isMax) const {
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
   if(ttk::isRunningWithMPI()) {
     int size = integralLine.trajectory->size();
     if(size > 1) {
@@ -378,6 +376,7 @@ void ttk::IntegralLines::storeToSendIfNecessary(
   }
 #endif
 }
+#endif
 
 template <class triangulationType>
 ttk::SimplexId
@@ -394,13 +393,15 @@ ttk::SimplexId
       triangulation->getEdgeVertex(edgeId, 1, v);
     }
     if(v == v2) {
+#ifdef TTK_ENABLE_MPI
       return triangulation->getEdgeGlobalId(edgeId);
+#else
+      return edgeId;
+#endif
     }
   }
   return -1;
 }
-
-#endif
 
 template <typename dataType, class triangulationType>
 void ttk::IntegralLines::computeIntegralLine(
@@ -414,9 +415,7 @@ void ttk::IntegralLines::computeIntegralLine(
   triangulation->getVertexPoint(v, p0[0], p0[1], p0[2]);
   bool isMax{};
   std::vector<std::vector<ttk::SimplexId>> *components;
-#if TTK_ENABLE_MPI
   ttk::SimplexId edgeId{-1};
-#endif
   while(!isMax) {
     std::vector<std::vector<ttk::SimplexId>> upperComponents;
     std::vector<std::vector<ttk::SimplexId>> lowerComponents;
@@ -429,7 +428,7 @@ void ttk::IntegralLines::computeIntegralLine(
        || (criticalType == (char)CriticalType::Local_minimum
            && direction_ != static_cast<int>(Direction::Forward))) {
       isMax = true;
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
       if(ttk::isRunningWithMPI() && vertRankArray_[v] == ttk::MPIrank_) {
 #if TTK_ENABLE_OPENMP
 #pragma omp atomic update seq_cst
@@ -475,9 +474,7 @@ void ttk::IntegralLines::computeIntegralLine(
           }
         }
         // FIND EDGE ID
-#if TTK_ENABLE_MPI
         edgeId = this->findEdgeId<triangulationType>(v, vnext, triangulation);
-#endif
         if(i == numberOfComponents - 1) {
           triangulation->getVertexPoint(vnext, p1[0], p1[1], p1[2]);
           distance += Geometry::distance(p0, p1, 3);
@@ -486,26 +483,21 @@ void ttk::IntegralLines::computeIntegralLine(
           p0[1] = p1[1];
           p0[2] = p1[2];
           integralLine.distanceFromSeed->push_back(distance);
-#if TTK_ENABLE_MPI
           integralLine.edgeIdentifier->push_back(edgeId);
-#endif
           v = vnext;
         } else {
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
           ttk::SimplexId seedIdentifier = triangulation->getVertexGlobalId(v);
-          ttk::IntegralLine integralLineFork
-            = ttk::IntegralLine{nullptr, nullptr, nullptr, seedIdentifier};
 #else
           ttk::SimplexId seedIdentifier = v;
-          ttk::IntegralLine integralLineFork
-            = ttk::IntegralLine{nullptr, nullptr, seedIdentifier};
 #endif
-
+          ttk::IntegralLine integralLineFork
+            = ttk::IntegralLine{nullptr, nullptr, nullptr, seedIdentifier};
           triangulation->getVertexPoint(vnext, p1[0], p1[1], p1[2]);
           double distanceFork = Geometry::distance(p0, p1, 3);
           // POTENTIAL IMPROVEMENT: add to vector, create integral line object
           // later (no critical zone)
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
 #if TTK_ENABLE_OPENMP
 #pragma omp atomic update seq_cst
 #endif
@@ -521,17 +513,15 @@ void ttk::IntegralLines::computeIntegralLine(
           integralLineFork.distanceFromSeed
             = outputDistancesFromSeed_->at(threadNum).addArrayElement(
               std::vector<double>({0, distanceFork}));
-#if TTK_ENABLE_MPI
           integralLineFork.edgeIdentifier
             = outputEdgeIdentifiers_->at(threadNum).addArrayElement(
               std::vector<ttk::SimplexId>({-1, edgeId}));
-#endif
           outputSeedIdentifiers_->at(threadNum).addArrayElement(seedIdentifier);
 #if TTK_ENABLE_OPENMP
 #pragma omp task firstprivate(integralLineFork)
           {
 #endif
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
             bool hasBeenSent = false;
             this->storeToSendIfNecessary<triangulationType>(
               triangulation, integralLineFork, hasBeenSent);
@@ -539,7 +529,7 @@ void ttk::IntegralLines::computeIntegralLine(
 #endif
               this->computeIntegralLine<dataType, triangulationType>(
                 triangulation, integralLineFork, offsets);
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
             }
 #endif
 #if TTK_ENABLE_OPENMP
@@ -569,7 +559,7 @@ void ttk::IntegralLines::prepareForTask(
 
   for(SimplexId j = 0; j < nbElement; j++) {
     SimplexId v{seeds->at(j + startingIndex)};
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
     chunkIntegralLine[j].seedIdentifier = triangulation->getVertexGlobalId(v);
 #else
     chunkIntegralLine[j].seedIdentifier = v;
@@ -584,11 +574,9 @@ void ttk::IntegralLines::prepareForTask(
     chunkIntegralLine[j].distanceFromSeed
       = outputDistancesFromSeed_->at(threadNum).addArrayElement(
         std::vector<double>(1, 0));
-#if TTK_ENABLE_MPI
     chunkIntegralLine[j].edgeIdentifier
       = outputEdgeIdentifiers_->at(threadNum).addArrayElement(
         std::vector<ttk::SimplexId>(1, -1));
-#endif
     outputSeedIdentifiers_->at(threadNum).addArrayElement(
       chunkIntegralLine[j].seedIdentifier);
   }
@@ -616,7 +604,7 @@ void ttk::IntegralLines::createTask(
 template <typename dataType, class triangulationType>
 int ttk::IntegralLines::execute(triangulationType *triangulation) {
 
-#if TTK_ENABLE_MPI
+#ifdef TTK_ENABLE_MPI
   keepWorking_ = 1;
   finishedElement_ = 0;
   addedElement_ = 0;
