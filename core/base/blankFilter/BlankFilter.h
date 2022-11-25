@@ -25,11 +25,6 @@ namespace ttk {
   public:
     BlankFilter();
 
-    int preconditionTriangulation(
-      ttk::AbstractTriangulation *triangulation) const {
-      return 1;
-    }
-
     template <class dataType,
               class triangulationType = ttk::AbstractTriangulation>
     int computeAverages(dataType *outputData,
