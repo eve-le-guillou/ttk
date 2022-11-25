@@ -553,8 +553,7 @@ void ttk::IntegralLines::computeIntegralLine(
       triangulation, integralLine, isMax);
 #endif
   }
-  }
-
+}
 
 template <typename dataType, class triangulationType>
 void ttk::IntegralLines::prepareForTask(
@@ -622,7 +621,6 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   finishedElement_ = 0;
   addedElement_ = 0;
 #endif
-
   const SimplexId *offsets = inputOffsets_;
   std::vector<SimplexId> *seeds = vertexIdentifierScalarField_;
   Timer t;
