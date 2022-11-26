@@ -25,14 +25,6 @@ namespace ttk {
   public:
     BlankFilter();
 
-    template <class dataType,
-              class triangulationType = ttk::AbstractTriangulation>
-    int computeAverages(dataType *outputData,
-                        const dataType *inputData,
-                        const triangulationType *triangulation) const {
-      return 1; // return success
-    }
-
   }; // BlankFilter class
 
 } // namespace ttk
