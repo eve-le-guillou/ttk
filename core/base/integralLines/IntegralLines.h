@@ -42,9 +42,9 @@ namespace ttk {
   };
 
 #ifdef TTK_ENABLE_MPI
-  static int finishedElement_;
-  static int addedElement_;
-  static std::vector<ttk::IntegralLine> unfinishedIntegralLines;
+  static int finishedElement_ __attribute__((aligned(64)));
+  ;
+  static int addedElement_ __attribute__((aligned(64)));
 
   /*
    * For each integral line continuing on another process, we send two layers of
@@ -617,8 +617,8 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
   int taskNumber = (int)seedNumber_ / chunkSize_;
 #ifdef TTK_ENABLE_OPENMP
 #ifdef TTK_ENABLE_MPI
-#pragma omp parallel shared(finishedElement_, unfinishedIntegralLines, \
-                            toSend_, addedElement_) num_threads(threadNumber_)
+#pragma omp parallel shared(finishedElement_, toSend_, addedElement_) \
+  num_threads(threadNumber_)
   {
 #else
 #pragma omp parallel num_threads(threadNumber_)
@@ -716,8 +716,8 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
         }
         // Extraction of the received data and creation of the tasks
 #ifdef TTK_ENABLE_OPENMP
-#pragma omp parallel shared(finishedElement_, unfinishedIntegralLines, \
-                            toSend_) num_threads(threadNumber_)
+#pragma omp parallel shared(finishedElement_, toSend_) \
+  num_threads(threadNumber_)
         {
 #pragma omp master
           {
