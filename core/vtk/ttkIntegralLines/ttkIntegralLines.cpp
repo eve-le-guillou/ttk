@@ -149,10 +149,17 @@ int ttkIntegralLines::getTrajectories(
             ug->InsertNextCell(VTK_LINE, 2, ids.data());
             vtkEdgeIdentifiers->InsertNextTuple1((*edgeIdentifier)[i].at(j));
 #ifdef TTK_ENABLE_MPI
+            // Computation of RankArray of the edge
+            // WARNING: this computation is different from the
+            // rest of TTK
             if(vertRankArray[(*trajectory)[i].at(j - 1)]
                == vertRankArray[vertex]) {
+              // If both vertices of the edge belong to the same process
+              // the edge belong to that process
               vtkRankArray->InsertNextTuple1(vertRankArray[vertex]);
             } else {
+              // If vertices belong to different processes, the edge belongs to
+              // the same process as its vertex of smallest global id.
               int id = std::min(
                 triangulation->getVertexGlobalId((*trajectory)[i].at(j - 1)),
                 triangulation->getVertexGlobalId((*trajectory)[i].at(j)));
