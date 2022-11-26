@@ -180,7 +180,7 @@ int ttkIntegralLines::getTrajectories(
 #ifdef TTK_ENABLE_MPI
   ug->GetCellData()->AddArray(vtkRankArray);
 #endif
-  ug->GetCellData()->AddArray(vtkEdgeIdentifiers);
+  ug->GetCellData()->SetGlobalIds(vtkEdgeIdentifiers);
   for(unsigned int k = 0; k < scalarArrays.size(); ++k) {
     ug->GetPointData()->AddArray(inputScalars[k]);
   }
@@ -246,7 +246,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
                 totalSeeds, ttk::getMPIType(id), 0, ttk::MPIcomm_);
       ttk::SimplexId localId = -1;
       for(int i = 0; i < totalSeeds; i++) {
-        localId = triangulation->getVertexLocalId(globalSeedsId->GetTuple1(i));
+        localId = triangulation->getVertexLocalIdIfExists(
+          globalSeedsId->GetTuple1(i));
         if(localId != -1 && vertRankArray_[localId] == ttk::MPIrank_) {
           inputIdentifiers.push_back(localId);
         }
@@ -260,7 +261,8 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
         idSpareStorage);
       ttk::SimplexId localId = 0;
       for(int i = 0; i < numberOfPointsInSeeds; i++) {
-        localId = triangulation->getVertexLocalId(inputIdentifierGlobalId[i]);
+        localId
+          = triangulation->getVertexLocalIdIfExists(inputIdentifierGlobalId[i]);
         if(vertRankArray_[localId] == ttk::MPIrank_) {
           inputIdentifiers.push_back(localId);
         }

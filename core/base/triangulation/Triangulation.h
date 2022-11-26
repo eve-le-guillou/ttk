@@ -1462,7 +1462,16 @@ namespace ttk {
       return abstractTriangulation_->getVertexLocalId(geid);
     }
 
-#endif // TTK_ENABLE_MPI
+    inline SimplexId
+      getVertexLocalIdIfExists(const SimplexId geid) const override {
+#ifndef TTK_ENABLE_KAMIKAZE
+      if(isEmptyCheck())
+        return -1;
+#endif
+      return abstractTriangulation_->getVertexLocalIdIfExists(geid);
+    }
+
+#endif
 
     /// Get the \p localLinkId-th simplex of the link of the \p vertexId-th
     /// vertex.
