@@ -214,7 +214,9 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   const ttk::SimplexId numberOfPointsInDomain = domain->GetNumberOfPoints();
   this->setVertexNumber(numberOfPointsInDomain);
   int numberOfPointsInSeeds = seeds->GetNumberOfPoints();
-
+#ifdef TTK_ENABLE_KAMIKAZE
+  int totalSeeds;
+#endif
 #ifdef TTK_ENABLE_MPI_TIME
   ttk::Timer t_mpi;
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
@@ -223,7 +225,6 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   // Necessary when using MPI
   std::vector<ttk::SimplexId> inputIdentifiers{};
   vertRankArray_ = triangulation->getVertRankArray();
-  int totalSeeds;
   if(ttk::MPIsize_ > 1) {
     MPI_Reduce(&numberOfPointsInSeeds, &totalSeeds, 1, MPI_INTEGER, MPI_SUM, 0,
                ttk::MPIcomm_);
@@ -303,7 +304,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     isSeed.insert(identifiers[k]);
   }
   std::vector<ttk::SimplexId> inputIdentifiers(isSeed.begin(), isSeed.end());
-  int totalSeeds = inputIdentifiers.size();
+  totalSeeds = inputIdentifiers.size();
   isSeed.clear();
 #endif
 
@@ -417,19 +418,11 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   }
 #endif
   // make the vtk trajectories
-#ifdef TTK_ENABLE_MPI
   ttkTemplateMacro(
     triangulation->getType(),
     (getTrajectories<TTK_TT>(
       domain, static_cast<TTK_TT *>(triangulation->getData()), trajectories,
       distancesFromSeed, seedIdentifiers, edgeIdentifiers, output)));
-#else
-  ttkTemplateMacro(
-    triangulation->getType(),
-    (getTrajectories<TTK_TT>(
-      domain, static_cast<TTK_TT *>(triangulation->getData()), trajectories,
-      distancesFromSeed, seedIdentifiers, output)));
-#endif
 
   // Write data to csv
   std::ofstream myfile;

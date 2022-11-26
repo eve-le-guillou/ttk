@@ -196,13 +196,13 @@ namespace ttk {
         7, lengths, mpi_offsets, types, &(this->MessageType));
       MPI_Type_commit(&(this->MessageType));
     }
+#endif
 
     inline void setOutputEdgeIdentifiers(
       std::vector<ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
         *edgeIdentifiers) {
       outputEdgeIdentifiers_ = edgeIdentifiers;
     }
-#endif
 
     int preconditionTriangulation(ttk::AbstractTriangulation *triangulation) {
       int status = triangulation->preconditionVertexNeighbors();
@@ -277,12 +277,12 @@ namespace ttk {
       *outputDistancesFromSeed_;
     std::vector<ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE>>
       *outputSeedIdentifiers_;
+    std::vector<ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
+      *outputEdgeIdentifiers_;
     ttk::ScalarFieldCriticalPoints scalarFieldCriticalPoints_;
 
 #ifdef TTK_ENABLE_MPI
     const int *vertRankArray_{nullptr};
-    std::vector<ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
-      *outputEdgeIdentifiers_;
     std::vector<std::vector<std::vector<ElementToBeSent>>> *toSend_{nullptr};
     int neighborNumber_;
     std::unordered_map<int, int> neighborsToId_;
