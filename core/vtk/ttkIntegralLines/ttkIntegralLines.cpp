@@ -307,7 +307,7 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     isSeed.insert(identifiers[k]);
   }
   std::vector<ttk::SimplexId> inputIdentifiers(isSeed.begin(), isSeed.end());
-  totalSeeds = inputIdentifiers.size();
+  int totalSeeds = inputIdentifiers.size();
   isSeed.clear();
 #endif
 
