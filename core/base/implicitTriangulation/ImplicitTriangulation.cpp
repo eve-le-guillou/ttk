@@ -3467,6 +3467,11 @@ SimplexId
 
 SimplexId ttk::ImplicitTriangulation::getEdgeGlobalIdInternal(
   const SimplexId leid) const {
+
+  if(!ttk::isRunningWithMPI()) {
+    return leid;
+  }
+
 #ifndef TTK_ENABLE_KAMIKAZE
   if(leid > this->getNumberOfEdgesInternal() - 1 || leid < 0) {
     return -1;
@@ -3475,10 +3480,6 @@ SimplexId ttk::ImplicitTriangulation::getEdgeGlobalIdInternal(
     return -1;
   }
 #endif // TTK_ENABLE_KAMIKAZE
-
-  if(!ttk::isRunningWithMPI()) {
-    return leid;
-  }
 
   if(this->dimensionality_ == 1) {
     return this->getCellGlobalIdInternal(leid);
@@ -3502,6 +3503,10 @@ SimplexId ttk::ImplicitTriangulation::getEdgeGlobalIdInternal(
 SimplexId ttk::ImplicitTriangulation::getEdgeLocalIdInternal(
   const SimplexId geid) const {
 
+  if(!ttk::isRunningWithMPI()) {
+    return geid;
+  }
+
 #ifndef TTK_ENABLE_KAMIKAZE
   if(geid > this->metaGrid_->getNumberOfEdgesInternal() - 1 || geid < 0) {
     return -1;
@@ -3510,10 +3515,6 @@ SimplexId ttk::ImplicitTriangulation::getEdgeLocalIdInternal(
     return -1;
   }
 #endif // TTK_ENABLE_KAMIKAZE
-
-  if(!ttk::isRunningWithMPI()) {
-    return geid;
-  }
 
   if(this->dimensionality_ == 1) {
     return this->getCellLocalIdInternal(geid);
@@ -3559,6 +3560,11 @@ SimplexId ttk::ImplicitTriangulation::findTriangleFromVertices(
 
 SimplexId ttk::ImplicitTriangulation::getTriangleGlobalIdInternal(
   const SimplexId ltid) const {
+
+  if(!ttk::isRunningWithMPI()) {
+    return ltid;
+  }
+
 #ifndef TTK_ENABLE_KAMIKAZE
   if(ltid > this->getNumberOfTrianglesInternal() - 1 || ltid < 0) {
     return -1;
@@ -3567,10 +3573,6 @@ SimplexId ttk::ImplicitTriangulation::getTriangleGlobalIdInternal(
     return -1;
   }
 #endif // TTK_ENABLE_KAMIKAZE
-
-  if(!ttk::isRunningWithMPI()) {
-    return ltid;
-  }
 
   if(this->dimensionality_ == 2) {
     return this->getCellGlobalIdInternal(ltid);
@@ -3599,6 +3601,11 @@ SimplexId ttk::ImplicitTriangulation::getTriangleGlobalIdInternal(
 
 SimplexId ttk::ImplicitTriangulation::getTriangleLocalIdInternal(
   const SimplexId gtid) const {
+
+  if(!ttk::isRunningWithMPI()) {
+    return gtid;
+  }
+
 #ifndef TTK_ENABLE_KAMIKAZE
   if(gtid > this->metaGrid_->getNumberOfTrianglesInternal() - 1 || gtid < 0) {
     return -1;
@@ -3607,10 +3614,6 @@ SimplexId ttk::ImplicitTriangulation::getTriangleLocalIdInternal(
     return -1;
   }
 #endif // TTK_ENABLE_KAMIKAZE
-
-  if(!ttk::isRunningWithMPI()) {
-    return gtid;
-  }
 
   if(this->dimensionality_ == 2) {
     return this->getCellGlobalIdInternal(gtid);
