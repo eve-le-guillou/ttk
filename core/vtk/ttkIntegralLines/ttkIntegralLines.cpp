@@ -214,17 +214,19 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
   const ttk::SimplexId numberOfPointsInDomain = domain->GetNumberOfPoints();
   this->setVertexNumber(numberOfPointsInDomain);
   int numberOfPointsInSeeds = seeds->GetNumberOfPoints();
-#ifndef TTK_ENABLE_MPI
-#ifdef TTK_ENABLE_KAMIKAZE
+#ifndef TTK_ENABLE_KAMIKAZE
+  int totalSeeds;
+#else
+#if TTK_ENABLE_MPI
   int totalSeeds;
 #endif
 #endif
+
 #ifdef TTK_ENABLE_MPI_TIME
   ttk::Timer t_mpi;
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
 #ifdef TTK_ENABLE_MPI
-  int totalSeeds;
   // Necessary when using MPI
   std::vector<ttk::SimplexId> inputIdentifiers{};
   vertRankArray_ = triangulation->getVertRankArray();
@@ -307,7 +309,9 @@ int ttkIntegralLines::RequestData(vtkInformation *ttkNotUsed(request),
     isSeed.insert(identifiers[k]);
   }
   std::vector<ttk::SimplexId> inputIdentifiers(isSeed.begin(), isSeed.end());
-  int totalSeeds = inputIdentifiers.size();
+#ifndef TTK_ENABLE_KAMIKAZE
+  totalSeeds = inputIdentifiers.size();
+#endif
   isSeed.clear();
 #endif
 

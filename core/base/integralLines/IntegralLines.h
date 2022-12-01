@@ -20,8 +20,6 @@
 #include <Triangulation.h>
 // std includes
 #include <algorithm>
-#include <csignal>
-#include <iostream>
 #include <iterator>
 #include <limits>
 #include <unordered_set>
@@ -168,11 +166,11 @@ namespace ttk {
       globalElementCounter_ = counter;
     }
 
-    inline void setNeighbors(const std::vector<int> *neighbors) {
+    inline void setNeighbors(std::vector<int> neighbors) {
       neighbors_ = neighbors;
-      neighborNumber_ = neighbors_->size();
+      neighborNumber_ = neighbors_.size();
       int idx = 0;
-      for(int neighbor : (*neighbors)) {
+      for(int neighbor : neighbors) {
         neighborsToId_[neighbor] = idx;
         idx++;
       }
@@ -286,7 +284,7 @@ namespace ttk {
     std::vector<std::vector<std::vector<ElementToBeSent>>> *toSend_{nullptr};
     int neighborNumber_;
     std::unordered_map<int, int> neighborsToId_;
-    const std::vector<int> *neighbors_;
+    std::vector<int> neighbors_;
     SimplexId keepWorking_;
     SimplexId globalElementCounter_;
     MPI_Datatype MessageType;
@@ -686,9 +684,9 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
             toSend_->at(i)[j].clear();
           }
           sendMessageSize[i] = (int)send_buf[i].size();
-          MPI_Isend(&sendMessageSize[i], 1, MPI_INTEGER, neighbors_->at(i),
+          MPI_Isend(&sendMessageSize[i], 1, MPI_INTEGER, neighbors_.at(i),
                     IS_MESSAGE_SIZE, ttk::MPIcomm_, &requests[2 * i]);
-          MPI_Irecv(&recvMessageSize[i], 1, MPI_INTEGER, neighbors_->at(i),
+          MPI_Irecv(&recvMessageSize[i], 1, MPI_INTEGER, neighbors_.at(i),
                     IS_MESSAGE_SIZE, ttk::MPIcomm_, &requests[2 * i + 1]);
         }
         MPI_Waitall(2 * neighborNumber_, requests.data(), MPI_STATUSES_IGNORE);
@@ -699,14 +697,14 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
           }
           if(recvMessageSize[i] > 0) {
             MPI_Irecv(recv_buf[i].data(), recvMessageSize[i], this->MessageType,
-                      neighbors_->at(i), IS_ELEMENT_TO_PROCESS, ttk::MPIcomm_,
+                      neighbors_.at(i), IS_ELEMENT_TO_PROCESS, ttk::MPIcomm_,
                       &requests[2 * i]);
             totalMessageSize += recvMessageSize[i];
           }
 
           if(sendMessageSize[i] > 0) {
             MPI_Isend(send_buf[i].data(), sendMessageSize[i], this->MessageType,
-                      neighbors_->at(i), IS_ELEMENT_TO_PROCESS, ttk::MPIcomm_,
+                      neighbors_.at(i), IS_ELEMENT_TO_PROCESS, ttk::MPIcomm_,
                       &requests[2 * i + 1]);
           }
         }
