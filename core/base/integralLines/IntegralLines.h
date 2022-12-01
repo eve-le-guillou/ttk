@@ -166,7 +166,7 @@ namespace ttk {
       globalElementCounter_ = counter;
     }
 
-    inline void setNeighbors(std::vector<int> neighbors) {
+    inline void setNeighbors(const std::vector<int> &neighbors) {
       neighbors_ = neighbors;
       neighborNumber_ = neighbors_.size();
       int idx = 0;
@@ -262,20 +262,20 @@ namespace ttk {
     }
 
   protected:
-    SimplexId vertexNumber_;
-    SimplexId seedNumber_;
-    SimplexId chunkSize_;
-    SimplexId direction_;
+    ttk::SimplexId vertexNumber_;
+    ttk::SimplexId seedNumber_;
+    ttk::SimplexId chunkSize_;
+    ttk::SimplexId direction_;
     void *inputScalarField_;
-    const SimplexId *inputOffsets_;
-    std::vector<SimplexId> *vertexIdentifierScalarField_;
-    std::vector<ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
+    const ttk::SimplexId *inputOffsets_;
+    std::vector<ttk::SimplexId> *vertexIdentifierScalarField_;
+    std::vector<ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
       *outputTrajectories_;
-    std::vector<ArrayLinkedList<std::vector<double>, TABULAR_SIZE>>
+    std::vector<ttk::ArrayLinkedList<std::vector<double>, TABULAR_SIZE>>
       *outputDistancesFromSeed_;
-    std::vector<ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE>>
+    std::vector<ttk::ArrayLinkedList<ttk::SimplexId, TABULAR_SIZE>>
       *outputSeedIdentifiers_;
-    std::vector<ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
+    std::vector<ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, TABULAR_SIZE>>
       *outputEdgeIdentifiers_;
     ttk::ScalarFieldCriticalPoints scalarFieldCriticalPoints_;
 
@@ -721,10 +721,10 @@ int ttk::IntegralLines::execute(triangulationType *triangulation) {
           {
 #endif // TTK_ENABLE_OPENMP
             index = 0;
-            taskSize
-              = std::min(std::max(totalMessageSize / (threadNumber_ * 100),
-                                  std::min(totalMessageSize, 50)),
-                         chunkSize_);
+            taskSize = std::min(
+              (ttk::SimplexId)std::max(totalMessageSize / (threadNumber_ * 100),
+                                       std::min(totalMessageSize, 50)),
+              chunkSize_);
             chunkIntegralLine.resize(taskSize);
             for(i = 0; i < neighborNumber_; i++) {
               for(int j = 0; j < recvMessageSize[i]; j++) {

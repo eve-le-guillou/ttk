@@ -30,8 +30,7 @@ ttkBlankFilter::ttkBlankFilter() {
   this->SetNumberOfOutputPorts(1);
 }
 
-ttkBlankFilter::~ttkBlankFilter() {
-}
+ttkBlankFilter::~ttkBlankFilter() = default;
 
 /**
  *
