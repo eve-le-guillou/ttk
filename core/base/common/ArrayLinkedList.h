@@ -19,7 +19,7 @@ namespace ttk {
     // of the std::vector for each thread), it is necessary
     // that one ArrayLinkedList object be bigger than one cache
     // line. Here, we assume a cache line to be 64 bytes.
-    unsigned char padding[64] __attribute__((aligned(64)));
+    unsigned char padding[32];
     ArrayLinkedList()
       : list(std::list<std::array<datatype, size>>({})), numberOfElement(0) {
     }
