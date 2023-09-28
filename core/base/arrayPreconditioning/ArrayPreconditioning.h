@@ -12,8 +12,10 @@
 // ttk common includes
 #include "AmsSort/AmsSort.hpp"
 #include <Debug.h>
+#include <Triangulation.h>
 #include <random>
 #include <vector>
+
 namespace ttk {
 
   /**
@@ -25,12 +27,20 @@ namespace ttk {
   public:
     ArrayPreconditioning();
 
-    template <typename DT, typename GVGID, typename GVR, typename GVLID>
-    int processScalarArray(ttk::SimplexId *orderArray,
+    int preconditionTriangulation(AbstractTriangulation *triangulation) {
+      // Pre-condition functions.
+      if(triangulation) {
+#ifdef TTK_ENABLE_MPI
+        triangulation->preconditionExchangeGhostVertices();
+#endif // TTK_ENABLE_MPI
+      }
+      return 0;
+    }
+
+    template <typename DT, typename triangulationType>
+    int processScalarArray(const triangulationType *triangulation,
+                           ttk::SimplexId *orderArray,
                            const DT *scalarArray,
-                           const GVGID &getVertexGlobalId,
-                           const GVR &getVertexRank,
-                           const GVLID &getVertexLocalId,
                            const size_t nVerts,
                            const int burstSize,
 #ifdef TTK_ENABLE_MPI
@@ -69,10 +79,10 @@ namespace ttk {
         std::vector<vertexToSort> verticesToSort;
         verticesToSort.reserve(nVerts);
         for(int i = 0; i < nVerts; i++) {
-          if(getVertexRank(i) == ttk::MPIrank_) {
+          if(triangulation->getVertexRank(i) == ttk::MPIrank_) {
             verticesToSort.emplace_back(
               vertexToSort{static_cast<double>(scalarArray[i]),
-                           getVertexGlobalId(i), ttk::MPIrank_});
+                           triangulation->getVertexGlobalId(i), ttk::MPIrank_});
           }
         }
         ttk::SimplexId id = 0;
@@ -125,7 +135,8 @@ namespace ttk {
         for(int i = 0; i < verticesToSort.size(); i++) {
           rank = verticesToSort.at(i).order;
           if(rank == ttk::MPIrank_) {
-            orderArray[getVertexLocalId(verticesToSort.at(i).globalId)]
+            orderArray[triangulation->getVertexLocalId(
+              verticesToSort.at(i).globalId)]
               = orderOffset + i;
           } else {
             verticesToSort.at(i).order = orderOffset + i;
@@ -178,7 +189,7 @@ namespace ttk {
 #pragma omp parallel for
         for(int i = 0; i < ttk::MPIsize_; i++) {
           for(int j = 0; j < recvMessageSize[i]; j++) {
-            orderArray[getVertexLocalId(
+            orderArray[triangulation->getVertexLocalId(
               recvVerticesSorted.at(i).at(j).globalId)]
               = recvVerticesSorted.at(i).at(j).order;
           }
@@ -190,10 +201,12 @@ namespace ttk {
                    + " MPI processes lasted :" + std::to_string(elapsedTime));
         }
         ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-        ttk::exchangeGhostDataWithoutTriangulation<ttk::SimplexId,
+        /*ttk::exchangeGhostDataWithoutTriangulation<ttk::SimplexId,
                                                    ttk::SimplexId>(
           orderArray, getVertexRank, getVertexGlobalId, getVertexLocalId,
-          nVerts, ttk::MPIcomm_, neighbors);
+          nVerts, ttk::MPIcomm_, neighbors);*/
+        ttk::exchangeGhostVertices<ttk::SimplexId, triangulationType>(
+          orderArray, triangulation, ttk::MPIcomm_, 1);
         elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
         if(ttk::MPIrank_ == 0) {
           printMsg("Ghost exchange " + std::to_string(ttk::MPIsize_)

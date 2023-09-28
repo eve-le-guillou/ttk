@@ -5,6 +5,7 @@ ttk_add_base_library(arrayPreconditioning
     ArrayPreconditioning.h
   DEPENDS
     common
+    triangulation
 )
 if(TTK_ENABLE_MPI_SORT)
   target_compile_definitions(arrayPreconditioning PUBLIC TTK_ENABLE_MPI_SORT)
