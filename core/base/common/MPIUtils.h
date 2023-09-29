@@ -515,7 +515,7 @@ namespace ttk {
     if(!triangulation->hasPreconditionedDistributedVertices()) {
       return -1;
     }
-
+    // TODO: check if nValues > 0 before recv/send
     const std::vector<int> &neighbors = triangulation->getNeighborRanks();
     const int neighborNumber = neighbors.size();
     if(!ttk::isRunningWithMPI()) {
@@ -552,7 +552,7 @@ namespace ttk {
     std::vector<MPI_Request> sendRequests(neighborNumber);
     std::vector<MPI_Request> recvRequests(neighborNumber);
     for(int i = 0; i < neighborNumber; i++) {
-      MPI_Isend(valuesToSend[i].data(), valuesToSend[i].size(), MPI_INTEGER,
+      MPI_Isend(valuesToSend[i].data(), valuesToSend[i].size(), MPI_DT,
                 neighbors[i], 0, communicator, &sendRequests[i]);
       MPI_Irecv(receivedValues[i].data(), receivedValues[i].size(), MPI_DT,
                 neighbors[i], 0, communicator, &recvRequests[i]);
@@ -563,7 +563,6 @@ namespace ttk {
 
     for(int i = 0; i < neighborNumber; i++) {
       ttk::SimplexId nValues = ghostVerticesPerOwner[neighbors[i]].size();
-      ;
 #pragma omp parallel for
       for(ttk::SimplexId j = 0; j < nValues; j++) {
         for(int k = 0; k < dimensionNumber; k++) {

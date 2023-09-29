@@ -1,6 +1,6 @@
 # --- Prerequisites
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 
 # --- Global Options
 
@@ -155,13 +155,13 @@ option(TTK_ENABLE_MPI_SORT "Enable distributed sorting" ON)
   #find_package(kadis REQUIRED)
   #add_definitions(-DKADIS_LIBARIES="/home/eveleguillou/software/KaDiS/Release/libkadis.a")
   #add_compile_definitions(KADIS_INCLUDE_DIR PUBLIC "/home/eveleguillou/software/KaDiS/")
-  find_path(MPI_SORT_INCLUDE_DIR kadis)
-  find_library(MPI_SORT_LIBRARIES NAMES kadis)
-  find_library(RBC_LIBRARIES PUBLIC rbc)
-  find_path(RBC_INCLUDE_DIR RBC)  
-  find_path(IPS2PA_INCLUDE_DIR PUBLIC ips2pa)
-  find_path(IPS4O_INCLUDE_DIR PUBLIC ips4o)
-  find_path(TLX_INCLUDE_DIR PUBLIC tlx)
+  #find_path(MPI_SORT_INCLUDE_DIR kadis)
+  #find_library(MPI_SORT_LIBRARIES NAMES kadis)
+  #find_library(RBC_LIBRARIES PUBLIC rbc)
+  #find_path(RBC_INCLUDE_DIR RBC)  
+  #find_path(IPS2PA_INCLUDE_DIR PUBLIC ips2pa)
+  #find_path(IPS4O_INCLUDE_DIR PUBLIC ips4o)
+  #find_path(TLX_INCLUDE_DIR PUBLIC tlx)
 
 find_package(ZLIB QUIET)
 if(ZLIB_FOUND)
@@ -301,6 +301,7 @@ else()
   message(STATUS "WebSocketPP not found, disabling WebSocketIO module in TTK.")
 endif()
 
+include_directories(externals)
 # --- Install path
 
 include(GNUInstallDirs)
