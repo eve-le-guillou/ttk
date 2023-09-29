@@ -202,6 +202,7 @@ namespace ttk {
         if(nValues > 0) {
           MPI_Recv(receivedValues.data(), nValues * dimensionNumber, MPI_DT,
                    neighbors.at(r), valuesTag, communicator, MPI_STATUS_IGNORE);
+#pragma omp parallel for
           for(ttk::SimplexId i = 0; i < nValues; i++) {
             for(int j = 0; j < dimensionNumber; j++) {
               DT receivedVal = receivedValues[i * dimensionNumber + j];
@@ -225,6 +226,7 @@ namespace ttk {
         if(nValues > 0) {
           // assemble the scalar values
           std::vector<DT> valuesToSend(nValues * dimensionNumber);
+#pragma omp parallel for
           for(ttk::SimplexId i = 0; i < nValues; i++) {
             for(int j = 0; j < dimensionNumber; j++) {
               ttk::SimplexId globalId = ghostVerticesForThisRank[i];
@@ -513,10 +515,64 @@ namespace ttk {
     if(!triangulation->hasPreconditionedDistributedVertices()) {
       return -1;
     }
-    for(int r = 0; r < ttk::MPIsize_; r++) {
-      getGhostVertexScalars<DT, triangulationType>(
-        scalarArray, triangulation, r, communicator, dimensionNumber);
-      MPI_Barrier(communicator);
+
+    const std::vector<int> &neighbors = triangulation->getNeighborRanks();
+    const int neighborNumber = neighbors.size();
+    if(!ttk::isRunningWithMPI()) {
+      return -1;
+    }
+
+    std::vector<std::vector<DT>> receivedValues(
+      neighborNumber, std::vector<DT>());
+    std::vector<std::vector<DT>> valuesToSend(
+      neighborNumber, std::vector<DT>());
+    MPI_Datatype MPI_DT = getMPIType(static_cast<DT>(0));
+    const auto &ghostVerticesPerOwner
+      = triangulation->getGhostVerticesPerOwner();
+    const auto &remoteGhostVertices = triangulation->getRemoteGhostVertices();
+    for(int i = 0; i < neighborNumber; i++) {
+      receivedValues[i].resize(ghostVerticesPerOwner[neighbors[i]].size()
+                               * dimensionNumber);
+      valuesToSend[i].resize(remoteGhostVertices[neighbors[i]].size()
+                             * dimensionNumber);
+    }
+    for(int i = 0; i < neighborNumber; i++) {
+      ttk::SimplexId nValues = remoteGhostVertices[neighbors[i]].size();
+#pragma omp parallel for
+      for(ttk::SimplexId j = 0; j < nValues; j++) {
+        for(int k = 0; k < dimensionNumber; k++) {
+          ttk::SimplexId globalId = remoteGhostVertices[neighbors[i]][j];
+          ttk::SimplexId localId = triangulation->getVertexLocalId(globalId);
+          valuesToSend[i].at(j * dimensionNumber + k)
+            = scalarArray[localId * dimensionNumber + k];
+        }
+      }
+    }
+
+    std::vector<MPI_Request> sendRequests(neighborNumber);
+    std::vector<MPI_Request> recvRequests(neighborNumber);
+    for(int i = 0; i < neighborNumber; i++) {
+      MPI_Isend(valuesToSend[i].data(), valuesToSend[i].size(), MPI_INTEGER,
+                neighbors[i], 0, communicator, &sendRequests[i]);
+      MPI_Irecv(receivedValues[i].data(), receivedValues[i].size(), MPI_DT,
+                neighbors[i], 0, communicator, &recvRequests[i]);
+    }
+
+    MPI_Waitall(neighborNumber, sendRequests.data(), MPI_STATUSES_IGNORE);
+    MPI_Waitall(neighborNumber, recvRequests.data(), MPI_STATUSES_IGNORE);
+
+    for(int i = 0; i < neighborNumber; i++) {
+      ttk::SimplexId nValues = ghostVerticesPerOwner[neighbors[i]].size();
+      ;
+#pragma omp parallel for
+      for(ttk::SimplexId j = 0; j < nValues; j++) {
+        for(int k = 0; k < dimensionNumber; k++) {
+          DT receivedVal = receivedValues[i][j * dimensionNumber + k];
+          ttk::SimplexId globalId = ghostVerticesPerOwner[neighbors[i]][j];
+          ttk::SimplexId localId = triangulation->getVertexLocalId(globalId);
+          scalarArray[localId * dimensionNumber + k] = receivedVal;
+        }
+      }
     }
     return 0;
   }
