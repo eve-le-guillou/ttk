@@ -23,7 +23,6 @@ THE SOFTWARE.
 #ifndef PSORT_ALLTOALL_H
 #define PSORT_ALLTOALL_H
 
-#include "psort_util.h"
 #include <climits>
 
 namespace p_sort {
@@ -36,7 +35,6 @@ namespace p_sort {
                        _ValueType *trans_data,
                        _Distance *boundaries,
                        MPI_Datatype &MPI_valueType,
-                       MPI_Datatype &MPI_distanceType,
                        MPI_Comm comm) {
 
     int nproc, rank;
@@ -52,8 +50,8 @@ namespace p_sort {
 
     // Calculate the counts for redistributing data
     // int send_counts[nproc], send_disps[nproc];
-    int *send_counts = new int[nproc];
-    int *send_disps = new int[nproc];
+    std::vector<int> send_counts(nproc);
+    std::vector<int> send_disps(nproc);
 
     for(int i = 0; i < nproc; ++i) {
       _Distance scount = right_ends[i + 1][rank] - right_ends[i][rank];
@@ -62,11 +60,12 @@ namespace p_sort {
       send_counts[i] = static_cast<int>(scount);
     }
     send_disps[0] = 0;
-    partial_sum(send_counts, send_counts + nproc - 1, send_disps + 1);
+    partial_sum(send_counts.data(), send_counts.data() + nproc - 1,
+                send_disps.data() + 1);
 
     // int recv_counts[nproc], recv_disps[nproc];
-    int *recv_counts = new int[nproc];
-    int *recv_disps = new int[nproc];
+    std::vector<int> recv_counts(nproc);
+    std::vector<int> recv_disps(nproc);
     for(int i = 0; i < nproc; ++i) {
       _Distance rcount = right_ends[rank + 1][i] - right_ends[rank][i];
       if(rcount > INT_MAX)
@@ -75,22 +74,20 @@ namespace p_sort {
     }
 
     recv_disps[0] = 0;
-    partial_sum(recv_counts, recv_counts + nproc - 1, recv_disps + 1);
+    partial_sum(recv_counts.data(), recv_counts.data() + nproc - 1,
+                recv_disps.data() + 1);
 
-    assert(accumulate(recv_counts, recv_counts + nproc, 0) == n_loc);
+    assert(accumulate(recv_counts.data(), recv_counts.data() + nproc, 0)
+           == n_loc);
 
     // Do the transpose
-    MPI_Alltoallv(&(*first), send_counts, send_disps, MPI_valueType, trans_data,
-                  recv_counts, recv_disps, MPI_valueType, comm);
+    MPI_Alltoallv(&(*first), send_counts.data(), send_disps.data(),
+                  MPI_valueType, trans_data, recv_counts.data(),
+                  recv_disps.data(), MPI_valueType, comm);
 
     for(int i = 0; i < nproc; ++i)
       boundaries[i] = (_Distance)recv_disps[i];
     boundaries[nproc] = (_Distance)n_loc; // for the merging
-
-    delete[] send_counts;
-    delete[] send_disps;
-    delete[] recv_counts;
-    delete[] recv_disps;
 
     return;
   }

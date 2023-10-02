@@ -23,8 +23,6 @@ THE SOFTWARE.
 #ifndef PSORT_SPLITTERS_H
 #define PSORT_SPLITTERS_H
 
-#include "psort_util.h"
-
 namespace p_sort {
   using namespace std;
 
@@ -45,18 +43,10 @@ namespace p_sort {
       s->real_split(first, last, dist, comp, right_ends, MPI_valueType,
                     MPI_distanceType, comm);
     }
-
-    char *description() {
-      SplitType *s = static_cast<SplitType *>(this);
-      return s->real_description();
-    }
   };
 
   class MedianSplit : public Split<MedianSplit> {
   public:
-    char *real_description() {
-      return (char *)("Median splitter");
-    }
 
     template <typename _RandomAccessIter, class _Compare, typename _Distance>
     void real_split(_RandomAccessIter first,
@@ -87,44 +77,37 @@ namespace p_sort {
       // union of [0, right_end[i+1]) on each processor produces dist[i] total
       // values
       //_Distance targets[nproc-1];
-      _Distance *targets = new _Distance[nproc - 1];
-      partial_sum(dist, dist + (nproc - 1), targets);
+      std::vector<_Distance> targets(nproc - 1);
+      partial_sum(dist, dist + (nproc - 1), targets.data());
 
       // keep a list of ranges, trying to "activate" them at each branch
-      vector<pair<_RandomAccessIter, _RandomAccessIter>> d_ranges(nproc - 1);
-      vector<pair<_Distance *, _Distance *>> t_ranges(nproc - 1);
+      std::vector<pair<_RandomAccessIter, _RandomAccessIter>> d_ranges(nproc
+                                                                       - 1);
+      std::vector<pair<_Distance *, _Distance *>> t_ranges(nproc - 1);
       d_ranges[0] = make_pair(first, last);
-      t_ranges[0] = make_pair(targets, targets + (nproc - 1));
+      t_ranges[0] = make_pair(targets.data(), targets.data() + nproc - 1);
 
       // invariant: subdist[i][rank] == d_ranges[i].second - d_ranges[i].first
       // amount of data each proc still has in the search
-      vector<vector<_Distance>> subdist(nproc - 1, vector<_Distance>(nproc));
+      std::vector<std::vector<_Distance>> subdist(
+        nproc - 1, std::vector<_Distance>(nproc));
       copy(dist, dist + nproc, subdist[0].begin());
 
       // for each processor, d_ranges - first
-      vector<vector<_Distance>> outleft(nproc - 1, vector<_Distance>(nproc, 0));
+      std::vector<std::vector<_Distance>> outleft(
+        nproc - 1, std::vector<_Distance>(nproc, 0));
 
-#ifdef PSORTDEBUG
-      double t_begin = 0, t_query = 0, t_bsearch = 0, t_gather = 0,
-             t_finish = 0;
-      double t_allquery = 0, t_allbsearch = 0, t_allgather = 0, t_allfinish = 0;
-#endif
       for(int n_act = 1; n_act > 0;) {
 
         for(int k = 0; k < n_act; ++k) {
           assert(subdist[k][rank] == d_ranges[k].second - d_ranges[k].first);
         }
 
-#ifdef PSORTDEBUG
-        MPI_Barrier(MPI_COMM_WORLD);
-        t_begin = MPI_Wtime();
-#endif
-
         //------- generate n_act guesses
 
         // for the allgather, make a flat array of nproc chunks, each with n_act
         // elts
-        vector<_ValueType> medians(nproc * n_act);
+        std::vector<_ValueType> medians(nproc * n_act);
         for(int k = 0; k < n_act; ++k) {
           if(d_ranges[k].first != last) {
             _ValueType *ptr = &(*d_ranges[k].first);
@@ -142,15 +125,15 @@ namespace p_sort {
         // std::cout << "Median allGather2" << std::endl;
 
         // compute the weighted median of medians
-        vector<_ValueType> queries(n_act);
+        std::vector<_ValueType> queries(n_act);
 
-        _Distance *ms_perm = new _Distance[n_real];
+        std::vector<_Distance> ms_perm(n_real);
         for(int k = 0; k < n_act; ++k) {
           //_Distance ms_perm[n_real];
 
           for(int i = 0; i < n_real; ++i)
             ms_perm[i] = i * n_act + k;
-          sort(ms_perm, ms_perm + n_real,
+          sort(ms_perm.data(), ms_perm.data() + n_real,
                PermCompare<_ValueType, _Compare>(&medians[0], comp));
 
           _Distance mid
@@ -171,36 +154,25 @@ namespace p_sort {
           assert(query_ind >= 0);
           queries[k] = medians[query_ind];
         }
-        delete[] ms_perm;
-
-#ifdef PSORTDEBUG
-        MPI_Barrier(MPI_COMM_WORLD);
-        t_query = MPI_Wtime() - t_begin;
-#endif
-
         //------- find min and max ranks of the guesses
         //_Distance ind_local[2 * n_act];
-        _Distance *ind_local = new _Distance[2 * n_act];
+        std::vector<_Distance> ind_local(2 * n_act);
 
         for(int k = 0; k < n_act; ++k) {
-          pair<_RandomAccessIter, _RandomAccessIter> ind_local_p = equal_range(
-            d_ranges[k].first, d_ranges[k].second, queries[k], comp);
+          std::pair<_RandomAccessIter, _RandomAccessIter> ind_local_p
+            = equal_range(
+              d_ranges[k].first, d_ranges[k].second, queries[k], comp);
 
           ind_local[2 * k] = ind_local_p.first - first;
           ind_local[2 * k + 1] = ind_local_p.second - first;
         }
 
-#ifdef PSORTDEBUG
-        MPI_Barrier(MPI_COMM_WORLD);
-        t_bsearch = MPI_Wtime() - t_begin - t_query;
-#endif
-
         //_Distance ind_all[2 * n_act * nproc];
-        _Distance *ind_all = new _Distance[2 * n_act * nproc];
-        MPI_Allgather(ind_local, 2 * n_act, MPI_distanceType, ind_all,
-                      2 * n_act, MPI_distanceType, comm);
+        std::vector<_Distance> ind_all(2 * n_act * nproc);
+        MPI_Allgather(ind_local.data(), 2 * n_act, MPI_distanceType,
+                      ind_all.data(), 2 * n_act, MPI_distanceType, comm);
         // sum to get the global range of indices
-        vector<pair<_Distance, _Distance>> ind_global(n_act);
+        std::vector<std::pair<_Distance, _Distance>> ind_global(n_act);
         for(int k = 0; k < n_act; ++k) {
           ind_global[k] = make_pair(0, 0);
           for(int i = 0; i < nproc; ++i) {
@@ -209,18 +181,13 @@ namespace p_sort {
           }
         }
 
-#ifdef PSORTDEBUG
-        MPI_Barrier(MPI_COMM_WORLD);
-        t_gather = MPI_Wtime() - t_begin - t_query - t_bsearch;
-#endif
-
         // state to pass on to next iteration
-        vector<pair<_RandomAccessIter, _RandomAccessIter>> d_ranges_x(nproc
-                                                                      - 1);
-        vector<pair<_Distance *, _Distance *>> t_ranges_x(nproc - 1);
-        vector<vector<_Distance>> subdist_x(
+        std::vector<pair<_RandomAccessIter, _RandomAccessIter>> d_ranges_x(nproc
+                                                                           - 1);
+        std::vector<std::pair<_Distance *, _Distance *>> t_ranges_x(nproc - 1);
+        std::vector<std::vector<_Distance>> subdist_x(
           nproc - 1, vector<_Distance>(nproc));
-        vector<vector<_Distance>> outleft_x(
+        std::vector<std::vector<_Distance>> outleft_x(
           nproc - 1, vector<_Distance>(nproc, 0));
         int n_act_x = 0;
 
@@ -240,7 +207,7 @@ namespace p_sort {
             for(int i = 0; i < nproc; ++i) {
               _Distance amount = min(ind_all[2 * (i * n_act + k)] + excess,
                                      ind_all[2 * (i * n_act + k) + 1]);
-              right_ends[(s - targets) + 1][i] = amount;
+              right_ends[(s - targets.data()) + 1][i] = amount;
               excess -= amount - ind_all[2 * (i * n_act + k)];
             }
           }
@@ -277,28 +244,7 @@ namespace p_sort {
         subdist = subdist_x;
         outleft = outleft_x;
         n_act = n_act_x;
-
-        delete[] ind_local;
-        delete[] ind_all;
-
-#ifdef PSORTDEBUG
-        MPI_Barrier(MPI_COMM_WORLD);
-        t_finish = MPI_Wtime() - t_begin - t_query - t_bsearch - t_gather;
-        t_allquery += t_query;
-        t_allbsearch += t_bsearch;
-        t_allgather += t_gather;
-        t_allfinish += t_finish;
-#endif
       }
-
-#ifdef PSORTDEBUG
-      if(rank == 0)
-        std::cout << "t_query = " << t_allquery
-                  << ", t_bsearch = " << t_allbsearch
-                  << ", t_gather = " << t_allgather
-                  << ", t_finish = " << t_allfinish << std::endl;
-#endif
-      delete[] targets;
     }
 
   private:
@@ -316,144 +262,6 @@ namespace p_sort {
       }
     };
   };
-
-  // class SampleSplit : public Split<SampleSplit> {
-  // public:
-  //   char *real_description () {
-  //     return ("Sample splitter");
-  //   }
-  //
-  //   template<typename _RandomAccessIter, class _Compare, typename _Distance>
-  //     void real_split (_RandomAccessIter first,
-  //	       _RandomAccessIter last,
-  //	       _Distance *dist,
-  //	       _Compare comp,
-  //	       vector< vector<_Distance> > &right_ends,
-  //	       MPI_Datatype &MPI_valueType,
-  //	       MPI_Datatype &MPI_distanceType,
-  //	       MPI_Comm comm) {
-  //
-  //     int nproc, rank;
-  //     MPI_Comm_size (comm, &nproc);
-  //     MPI_Comm_rank (comm, &rank);
-  //
-  //     // union of [0, right_end) on each processor produces split_ind total
-  //     values _Distance targets[nproc-1]; partial_sum (dist, dist + (nproc -
-  //     1), targets);
-  //
-  //     fill (right_ends[0].begin(), right_ends[0].end(), 0);
-  //     for (int i = 0; i < nproc-1; ++i) {
-  // sample_split_iter (first, last, dist, targets[i], comp,
-  //		   right_ends[i + 1],
-  //		   MPI_valueType, MPI_distanceType, comm);
-  //     }
-  //     copy (dist, dist + nproc, right_ends[nproc].begin());
-  //   }
-  //
-  //
-  // private:
-  //   // return an integer uniformly distributed from [0, max)
-  //   inline static int random_number(int max) {
-  //     //return (int) (max * drand48());
-  //     return (int) (max * (double)rand()/RAND_MAX);
-  //   }
-  //
-  //   template<typename _RandomAccessIter, class _Compare, typename _Distance>
-  //     static void sample_split_iter (_RandomAccessIter first,
-  //			     _RandomAccessIter last,
-  //			     _Distance *dist,
-  //			     _Distance target,
-  //			     _Compare comp,
-  //			     vector<_Distance> &split_inds,
-  //			     MPI_Datatype &MPI_valueType,
-  //			     MPI_Datatype &MPI_distanceType,
-  //			     MPI_Comm comm) {
-
-  //     typedef typename iterator_traits<_RandomAccessIter>::value_type
-  //     _ValueType;
-
-  //     int nproc, rank;
-  //     MPI_Comm_size (comm, &nproc);
-  //     MPI_Comm_rank (comm, &rank);
-
-  //     // invariant: subdist[rank] == last - start
-  //     _Distance subdist[nproc];  // amount of data each proc still has in the
-  //     search _Distance outleft[nproc];  // keep track of start - first copy
-  //     (dist, dist + nproc, subdist); fill (outleft, outleft + nproc, 0);
-
-  //     _RandomAccessIter start = first;
-  //     _ValueType query;
-  //     _Distance sampler;
-
-  //     while (true) {
-  // assert(subdist[rank] == last - start);
-
-  //// generate a guess
-  //// root decides who gets to guess
-  // if (!rank) {
-  //  _Distance distcum[nproc];
-  //  partial_sum (subdist, subdist + nproc, distcum);
-  //  // ensure sampler is a rank with data; lower is that first rank
-  //  _Distance lower = lower_bound(distcum, distcum + nproc, 1) - distcum;
-  //  sampler = lower_bound (distcum + lower, distcum + nproc,
-  //			 random_number (distcum[nproc - 1]))
-  //    - distcum;
-  //}
-  // MPI_Bcast (&sampler, 1, MPI_distanceType, 0, comm);
-
-  //// take the guess
-  // if (rank == sampler) {
-  //  query = *(start + random_number (subdist[rank]));
-  //}
-  // MPI_Bcast (&query, 1, MPI_valueType, sampler, comm);
-
-  //// find min and max ranks of the guess
-  // pair<_RandomAccessIter, _RandomAccessIter> ind_range_p =
-  //  equal_range (start, last, query, comp);
-
-  //// get the absolute local index of the query
-  //_Distance ind_range[2] = {
-  //  ind_range_p.first - first, ind_range_p.second - first
-  //};
-  //
-  //_Distance ind_all[2 * nproc];
-  // MPI_Allgather (ind_range, 2, MPI_distanceType,
-  //	       ind_all, 2 , MPI_distanceType, comm);
-
-  //// scan to get the global range of indices of the query
-  //_Distance g_ind_min = 0, g_ind_max = 0;
-  // for (int i = 0; i < nproc; ++i) {
-  //  g_ind_min += ind_all[2 * i];
-  //  g_ind_max += ind_all[2 * i + 1];
-  //}
-
-  //// if target in range, low procs to high take excess for stability
-  // if (g_ind_min <= target && target <= g_ind_max) {
-  //  _Distance excess = target - g_ind_min;
-  //  for (int i = 0; i < nproc; ++i) {
-  //    split_inds[i] = min (ind_all[2 * i] + excess, ind_all[2 * i + 1]);
-  //    excess -= split_inds[i] - ind_all[2 * i];
-  //  }
-  //  return;
-  //}
-
-  //// set up for next iteration of binary search
-  // if (target < g_ind_min) {
-  //  last = first + ind_all[2 * rank];
-  //  assert(outleft[rank] == start - first);
-  //  for (int i = 0; i < nproc; ++i) {
-  //    subdist[i] = ind_all[2 * i] - outleft[i];
-  //  }
-  //} else {
-  //  start = first + ind_all[2 * rank + 1];
-  //  for (int i = 0; i < nproc; ++i) {
-  //    subdist[i] = outleft[i] + subdist[i] - ind_all[2 * i + 1];
-  //    outleft[i] = ind_all[2 * i + 1];
-  //  }
-  //}
-  //     }
-  //   }
-  // };
 
 } // namespace p_sort
 

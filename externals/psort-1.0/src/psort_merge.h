@@ -22,10 +22,7 @@ THE SOFTWARE.
 
 #ifndef PSORT_MERGE_H
 #define PSORT_MERGE_H
-
-#ifdef USE_FUNNEL
-#include "funnel.h"
-#endif
+#include <vector>
 
 namespace p_sort {
   template <typename MergeType>
@@ -42,87 +39,11 @@ namespace p_sort {
       MergeType *m = static_cast<MergeType *>(this);
       m->real_merge(in, out, disps, nproc, comp, oppositeComp);
     }
-
-    char *description() {
-      MergeType *m = static_cast<MergeType *>(this);
-      return m->real_description();
-    }
-  };
-
-  // p-way flat merge
-  class FlatMerge : public Merge<FlatMerge> {
-  public:
-    char *real_description() {
-      return (char *)("Flat merge");
-    };
-
-    template <typename _ValueType, class _Compare, typename _Distance>
-    void real_merge(_ValueType *in,
-                    _ValueType *out,
-                    _Distance *disps,
-                    int nproc,
-                    _Compare comp,
-                    _Compare oppositeComp) {
-
-      _Distance heads[nproc];
-      copy(disps, disps + nproc, heads);
-      for(int i = 0; i < disps[nproc]; ++i) {
-        int min_head = -1;
-        for(int j = 0; j < nproc; ++j) {
-          if(heads[j] < disps[j + 1]
-             && (min_head < 0 || comp(in[heads[j]], in[heads[min_head]]))) {
-            min_head = j;
-          }
-        }
-        out[i] = in[heads[min_head]++];
-      }
-    }
-  };
-
-  // A tree merge
-  class TreeMerge : public Merge<TreeMerge> {
-  public:
-    char *real_description() {
-      return (char *)("Tree merge");
-    };
-
-    template <typename _ValueType, class _Compare, typename _Distance>
-    void real_merge(_ValueType *in,
-                    _ValueType *out,
-                    _Distance *disps,
-                    int nproc,
-                    _Compare comp,
-                    _Compare oppositeComp) {
-
-      // round nproc up to next power of two, pad disps
-      int nproc_p;
-      for(nproc_p = 1; nproc_p < nproc; nproc_p *= 2)
-        ;
-      _Distance disps_p[nproc_p + 1];
-      copy(disps, disps + nproc + 1, disps_p);
-      fill(disps_p + nproc + 1, disps_p + nproc_p + 1, disps[nproc]);
-
-      int merged = 0;
-      for(int i = 1; i * 2 < nproc_p + 1; i = i * 2) {
-        for(int j = 0; j + 2 * i < nproc_p + 1; j += 2 * i) {
-          inplace_merge(in + disps_p[j], in + disps_p[j + i],
-                        in + disps_p[j + 2 * i], comp);
-        }
-        merged = 2 * i;
-      }
-      /*std::merge (in, in + disps_p[merged],
-      in + disps_p[merged], in + disps_p[nproc_p],
-      out, comp);*/
-    }
   };
 
   // An out of place tree merge
   class OOPTreeMerge : public Merge<OOPTreeMerge> {
   public:
-    char *real_description() {
-      return (char *)("Out-of-place tree merge");
-    };
-
     template <typename _RandomAccessIter, class _Compare, typename _Distance>
     void real_merge(_RandomAccessIter in,
                     _RandomAccessIter out,
@@ -138,10 +59,8 @@ namespace p_sort {
 
       _RandomAccessIter bufs[2] = {in, out};
       //_Distance locs[nproc];
-      _Distance *locs = new _Distance[nproc];
-      for(int i = 0; i < nproc; ++i) {
-        locs[i] = 0;
-      }
+
+      std::vector<_Distance> locs(nproc, 0);
 
       _Distance next = 1;
       while(true) {
@@ -169,81 +88,18 @@ namespace p_sort {
                    bufs[locs[next]] + disps[nproc], out, comp);
       } else if(locs[next] == 0) {
         // 10 => backwards out of place
-        /*std::merge (reverse_iterator<_RandomAccessIter> (in + disps[nproc]),
-              reverse_iterator<_RandomAccessIter> (in + disps[next]),
-              reverse_iterator<_RandomAccessIter> (out + disps[next]),
-              reverse_iterator<_RandomAccessIter> (out),
-              reverse_iterator<_RandomAccessIter> (out + disps[nproc]),
-              not2 (comp));*/
+        std::merge(reverse_iterator<_RandomAccessIter>(in + disps[nproc]),
+                   reverse_iterator<_RandomAccessIter>(in + disps[next]),
+                   reverse_iterator<_RandomAccessIter>(out + disps[next]),
+                   reverse_iterator<_RandomAccessIter>(out),
+                   reverse_iterator<_RandomAccessIter>(out + disps[nproc]),
+                   oppositeComp);
       } else {
         // 11 => in-place
         std::inplace_merge(out, out + disps[next], out + disps[nproc], comp);
       }
-      delete[] locs;
     }
   };
-
-#ifdef USE_FUNNEL
-
-  class FunnelMerge2 : public Merge<FunnelMerge2> {
-  public:
-    char *real_description() {
-      return (char *)("Funnel(2) merge");
-    };
-
-    template <typename _RandomAccessIter, class _Compare, typename _Distance>
-    void real_merge(_RandomAccessIter in,
-                    _RandomAccessIter out,
-                    _Distance *disps,
-                    int nproc,
-                    _Compare comp,
-                    _Compare oppositeComp) {
-
-      if(nproc == 1) {
-        copy(in, in + disps[nproc], out);
-        return;
-      }
-
-      iosort::merge_tree<_RandomAccessIter, 2> merger(nproc);
-
-      for(int i = 0; i < nproc; ++i) {
-        merger.add_stream(in + disps[i], in + disps[i + 1]);
-      }
-
-      merger(out);
-    }
-  };
-
-  class FunnelMerge4 : public Merge<FunnelMerge4> {
-  public:
-    char *real_description() {
-      return (char *)("Funnel(4) merge");
-    };
-
-    template <typename _RandomAccessIter, class _Compare, typename _Distance>
-    void real_merge(_RandomAccessIter in,
-                    _RandomAccessIter out,
-                    _Distance *disps,
-                    int nproc,
-                    _Compare comp,
-                    _Compare oppositeComp) {
-
-      if(nproc == 1) {
-        copy(in, in + disps[nproc], out);
-        return;
-      }
-
-      iosort::merge_tree<_RandomAccessIter, 4> merger(nproc);
-
-      for(int i = 0; i < nproc; ++i) {
-        merger.add_stream(in + disps[i], in + disps[i + 1]);
-      }
-
-      merger(out);
-    }
-  };
-#endif
-
 } // namespace p_sort
 
 #endif /*PSORT_MERGE_H */

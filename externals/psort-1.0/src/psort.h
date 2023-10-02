@@ -23,7 +23,9 @@ THE SOFTWARE.
 #ifndef PSORT_H
 #define PSORT_H
 
-#include "psort_util.h"
+#include "psort_alltoall.h"
+#include "psort_merge.h"
+#include "psort_splitters.h"
 
 namespace p_sort {
   using namespace std;
@@ -51,7 +53,6 @@ namespace p_sort {
   */
   template <typename _RandomAccessIter,
             typename _Compare,
-            typename _SeqSortType,
             typename _SplitType,
             typename _MergeType>
   void parallel_sort(_RandomAccessIter first,
@@ -59,7 +60,6 @@ namespace p_sort {
                      _Compare comp,
                      _Compare oppositeComp,
                      long *dist_in,
-                     SeqSort<_SeqSortType> &mysort,
                      Split<_SplitType> &mysplit,
                      Merge<_MergeType> &mymerge,
                      MPI_Comm comm) {
@@ -78,47 +78,35 @@ namespace p_sort {
     MPI_Type_commit(&MPI_distanceType);
 
     //_Distance dist[nproc];
-    _Distance *dist = new _Distance[nproc];
+    std::vector<_Distance> dist(nproc);
     for(int i = 0; i < nproc; ++i)
       dist[i] = (_Distance)dist_in[i];
 
     // Sort the data locally
-    progress(rank, 0, mysort.description());
-    mysort.seqsort(first, last, comp);
+    __gnu_parallel::sort(first, last, comp);
 
     if(nproc == 1)
       return;
 
     // Find splitters
-    progress(rank, 1, mysplit.description());
     vector<vector<_Distance>> right_ends(
       nproc + 1, vector<_Distance>(nproc, 0));
-    mysplit.split(first, last, dist, comp, right_ends, MPI_valueType,
+    mysplit.split(first, last, dist.data(), comp, right_ends, MPI_valueType,
                   MPI_distanceType, comm);
 
     // Communicate to destination
-    progress(rank, 2, (char *)"alltoall");
     _Distance n_loc = last - first;
-    _ValueType *trans_data = new _ValueType[n_loc];
+    std::vector<_ValueType> trans_data(n_loc);
     //_Distance boundaries[nproc+1];
-    _Distance *boundaries = new _Distance[nproc + 1];
-    alltoall(right_ends, first, last, trans_data, boundaries, MPI_valueType,
-             MPI_distanceType, comm);
+    std::vector<_Distance> boundaries(nproc + 1);
+    alltoall(right_ends, first, last, trans_data.data(), boundaries.data(),
+             MPI_valueType, comm);
 
-    // Merge streams from all processors
-    progress(rank, 3, mymerge.description());
+    mymerge.merge(trans_data.data(), &(*first), boundaries.data(), nproc, comp,
+                  oppositeComp);
 
-    mymerge.merge(trans_data, &(*first), boundaries, nproc, comp, oppositeComp);
-
-    delete[] trans_data;
     MPI_Type_free(&MPI_valueType);
     MPI_Type_free(&MPI_distanceType);
-
-    delete[] dist;
-    delete[] boundaries;
-
-    // Finish
-    progress(rank, 4, (char *)"finish");
 
     return;
   }
@@ -130,23 +118,21 @@ namespace p_sort {
                      long *dist,
                      MPI_Comm comm) {
 
-    STLSort mysort;
     MedianSplit mysplit;
     OOPTreeMerge mymerge;
 
-    parallel_sort(data.begin(), data.end(), comp, oppositeComp, dist, mysort,
-                  mysplit, mymerge, comm);
+    parallel_sort(data.begin(), data.end(), comp, oppositeComp, dist, mysplit,
+                  mymerge, comm);
   }
 
   template <typename T>
   void parallel_sort(std::vector<T> &data, long *dist, MPI_Comm comm) {
 
-    STLSort mysort;
     MedianSplit mysplit;
     OOPTreeMerge mymerge;
 
-    parallel_sort(data.begin(), data.end(), comp1, oppositeComp1, dist, mysort,
-                  mysplit, mymerge, comm);
+    parallel_sort(data.begin(), data.end(), comp1, oppositeComp1, dist, mysplit,
+                  mymerge, comm);
   }
 } // namespace p_sort
 
