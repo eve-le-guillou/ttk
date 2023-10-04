@@ -301,7 +301,6 @@ else()
   message(STATUS "WebSocketPP not found, disabling WebSocketIO module in TTK.")
 endif()
 
-include_directories(externals)
 # --- Install path
 
 include(GNUInstallDirs)
