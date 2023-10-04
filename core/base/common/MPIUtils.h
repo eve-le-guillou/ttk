@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -518,6 +519,12 @@ namespace ttk {
     // TODO: check if nValues > 0 before recv/send
     const std::vector<int> &neighbors = triangulation->getNeighborRanks();
     const int neighborNumber = neighbors.size();
+    // TODO: mettre neighborsToId dans une triangulation
+    std::map<int, int> neighborsToId;
+    for(int i = 0; i < neighborNumber; i++) {
+      neighborsToId[neighbors[i]] = i;
+    }
+
     if(!ttk::isRunningWithMPI()) {
       return -1;
     }
@@ -558,21 +565,36 @@ namespace ttk {
                 neighbors[i], 0, communicator, &recvRequests[i]);
     }
 
-    MPI_Waitall(neighborNumber, sendRequests.data(), MPI_STATUSES_IGNORE);
-    MPI_Waitall(neighborNumber, recvRequests.data(), MPI_STATUSES_IGNORE);
-
-    for(int i = 0; i < neighborNumber; i++) {
-      ttk::SimplexId nValues = ghostVerticesPerOwner[neighbors[i]].size();
+    std::vector<MPI_Status> recvStatus(neighborNumber);
+    std::vector<int> recvCompleted(neighborNumber, 0);
+    int recvPerformedCount = 0;
+    int recvPerformedCountTotal = 0;
+    int r;
+    int rId;
+    while(recvPerformedCountTotal < neighborNumber) {
+      MPI_Waitsome(neighborNumber, recvRequests.data(), &recvPerformedCount,
+                   recvCompleted.data(), recvStatus.data());
+      if(recvPerformedCount > 0) {
+        for(int i = 0; i < recvPerformedCount; i++) {
+          r = recvStatus[i].MPI_SOURCE;
+          rId = neighborsToId[r];
+          ttk::SimplexId nValues = ghostVerticesPerOwner[r].size();
 #pragma omp parallel for
-      for(ttk::SimplexId j = 0; j < nValues; j++) {
-        for(int k = 0; k < dimensionNumber; k++) {
-          DT receivedVal = receivedValues[i][j * dimensionNumber + k];
-          ttk::SimplexId globalId = ghostVerticesPerOwner[neighbors[i]][j];
-          ttk::SimplexId localId = triangulation->getVertexLocalId(globalId);
-          scalarArray[localId * dimensionNumber + k] = receivedVal;
+          for(ttk::SimplexId j = 0; j < nValues; j++) {
+            for(int k = 0; k < dimensionNumber; k++) {
+              DT receivedVal = receivedValues[rId][j * dimensionNumber + k];
+              ttk::SimplexId globalId = ghostVerticesPerOwner[r][j];
+              ttk::SimplexId localId
+                = triangulation->getVertexLocalId(globalId);
+              scalarArray[localId * dimensionNumber + k] = receivedVal;
+            }
+          }
         }
+        recvPerformedCountTotal += recvPerformedCount;
       }
     }
+    MPI_Waitall(neighborNumber, sendRequests.data(), MPI_STATUSES_IGNORE);
+
     return 0;
   }
 

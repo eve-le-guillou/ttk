@@ -163,10 +163,10 @@ namespace ttk {
         ttk::SimplexId orderOffset
           = std::accumulate(vertex_distribution_buf.begin(),
                             vertex_distribution_buf.begin() + ttk::MPIrank_, 0);
-        int rank;
-#pragma omp parallel firstprivate(rank, verticesToSortSize) \
+#pragma omp parallel firstprivate(verticesToSortSize) \
   num_threads(threadNumber_) shared(verticesSortedThread)
         {
+          int rank;
           int threadNumber = omp_get_thread_num();
           std::list<std::vector<std::vector<p_sort::vertexToSort>>>::iterator it
             = verticesSortedThread.begin();
