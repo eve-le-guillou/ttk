@@ -20,8 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
-#ifndef PSORT_H
-#define PSORT_H
+#pragma once
 
 namespace p_sort {
   using namespace std;
@@ -42,22 +41,13 @@ namespace p_sort {
            || (a.value == b.value && a.globalId > b.globalId);
   }
 
-  /*
-   SeqSort can be STLSort, STLStableSort
-   Split can be MedianSplit, SampleSplit
-   Merge can be FlatMerge, TreeMerge, OOPTreeMerge, FunnelMerge2, FunnelMerge4
-  */
-  template <typename _RandomAccessIter, typename _Compare>
-  void parallel_sort(_RandomAccessIter first,
-                     _RandomAccessIter last,
+  template <typename _ValueType, typename _Distance, typename _Compare>
+  void parallel_sort(std::vector<_ValueType> &data,
                      _Compare comp,
                      _Compare oppositeComp,
                      long *dist_in,
                      MPI_Comm comm) {
 
-    typedef typename iterator_traits<_RandomAccessIter>::value_type _ValueType;
-    typedef
-      typename iterator_traits<_RandomAccessIter>::difference_type _Distance;
     int nproc, rank;
     MPI_Comm_size(comm, &nproc);
     MPI_Comm_rank(comm, &rank);
@@ -74,7 +64,7 @@ namespace p_sort {
       dist[i] = (_Distance)dist_in[i];
 
     // Sort the data locally
-    __gnu_parallel::sort(first, last, comp);
+    __gnu_parallel::sort(data.begin(), data.end(), comp);
 
     if(nproc == 1)
       return;
@@ -82,18 +72,18 @@ namespace p_sort {
     // Find splitters
     std::vector<vector<_Distance>> right_ends(
       nproc + 1, vector<_Distance>(nproc, 0));
-    psort_split(first, last, dist.data(), comp, right_ends, MPI_valueType,
-                MPI_distanceType, comm);
+    psort_split(data.begin(), data.end(), dist.data(), comp, right_ends,
+                MPI_valueType, MPI_distanceType, comm);
 
     // Communicate to destination
-    _Distance n_loc = last - first;
+    _Distance n_loc = data.size();
     std::vector<_ValueType> trans_data(n_loc);
     //_Distance boundaries[nproc+1];
     std::vector<_Distance> boundaries(nproc + 1);
-    alltoall(right_ends, first, last, trans_data.data(), boundaries.data(),
-             MPI_valueType, comm);
+    alltoall(
+      right_ends, data, trans_data, boundaries.data(), MPI_valueType, comm);
 
-    psort_merge(trans_data.data(), &(*first), boundaries.data(), nproc, comp,
+    psort_merge(trans_data.data(), data.data(), boundaries.data(), nproc, comp,
                 oppositeComp);
 
     MPI_Type_free(&MPI_valueType);
@@ -102,27 +92,16 @@ namespace p_sort {
     return;
   }
 
-  template <typename T, typename _Compare>
-  void parallel_sort(std::vector<T> &data,
-                     _Compare comp,
-                     _Compare oppositeComp,
-                     long *dist,
-                     MPI_Comm comm) {
-
-    parallel_sort(data.begin(), data.end(), comp, oppositeComp, dist, comm);
+  template <typename _ValueType, typename _Distance>
+  void parallel_sort(std::vector<_ValueType> &data, long *dist, MPI_Comm comm) {
+    parallel_sort<_ValueType, _Distance>(
+      data, comp1, oppositeComp1, dist, comm);
   }
 
-  template <typename T>
-  void parallel_sort(std::vector<T> &data, long *dist, MPI_Comm comm) {
-
-    parallel_sort(data.begin(), data.end(), comp1, oppositeComp1, dist, comm);
-  }
-
-  template <typename _RandomAccessIter, typename _ValueType, typename _Distance>
-  static void alltoall(vector<vector<_Distance>> &right_ends,
-                       _RandomAccessIter first,
-                       _RandomAccessIter last,
-                       _ValueType *trans_data,
+  template <typename _ValueType, typename _Distance>
+  static void alltoall(std::vector<std::vector<_Distance>> &right_ends,
+                       std::vector<_ValueType> &data,
+                       std::vector<_ValueType> &trans_data,
                        _Distance *boundaries,
                        MPI_Datatype &MPI_valueType,
                        MPI_Comm comm) {
@@ -133,50 +112,123 @@ namespace p_sort {
 
     // Should be _Distance, but MPI wants ints
     char errMsg[] = "32-bit limit for MPI has overflowed";
-    _Distance n_loc_ = last - first;
-    if(n_loc_ > INT_MAX)
-      throw std::overflow_error(errMsg);
+    _Distance n_loc_ = data.size();
+    bool overflowInt{false};
+    if(n_loc_ > INT_MAX) {
+      std::cout << errMsg << std::endl;
+      overflowInt = true;
+    }
     int n_loc = static_cast<int>(n_loc_);
-
     // Calculate the counts for redistributing data
     // int send_counts[nproc], send_disps[nproc];
-    std::vector<int> send_counts(nproc);
-    std::vector<int> send_disps(nproc);
+    std::vector<_Distance> send_counts(nproc);
+    std::vector<_Distance> recv_counts(nproc);
 
     for(int i = 0; i < nproc; ++i) {
       _Distance scount = right_ends[i + 1][rank] - right_ends[i][rank];
-      if(scount > INT_MAX)
-        throw std::overflow_error(errMsg);
-      send_counts[i] = static_cast<int>(scount);
-    }
-    send_disps[0] = 0;
-    partial_sum(send_counts.data(), send_counts.data() + nproc - 1,
-                send_disps.data() + 1);
-
-    // int recv_counts[nproc], recv_disps[nproc];
-    std::vector<int> recv_counts(nproc);
-    std::vector<int> recv_disps(nproc);
-    for(int i = 0; i < nproc; ++i) {
       _Distance rcount = right_ends[rank + 1][i] - right_ends[rank][i];
-      if(rcount > INT_MAX)
-        throw std::overflow_error(errMsg);
-      recv_counts[i] = static_cast<int>(rcount);
+      if(scount > INT_MAX || rcount > INT_MAX) {
+        overflowInt = true;
+        std::cout << errMsg << std::endl;
+      }
+      send_counts[i] = scount;
+      recv_counts[i] = rcount;
+    }
+    if(!overflowInt) {
+      std::vector<int> send_counts_int(nproc);
+      std::vector<int> send_disps_int(nproc);
+      std::vector<int> recv_counts_int(nproc);
+      std::vector<int> recv_disps_int(nproc);
+
+      for(int i = 0; i < nproc; i++) {
+        send_counts_int[i] = static_cast<int>(send_counts[i]);
+        recv_counts_int[i] = static_cast<int>(recv_counts[i]);
+      }
+
+      recv_disps_int[0] = 0;
+      std::partial_sum(recv_counts_int.data(),
+                       recv_counts_int.data() + nproc - 1,
+                       recv_disps_int.data() + 1);
+
+      send_disps_int[0] = 0;
+      std::partial_sum(send_counts_int.data(),
+                       send_counts_int.data() + nproc - 1,
+                       send_disps_int.data() + 1);
+      // Do the transpose
+      MPI_Alltoallv(data.data(), send_counts_int.data(), send_disps_int.data(),
+                    MPI_valueType, trans_data.data(), recv_counts_int.data(),
+                    recv_disps_int.data(), MPI_valueType, comm);
+
+      for(int i = 0; i < nproc; ++i)
+        boundaries[i] = (_Distance)recv_disps_int[i];
+      boundaries[nproc] = (_Distance)n_loc; // for the merging
+
+      return;
     }
 
+    std::vector<int> recv_counts_chunks(nproc);
+    std::vector<int> recv_disps_chunks(nproc);
+    std::vector<int> send_counts_chunks(nproc);
+    std::vector<int> send_disps_chunks(nproc);
+    std::vector<_Distance> send_disps(nproc);
+    std::vector<_Distance> recv_disps(nproc);
+
+    for(int i = 0; i < nproc; i++) {
+      recv_counts_chunks[i] = recv_counts[i] / INT_MAX;
+      if(recv_counts[i] % INT_MAX != 0) {
+        recv_counts_chunks[i]++;
+      }
+      send_counts_chunks[i] = send_counts[i] / INT_MAX;
+      if(send_counts[i] % INT_MAX != 0) {
+        send_counts_chunks[i]++;
+      }
+    }
+    recv_disps_chunks[0] = 0;
+    std::partial_sum(recv_counts_chunks.data(),
+                     recv_counts_chunks.data() + nproc - 1,
+                     recv_disps_chunks.data() + 1);
+    send_disps_chunks[0] = 0;
+    std::partial_sum(send_counts_chunks.data(),
+                     send_counts_chunks.data() + nproc - 1,
+                     send_disps_chunks.data() + 1);
+    send_disps[0] = 0;
+    std::partial_sum(send_counts.data(), send_counts.data() + nproc - 1,
+                     send_disps.data() + 1);
     recv_disps[0] = 0;
-    partial_sum(recv_counts.data(), recv_counts.data() + nproc - 1,
-                recv_disps.data() + 1);
+    std::partial_sum(recv_counts.data(), recv_counts.data() + nproc - 1,
+                     recv_disps.data() + 1);
 
-    assert(accumulate(recv_counts.data(), recv_counts.data() + nproc, 0)
-           == n_loc);
+    int bufferSize = accumulate(
+      recv_counts_chunks.data(), recv_counts_chunks.data() + nproc, 0);
+    std::vector<_ValueType> send_buffer_64bits(bufferSize * INT_MAX);
+    std::vector<_ValueType> recv_buffer_64bits(bufferSize * INT_MAX);
 
-    // Do the transpose
-    MPI_Alltoallv(&(*first), send_counts.data(), send_disps.data(),
-                  MPI_valueType, trans_data, recv_counts.data(),
-                  recv_disps.data(), MPI_valueType, comm);
+    for(int p = 0; p < nproc; p++) {
+      send_buffer_64bits.insert(
+        send_buffer_64bits.begin() + send_disps_chunks[p] * INT_MAX,
+        data.data() + send_disps[p],
+        data.data() + send_disps[p] + send_counts[p]);
+    }
 
+    // Create chunk type
+    MPI_Datatype MPI_valueChunkType;
+    MPI_Type_contiguous(
+      sizeof(_ValueType) * INT_MAX, MPI_CHAR, &MPI_valueChunkType);
+    MPI_Type_commit(&MPI_valueChunkType);
+
+    MPI_Alltoallv(send_buffer_64bits.data(), send_counts_chunks.data(),
+                  send_disps_chunks.data(), MPI_valueChunkType,
+                  recv_buffer_64bits.data(), recv_counts_chunks.data(),
+                  recv_disps_chunks.data(), MPI_valueChunkType, comm);
+    for(int p = 0; p < nproc; p++) {
+      trans_data.insert(
+        trans_data.begin() + recv_disps[p],
+        recv_buffer_64bits.data() + recv_disps_chunks[p] * INT_MAX,
+        recv_buffer_64bits.data() + recv_disps_chunks[p] * INT_MAX
+          + recv_counts[p]);
+    }
     for(int i = 0; i < nproc; ++i)
-      boundaries[i] = (_Distance)recv_disps[i];
+      boundaries[i] = recv_disps[i];
     boundaries[nproc] = (_Distance)n_loc; // for the merging
 
     return;
@@ -449,5 +501,3 @@ namespace p_sort {
   }
 
 } // namespace p_sort
-
-#endif /* PSORT_H */

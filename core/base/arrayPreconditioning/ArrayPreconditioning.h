@@ -11,7 +11,6 @@
 
 // ttk common includes
 //#include "AmsSort/AmsSort.hpp"
-#include "BaseClass.h"
 #include <Debug.h>
 #include <Triangulation.h>
 #include <psort.h>
@@ -123,27 +122,7 @@ namespace ttk {
                    + " MPI processes lasted :" + std::to_string(elapsedTime));
         }
         ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-
-        /*Ams::sort<vertexToSort>(
-          MPI_vertexToSortType, verticesToSort, kway, gen, comm,
-          [&](const vertexToSort a, const vertexToSort b) {
-            return (b.value > a.value)
-                   || (a.value == b.value && a.globalId < b.globalId);
-          });*/
-        /*bool comp = [&](const vertexToSort a, const vertexToSort b) {
-            return (b.value > a.value)
-                   || (a.value == b.value && a.globalId < b.globalId);};*/
-        /*struct greater_custom {
-
-        }*/
-        /*        [&](const vertexToSort a, const vertexToSort b) {
-                        return (b.value > a.value)
-             || (a.value == b.value && a.globalId < b.globalId);},
-        [&](const vertexToSort a, const vertexToSort b) {
-                        return (b.value > a.value)
-             || (a.value == b.value && a.globalId < b.globalId);}*/
-
-        p_sort::parallel_sort<p_sort::vertexToSort>(
+        p_sort::parallel_sort<p_sort::vertexToSort, ttk::SimplexId>(
           verticesToSort, vertex_distribution.data(), MPI_COMM_WORLD);
         elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
         if(ttk::MPIrank_ == 0) {
