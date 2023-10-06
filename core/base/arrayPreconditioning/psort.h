@@ -212,8 +212,7 @@ namespace p_sort {
 
     // Create chunk type
     MPI_Datatype MPI_valueChunkType;
-    MPI_Type_contiguous(
-      sizeof(_ValueType) * INT_MAX, MPI_CHAR, &MPI_valueChunkType);
+    MPI_Type_contiguous(INT_MAX, MPI_valueType, &MPI_valueChunkType);
     MPI_Type_commit(&MPI_valueChunkType);
 
     MPI_Alltoallv(send_buffer_64bits.data(), send_counts_chunks.data(),
