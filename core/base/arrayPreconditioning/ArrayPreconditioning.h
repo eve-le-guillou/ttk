@@ -19,6 +19,29 @@
 
 namespace ttk {
 
+  namespace globalOrder {
+
+    template <typename datatype>
+    struct vertexToSort {
+      datatype value;
+      ttk::SimplexId globalId;
+      ttk::SimplexId order;
+    };
+
+    template <typename datatype>
+    bool comp(const vertexToSort<datatype> a, const vertexToSort<datatype> b) {
+      return (b.value > a.value)
+             || (a.value == b.value && a.globalId < b.globalId);
+    };
+
+    template <typename datatype>
+    bool oppositeComp(const vertexToSort<datatype> a,
+                      const vertexToSort<datatype> b) {
+      return (a.value > b.value)
+             || (a.value == b.value && a.globalId > b.globalId);
+    }
+  } // namespace globalOrder
+
   /**
    * The ArrayPreconditioning class provides methods to generate order arrays
    * from a selection of scalar field arrays.
@@ -72,20 +95,15 @@ namespace ttk {
         //                         burstSize, neighbors);
         ttk::Timer t_mpi;
         ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-        /*struct vertexToSort {
-          double value;
-          ttk::SimplexId globalId;
-          ttk::SimplexId order;
-        };*/
-        std::vector<p_sort::vertexToSort> verticesToSort;
+        std::vector<globalOrder::vertexToSort<DT>> verticesToSort;
         verticesToSort.reserve(nVerts);
-#pragma omp declare reduction (merge : std::vector<p_sort::vertexToSort> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+#pragma omp declare reduction (merge : std::vector<globalOrder::vertexToSort<DT>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge : verticesToSort)
         for(int i = 0; i < nVerts; i++) {
           if(triangulation->getVertexRank(i) == ttk::MPIrank_) {
-            verticesToSort.emplace_back(p_sort::vertexToSort{
-              static_cast<double>(scalarArray[i]),
-              triangulation->getVertexGlobalId(i), ttk::MPIrank_});
+            verticesToSort.emplace_back(globalOrder::vertexToSort<DT>{
+              scalarArray[i], triangulation->getVertexGlobalId(i),
+              ttk::MPIrank_});
           }
         }
         ttk::SimplexId id = 0;
@@ -94,17 +112,12 @@ namespace ttk {
         int lengths[] = {1, 1, 1};
         MPI_Datatype MPI_vertexToSortType;
         const long int mpi_offsets[]
-          = {offsetof(p_sort::vertexToSort, value),
-             offsetof(p_sort::vertexToSort, globalId),
-             offsetof(p_sort::vertexToSort, order)};
+          = {offsetof(globalOrder::vertexToSort<DT>, value),
+             offsetof(globalOrder::vertexToSort<DT>, globalId),
+             offsetof(globalOrder::vertexToSort<DT>, order)};
         MPI_Type_create_struct(
           3, lengths, mpi_offsets, types, &MPI_vertexToSortType);
         MPI_Type_commit(&MPI_vertexToSortType);
-        /*const int kway = 64;
-        const int num_levels = 3;
-        std::random_device rd;
-        std::mt19937_64 gen(rd());
-        MPI_Comm comm = ttk::MPIcomm_;*/
         std::vector<ttk::SimplexId> vertex_distribution(ttk::MPIsize_);
         ttk::SimplexId localVertexNumber = verticesToSort.size();
         MPI_Allgather(&localVertexNumber, 1, MPI_SimplexId,
@@ -117,21 +130,24 @@ namespace ttk {
                    + " MPI processes lasted :" + std::to_string(elapsedTime));
         }
         ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-        p_sort::parallel_sort<p_sort::vertexToSort, ttk::SimplexId>(
-          verticesToSort, vertex_distribution, threadNumber_);
+
+        p_sort::parallel_sort<globalOrder::vertexToSort<DT>>(
+          verticesToSort, globalOrder::comp<DT>, globalOrder::oppositeComp<DT>,
+          vertex_distribution, MPI_vertexToSortType, MPI_SimplexId,
+          threadNumber_);
         elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
         if(ttk::MPIrank_ == 0) {
           printMsg("Sorting on " + std::to_string(ttk::MPIsize_)
                    + " MPI processes lasted :" + std::to_string(elapsedTime));
         }
         ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-        std::vector<std::vector<p_sort::vertexToSort>> verticesSorted(
-          ttk::MPIsize_, std::vector<p_sort::vertexToSort>());
-        std::list<std::vector<std::vector<p_sort::vertexToSort>>>
+        std::vector<std::vector<globalOrder::vertexToSort<DT>>> verticesSorted(
+          ttk::MPIsize_, std::vector<globalOrder::vertexToSort<DT>>());
+        std::list<std::vector<std::vector<globalOrder::vertexToSort<DT>>>>
           verticesSortedThread(
             this->threadNumber_,
-            std::vector<std::vector<p_sort::vertexToSort>>(
-              ttk::MPIsize_, std::vector<p_sort::vertexToSort>()));
+            std::vector<std::vector<globalOrder::vertexToSort<DT>>>(
+              ttk::MPIsize_, std::vector<globalOrder::vertexToSort<DT>>()));
         // Compute orderOffset with MPI prefix sum
         ttk::SimplexId verticesToSortSize = verticesToSort.size();
         ttk::SimplexId orderOffset
@@ -142,7 +158,9 @@ namespace ttk {
         {
           int rank;
           int threadNumber = omp_get_thread_num();
-          std::list<std::vector<std::vector<p_sort::vertexToSort>>>::iterator it
+          typename std::list<
+            std::vector<std::vector<globalOrder::vertexToSort<DT>>>>::iterator
+            it
             = verticesSortedThread.begin();
           for(int i = 0; i < threadNumber; i++)
             it++;
@@ -159,7 +177,8 @@ namespace ttk {
             }
           }
         }
-        std::list<std::vector<std::vector<p_sort::vertexToSort>>>::iterator it
+        typename std::list<
+          std::vector<std::vector<globalOrder::vertexToSort<DT>>>>::iterator it
           = verticesSortedThread.begin();
         for(int i = 0; i < this->threadNumber_; i++) {
           for(int j = 0; j < ttk::MPIsize_; j++) {
@@ -194,8 +213,9 @@ namespace ttk {
             count++;
           }
         }
-        std::vector<std::vector<p_sort::vertexToSort>> recvVerticesSorted(
-          ttk::MPIsize_, std::vector<p_sort::vertexToSort>());
+        std::vector<std::vector<globalOrder::vertexToSort<DT>>>
+          recvVerticesSorted(
+            ttk::MPIsize_, std::vector<globalOrder::vertexToSort<DT>>());
         std::vector<MPI_Request> sendRequestsData(ttk::MPIsize_ - 1);
         std::vector<MPI_Request> recvRequestsData(ttk::MPIsize_ - 1);
         std::vector<MPI_Status> recvStatusData(ttk::MPIsize_ - 1);
