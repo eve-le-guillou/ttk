@@ -110,8 +110,7 @@ int ttkArrayPreconditioning::RequestData(vtkInformation *ttkNotUsed(request),
                          (status = processScalarArray<T0, T1>(
                             static_cast<const T1 *>(triangulation->getData()),
                             ttkUtils::GetPointer<ttk::SimplexId>(orderArray),
-                            ttkUtils::GetPointer<T0>(scalarArray), nVertices,
-                            BurstSize, triangulation->getNeighborRanks())));
+                            ttkUtils::GetPointer<T0>(scalarArray), nVertices)));
 
           // On error cancel filter execution
           if(status != 1)

@@ -1,3 +1,19 @@
+/// \ingroup base
+/// \author Eve Le Guillou <eve.le-guillou@lip6.fr>
+/// \date 2023.
+///
+/// In this file is implemented a distributed sort based on the algorithm psort
+/// by David Cheng et al. The present software has been significantly modified.
+/// In particular, the alltoall function has been modified to accept indices
+/// greater than INT_MAX. However, the changes to the two function psort_split
+/// and psort_merge are limited. Below can be found the licence of the original
+/// code.
+
+/// \b Related \b publication \n
+/// "A Novel Parallel Sorting Algorithm for Contemporary Architectures" \n
+/// David Cheng, Viral Shah, John Gilbert, Alan Edelman \n
+/// Submitted to ALENEX, (2006).
+
 /*
 Copyright (c) 2009, David Cheng, Viral B. Shah.
 
@@ -23,6 +39,7 @@ THE SOFTWARE.
 #pragma once
 #include <Debug.h>
 
+#ifdef TTK_ENABLE_MPI
 namespace p_sort {
 
   template <typename T, class _Compare>
@@ -465,3 +482,5 @@ namespace p_sort {
   }
 
 } // namespace p_sort
+
+#endif // TTK_ENABLE_MPI

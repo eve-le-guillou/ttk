@@ -10,6 +10,7 @@
 #pragma once
 
 // ttk common includes
+#include "DataTypes.h"
 #include <Debug.h>
 #include <Triangulation.h>
 #include <psort.h>
@@ -65,15 +66,7 @@ namespace ttk {
     int processScalarArray(const triangulationType *triangulation,
                            ttk::SimplexId *orderArray,
                            const DT *scalarArray,
-                           const size_t nVerts,
-                           const int burstSize,
-#ifdef TTK_ENABLE_MPI
-                           std::vector<int> neighbors
-#else
-                           const std::vector<int> &neighbors
-#endif
-
-                           = {}) const { // start global timer
+                           const size_t nVerts) const { // start global timer
       ttk::Timer globalTimer;
 
       // print horizontal separator
@@ -90,16 +83,15 @@ namespace ttk {
 // -----------------------------------------------------------------------
 #ifdef TTK_ENABLE_MPI
       if(ttk::isRunningWithMPI()) {
-        // ttk::produceOrdering<DT>(orderArray, scalarArray, getVertexGlobalId,
-        //                         getVertexRank, getVertexLocalId, nVerts,
-        //                         burstSize, neighbors);
         ttk::Timer t_mpi;
         ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
         std::vector<globalOrder::vertexToSort<DT>> verticesToSort;
         verticesToSort.reserve(nVerts);
+#ifdef TTK_ENABLE_OPENMP
 #pragma omp declare reduction (merge : std::vector<globalOrder::vertexToSort<DT>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge : verticesToSort)
-        for(int i = 0; i < nVerts; i++) {
+#endif
+        for(ttk::SimplexId i = 0; i < nVerts; i++) {
           if(triangulation->getVertexRank(i) == ttk::MPIrank_) {
             verticesToSort.emplace_back(globalOrder::vertexToSort<DT>{
               scalarArray[i], triangulation->getVertexGlobalId(i),
@@ -153,9 +145,11 @@ namespace ttk {
         ttk::SimplexId orderOffset
           = std::accumulate(vertex_distribution.begin(),
                             vertex_distribution.begin() + ttk::MPIrank_, 0);
+#ifdef TTK_ENABLE_OPENMP
 #pragma omp parallel firstprivate(verticesToSortSize) \
   num_threads(threadNumber_) shared(verticesSortedThread)
         {
+#endif
           int rank;
           int threadNumber = omp_get_thread_num();
           typename std::list<
@@ -164,8 +158,10 @@ namespace ttk {
             = verticesSortedThread.begin();
           for(int i = 0; i < threadNumber; i++)
             it++;
+#ifdef TTK_ENABLE_OPENMP
 #pragma omp for
-          for(int i = 0; i < verticesToSortSize; i++) {
+#endif
+          for(ttk::SimplexId i = 0; i < verticesToSortSize; i++) {
             rank = verticesToSort.at(i).order;
             if(rank == ttk::MPIrank_) {
               orderArray[triangulation->getVertexLocalId(
@@ -176,7 +172,9 @@ namespace ttk {
               it->at(rank).push_back(verticesToSort.at(i));
             }
           }
+#ifdef TTK_ENABLE_OPENMP
         }
+#endif
         typename std::list<
           std::vector<std::vector<globalOrder::vertexToSort<DT>>>>::iterator it
           = verticesSortedThread.begin();
@@ -301,11 +299,7 @@ namespace ttk {
       this->printMsg("MPI not enabled!");
       TTK_FORCE_USE(orderArray);
       TTK_FORCE_USE(scalarArray);
-      TTK_FORCE_USE(getVertexGlobalId);
-      TTK_FORCE_USE(getVertexRank);
-      TTK_FORCE_USE(getVertexLocalId);
-      TTK_FORCE_USE(burstSize);
-      TTK_FORCE_USE(neighbors);
+      TTK_FORCE_USE(triangulation);
       return 0;
 #endif
 
