@@ -10,7 +10,6 @@
 #pragma once
 
 // ttk common includes
-//#include "AmsSort/AmsSort.hpp"
 #include <Debug.h>
 #include <Triangulation.h>
 #include <psort.h>
@@ -106,15 +105,11 @@ namespace ttk {
         std::random_device rd;
         std::mt19937_64 gen(rd());
         MPI_Comm comm = ttk::MPIcomm_;*/
-        std::vector<ttk::SimplexId> vertex_distribution_buf(ttk::MPIsize_);
-        std::vector<long> vertex_distribution(ttk::MPIsize_);
+        std::vector<ttk::SimplexId> vertex_distribution(ttk::MPIsize_);
         ttk::SimplexId localVertexNumber = verticesToSort.size();
         MPI_Allgather(&localVertexNumber, 1, MPI_SimplexId,
-                      vertex_distribution_buf.data(), 1, MPI_SimplexId,
+                      vertex_distribution.data(), 1, MPI_SimplexId,
                       ttk::MPIcomm_);
-        for(int i = 0; i < ttk::MPIsize_; i++) {
-          vertex_distribution[i] = vertex_distribution_buf[i];
-        }
         double elapsedTime
           = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
         if(ttk::MPIrank_ == 0) {
@@ -123,7 +118,7 @@ namespace ttk {
         }
         ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
         p_sort::parallel_sort<p_sort::vertexToSort, ttk::SimplexId>(
-          verticesToSort, vertex_distribution.data(), MPI_COMM_WORLD);
+          verticesToSort, vertex_distribution, threadNumber_);
         elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
         if(ttk::MPIrank_ == 0) {
           printMsg("Sorting on " + std::to_string(ttk::MPIsize_)
@@ -140,8 +135,8 @@ namespace ttk {
         // Compute orderOffset with MPI prefix sum
         ttk::SimplexId verticesToSortSize = verticesToSort.size();
         ttk::SimplexId orderOffset
-          = std::accumulate(vertex_distribution_buf.begin(),
-                            vertex_distribution_buf.begin() + ttk::MPIrank_, 0);
+          = std::accumulate(vertex_distribution.begin(),
+                            vertex_distribution.begin() + ttk::MPIrank_, 0);
 #pragma omp parallel firstprivate(verticesToSortSize) \
   num_threads(threadNumber_) shared(verticesSortedThread)
         {
