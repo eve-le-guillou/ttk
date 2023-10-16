@@ -1,6 +1,7 @@
 /// \ingroup base
 /// \class ttk::ArrayPreconditioning
 /// \author Michael Will <mswill@rhrk.uni-kl.de>
+/// \author Eve Le Guillou <eve.le-guillou@lip6.fr>
 /// \date 2022.
 ///
 /// This module defines the %ArrayPreconditioning class that generates order
@@ -26,7 +27,7 @@ namespace ttk {
     struct vertexToSort {
       ttk::SimplexId globalId;
       datatype value;
-      short rank;
+      char rank;
     };
 
     struct sortedVertex {
@@ -34,18 +35,6 @@ namespace ttk {
       ttk::SimplexId order;
     };
 
-    template <typename datatype>
-    struct vertexToSortTest {
-      ttk::SimplexId globalId;
-      datatype value;
-      char order;
-    };
-
-    template <typename datatype>
-    struct testStruct {
-      ttk::SimplexId fake_id = 1;
-      datatype fake_data_attribute;
-    };
     template <typename datatype>
     bool comp(const vertexToSort<datatype> a, const vertexToSort<datatype> b) {
       return (b.value > a.value)
@@ -159,7 +148,7 @@ namespace ttk {
         DT v{0};
         // MPI_Datatype MPI_SimplexId = getMPIType(id);
         MPI_Datatype MPI_DT = getMPIType(v);
-        MPI_Datatype types[] = {MPI_SimplexId, MPI_SimplexId, MPI_DT};
+        MPI_Datatype types[] = {MPI_SimplexId, MPI_DT, MPI_CHAR};
         /*std::cout << "Value of MPI_DOUBLE: "<< MPI_DOUBLE<<std::endl;
         std::cout << "Value of MPI_FLOAT: "<< MPI_FLOAT<<std::endl;
         std::cout << "Value of MPI_INT: "<< MPI_INT<<std::endl;
