@@ -259,13 +259,16 @@ namespace p_sort {
                        std::vector<dataType> &data,
                        std::vector<dataType> &trans_data,
                        ttk::SimplexId *boundaries,
-                       MPI_Datatype &MPI_valueType) {
+                       MPI_Datatype &MPI_valueType,
+                       MPI_Datatype &MPI_distanceType) {
 
     // Should be ttk::SimplexId, but MPI wants ints
     char errMsg[] = "32-bit limit for MPI has overflowed";
     ttk::SimplexId n_loc_ = data.size();
-    bool overflowInt{false};
-    int int_max_cus = INT_MAX;
+    char overflowInt{0};
+    ttk::SimplexId int_max_cus = INT_MAX;
+    ttk::SimplexId chunkSize = n_loc_ / int_max_cus + 1;
+
     if(n_loc_ > int_max_cus) {
       std::cout << errMsg << std::endl;
       overflowInt = true;
@@ -275,21 +278,24 @@ namespace p_sort {
     // int send_counts[ttk::MPIsize_], send_disps[ttk::MPIsize_];
     std::vector<ttk::SimplexId> send_counts(ttk::MPIsize_);
     std::vector<ttk::SimplexId> recv_counts(ttk::MPIsize_);
-
+#pragma omp parallel for reduction(+ : overflowInt)
     for(int i = 0; i < ttk::MPIsize_; ++i) {
       ttk::SimplexId scount
         = right_ends[i + 1][ttk::MPIrank_] - right_ends[i][ttk::MPIrank_];
       ttk::SimplexId rcount
         = right_ends[ttk::MPIrank_ + 1][i] - right_ends[ttk::MPIrank_][i];
       if(scount > int_max_cus || rcount > int_max_cus) {
-        overflowInt = true;
+        overflowInt = 1;
         std::cout << errMsg << std::endl;
       }
       send_counts[i] = scount;
       recv_counts[i] = rcount;
     }
-
-    if(!overflowInt) {
+    MPI_Allreduce(
+      MPI_IN_PLACE, &overflowInt, 1, MPI_CHAR, MPI_SUM, ttk::MPIcomm_);
+    MPI_Allreduce(
+      MPI_IN_PLACE, &chunkSize, 1, MPI_distanceType, MPI_MAX, ttk::MPIcomm_);
+    if(overflowInt == 0) {
       std::vector<int> send_counts_int(ttk::MPIsize_);
       std::vector<int> send_disps_int(ttk::MPIsize_);
       std::vector<int> recv_counts_int(ttk::MPIsize_);
@@ -329,12 +335,12 @@ namespace p_sort {
     std::vector<ttk::SimplexId> recv_disps(ttk::MPIsize_);
 
     for(int i = 0; i < ttk::MPIsize_; i++) {
-      recv_counts_chunks[i] = recv_counts[i] / int_max_cus;
-      if(recv_counts[i] % int_max_cus != 0) {
+      recv_counts_chunks[i] = recv_counts[i] / chunkSize;
+      if(recv_counts[i] % chunkSize != 0) {
         recv_counts_chunks[i]++;
       }
-      send_counts_chunks[i] = send_counts[i] / int_max_cus;
-      if(send_counts[i] % int_max_cus != 0) {
+      send_counts_chunks[i] = send_counts[i] / chunkSize;
+      if(send_counts[i] % chunkSize != 0) {
         send_counts_chunks[i]++;
       }
     }
@@ -355,19 +361,19 @@ namespace p_sort {
 
     int bufferSize = std::accumulate(
       recv_counts_chunks.data(), recv_counts_chunks.data() + ttk::MPIsize_, 0);
-    std::vector<dataType> send_buffer_64bits(bufferSize * int_max_cus);
-    std::vector<dataType> recv_buffer_64bits(bufferSize * int_max_cus);
+    std::vector<dataType> send_buffer_64bits(bufferSize * chunkSize);
+    std::vector<dataType> recv_buffer_64bits(bufferSize * chunkSize);
 
     for(int p = 0; p < ttk::MPIsize_; p++) {
       send_buffer_64bits.insert(
-        send_buffer_64bits.begin() + send_disps_chunks[p] * int_max_cus,
+        send_buffer_64bits.begin() + send_disps_chunks[p] * chunkSize,
         data.data() + send_disps[p],
         data.data() + send_disps[p] + send_counts[p]);
     }
 
     // Create chunk type
     MPI_Datatype MPI_valueChunkType;
-    MPI_Type_contiguous(int_max_cus, MPI_valueType, &MPI_valueChunkType);
+    MPI_Type_contiguous(chunkSize, MPI_valueType, &MPI_valueChunkType);
     MPI_Type_commit(&MPI_valueChunkType);
 
     MPI_Alltoallv(send_buffer_64bits.data(), send_counts_chunks.data(),
@@ -377,10 +383,77 @@ namespace p_sort {
     for(int p = 0; p < ttk::MPIsize_; p++) {
       trans_data.insert(
         trans_data.begin() + recv_disps[p],
-        recv_buffer_64bits.data() + recv_disps_chunks[p] * int_max_cus,
-        recv_buffer_64bits.data() + recv_disps_chunks[p] * int_max_cus
+        recv_buffer_64bits.data() + recv_disps_chunks[p] * chunkSize,
+        recv_buffer_64bits.data() + recv_disps_chunks[p] * chunkSize
           + recv_counts[p]);
     }
+    /*std::vector<ttk::SimplexId> send_disps(ttk::MPIsize_);
+    std::vector<ttk::SimplexId> recv_disps(ttk::MPIsize_);
+    send_disps[0] = 0;
+    std::partial_sum(send_counts.data(), send_counts.data() + ttk::MPIsize_ - 1,
+                     send_disps.data() + 1);
+    recv_disps[0] = 0;
+    std::partial_sum(recv_counts.data(), recv_counts.data() + ttk::MPIsize_ - 1,
+                     recv_disps.data() + 1);
+
+    // New strat for 64bits
+    int moreToSend{1};
+    int count{0};
+    std::vector<int>partial_recv_count(ttk::MPIsize_, 0);
+    std::vector<int>partial_send_count(ttk::MPIsize_, 0);
+    std::vector<int>partial_recv_displs(ttk::MPIsize_, 0);
+    std::vector<int>partial_send_displs(ttk::MPIsize_, 0);
+    std::vector<dataType> send_buffer_64bits(int_max_cus);
+    std::vector<dataType> recv_buffer_64bits(int_max_cus);
+    ttk::SimplexId messageSize = std::max(int_max_cus/ttk::MPIsize_-1,1);
+    while (moreToSend){
+      send_buffer_64bits.resize(0);
+      //recv_buffer_64bits.resize(0);
+      moreToSend = 0;
+      for (int i = 0; i < ttk::MPIsize_; i++){
+        if (i>0){
+          partial_send_displs[i] = partial_send_displs[i-1] +
+    partial_send_count[i-1]; partial_recv_displs[i] = partial_recv_displs[i-1] +
+    partial_recv_count[i-1];
+        }
+        if (send_counts[i]-count*messageSize >0){
+          moreToSend = 1;
+          if (send_counts[i]-count*messageSize>messageSize){
+            partial_send_count[i] = messageSize;
+          } else {
+            partial_send_count[i] = send_counts[i]-count*messageSize;
+          }
+          std::copy(data.begin()+send_disps[i]+count*messageSize,
+    data.begin()+send_disps[i]+count*messageSize+partial_send_count[i],
+    send_buffer_64bits.begin()+partial_send_displs[i]); } else {
+          partial_send_count[i] = 0;
+        }
+        if (recv_counts[i]-count*messageSize >0){
+          //moreToSend = 1;
+          if (recv_counts[i]-count*messageSize>messageSize){
+            partial_recv_count[i] = messageSize;
+          } else {
+            partial_recv_count[i] = recv_counts[i]-count*messageSize;
+          }
+        } else {
+          partial_recv_count[i] = 0;
+        }
+      }
+      MPI_Alltoallv(send_buffer_64bits.data(), partial_send_count.data(),
+    partial_send_displs.data(), MPI_valueType, recv_buffer_64bits.data(),
+    partial_recv_count.data(), partial_recv_displs.data(), MPI_valueType,
+    ttk::MPIcomm_); for (int i = 0; i < ttk::MPIsize_; i++){ if
+    (partial_recv_count[i]>0){
+          std::copy(recv_buffer_64bits.begin()+partial_recv_displs[i],
+    recv_buffer_64bits.begin()+partial_recv_displs[i]+partial_recv_count[i],
+    trans_data.begin()+recv_disps[i]+count*messageSize);
+        }
+      }
+      count++;
+      MPI_Allreduce(MPI_IN_PLACE, &moreToSend, 1, MPI_INTEGER, MPI_SUM,
+    ttk::MPIcomm_);
+    }
+*/
     for(int i = 0; i < ttk::MPIsize_; ++i)
       boundaries[i] = recv_disps[i];
     boundaries[ttk::MPIsize_] = n_loc_; // for the merging
@@ -473,7 +546,8 @@ namespace p_sort {
     std::vector<dataType> trans_data(n_loc);
 
     std::vector<ttk::SimplexId> boundaries(ttk::MPIsize_ + 1);
-    alltoall(right_ends, data, trans_data, boundaries.data(), MPI_valueType);
+    alltoall(right_ends, data, trans_data, boundaries.data(), MPI_valueType,
+             MPI_distanceType);
 
     psort_merge<_Compare>(
       trans_data.data(), data.data(), boundaries.data(), comp, oppositeComp);
