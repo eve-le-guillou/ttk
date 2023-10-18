@@ -210,7 +210,7 @@ namespace ttk {
         MPI_Type_commit(&MPI_sortedVertexType);
         std::vector<std::vector<globalOrder::sortedVertex>> verticesSorted(
           ttk::MPIsize_, std::vector<globalOrder::sortedVertex>());
-        std::list<std::vector<std::vector<globalOrder::sortedVertex>>>
+        std::vector<std::vector<std::vector<globalOrder::sortedVertex>>>
           verticesSortedThread(
             this->threadNumber_,
             std::vector<std::vector<globalOrder::sortedVertex>>(
@@ -221,17 +221,11 @@ namespace ttk {
           = std::accumulate(vertex_distribution.begin(),
                             vertex_distribution.begin() + ttk::MPIrank_, 0);
 #ifdef TTK_ENABLE_OPENMP
-#pragma omp parallel firstprivate(verticesToSortSize) \
-  num_threads(threadNumber_) shared(verticesSortedThread)
+#pragma omp parallel firstprivate(verticesToSortSize) num_threads(threadNumber_)
         {
 #endif
           int rank;
           int threadNumber = omp_get_thread_num();
-          typename std::list<
-            std::vector<std::vector<globalOrder::sortedVertex>>>::iterator it
-            = verticesSortedThread.begin();
-          for(int i = 0; i < threadNumber; i++)
-            it++;
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp for
 #endif
@@ -242,24 +236,26 @@ namespace ttk {
                 verticesToSort.at(i).globalId)]
                 = orderOffset + i;
             } else {
-              it->at(rank).push_back(globalOrder::sortedVertex{
-                verticesToSort.at(i).globalId, orderOffset + i});
+              verticesSortedThread.at(threadNumber)
+                .at(rank)
+                .push_back(globalOrder::sortedVertex{
+                  verticesToSort.at(i).globalId, orderOffset + i});
             }
           }
 #ifdef TTK_ENABLE_OPENMP
         }
 #endif
-        typename std::list<
-          std::vector<std::vector<globalOrder::sortedVertex>>>::iterator it
-          = verticesSortedThread.begin();
-        for(int i = 0; i < this->threadNumber_; i++) {
-          for(int j = 0; j < ttk::MPIsize_; j++) {
+
+#pragma omp parallel for schedule(static, 1)
+        for(int j = 0; j < ttk::MPIsize_; j++) {
+          for(int i = 0; i < this->threadNumber_; i++) {
             if(j != ttk::MPIrank_) {
               verticesSorted.at(j).insert(
-                verticesSorted.at(j).end(), it->at(j).begin(), it->at(j).end());
+                verticesSorted.at(j).end(),
+                verticesSortedThread.at(i).at(j).begin(),
+                verticesSortedThread.at(i).at(j).end());
             }
           }
-          it++;
         }
         std::vector<MPI_Request> sendRequests(ttk::MPIsize_ - 1);
         std::vector<MPI_Request> recvRequests(ttk::MPIsize_ - 1);

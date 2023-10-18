@@ -4,10 +4,11 @@
 ///
 /// In this file is implemented a distributed sort based on the algorithm psort
 /// by David Cheng et al. The present software has been significantly modified.
-/// In particular, the alltoall function has been modified to accept indices
-/// greater than INT_MAX. However, the changes to the two function psort_split
-/// and psort_merge are limited. Below can be found the licence of the original
-/// code.
+/// In particular, the alltoall function has been modified to accept up to
+/// INT_MAX*INT_MAX elements in the MPI call. If a wider range of identifiers
+/// is needed, please check if alltoallv_c is available in the MPI
+/// implementation. The changes to the two function psort_split and psort_merge
+/// are limited. Below can be found the licence of the original code.
 
 /// \b Related \b publication \n
 /// "A Novel Parallel Sorting Algorithm for Contemporary Architectures" \n
