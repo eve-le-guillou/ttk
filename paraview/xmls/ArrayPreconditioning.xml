@@ -102,7 +102,7 @@
         <Property name="SelectFieldsWithRegexp" />
         <Property name="PointDataArrays" />
         <Property name="Regexp" />
-        <Property name="BurstSize" />
+        <Property name="GlobalOrder" />
       </PropertyGroup>
 
       <Hints>
