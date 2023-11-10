@@ -116,6 +116,12 @@ namespace ttk {
         DT v{0};
         MPI_Datatype MPI_DT = getMPIType(v);
         MPI_Datatype MPI_vertexToSortType;
+
+        /*
+         *  WARNING: the struct is sent as an array of char, as experiments show
+         * that using MPI's built-in struct management yields poor performance
+         * when used with a templated struct.
+         */
         MPI_Type_contiguous(sizeof(globalOrder::vertexToSort<DT>), MPI_CHAR,
                             &MPI_vertexToSortType);
         MPI_Type_commit(&MPI_vertexToSortType);
@@ -189,6 +195,7 @@ namespace ttk {
 #ifdef TTK_ENABLE_OPENMP
         }
 #endif
+        verticesToSort.clear();
         MPI_Barrier(ttk::MPIcomm_);
         if(ttk::MPIrank_ == 0) {
           printMsg("Data for post-processing prepared");
@@ -204,6 +211,7 @@ namespace ttk {
             }
           }
         }
+        verticesSortedThread.clear();
         MPI_Barrier(ttk::MPIcomm_);
         if(ttk::MPIrank_ == 0) {
           printMsg("Data for post-processing copied");
