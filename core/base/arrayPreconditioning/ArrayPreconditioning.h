@@ -74,6 +74,10 @@ namespace ttk {
       return 0;
     }
 
+    void setGlobalOrder(bool order) {
+      this->GlobalOrder = order;
+    }
+
     template <typename DT, typename triangulationType>
     int processScalarArray(const triangulationType *triangulation,
                            ttk::SimplexId *orderArray,
@@ -113,8 +117,6 @@ namespace ttk {
           }
         }
 
-        DT v{0};
-        MPI_Datatype MPI_DT = getMPIType(v);
         MPI_Datatype MPI_vertexToSortType;
 
         /*
