@@ -120,10 +120,10 @@ public:
    */
   vtkDataArray *GetOrderArray(vtkDataSet *const inputData,
                               const int scalarArrayIdx,
-                              const int orderArrayIdx = 0,
-                              const bool enforceOrderArrayIdx = false,
+                              ttk::Triangulation *triangulation,
                               const bool getGlobalOrder = false,
-                              ttk::Triangulation *triangulation = nullptr);
+                              const int orderArrayIdx = 0,
+                              const bool enforceOrderArrayIdx = false);
 
   /**
    * Initializes and computes the order array. When using MPI processes,

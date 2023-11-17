@@ -109,7 +109,7 @@ namespace ttk {
 #pragma omp declare reduction (merge : std::vector<globalOrder::vertexToSort<DT>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge : verticesToSort)
 #endif
-        for(ttk::SimplexId i = 0; i < nVerts; i++) {
+        for(size_t i = 0; i < nVerts; i++) {
           if(triangulation->getVertexRank(i) == ttk::MPIrank_) {
             verticesToSort.emplace_back(globalOrder::vertexToSort<DT>{
               triangulation->getVertexGlobalId(i), scalarArray[i],
@@ -331,7 +331,7 @@ namespace ttk {
       TTK_FORCE_USE(scalarArray);
       TTK_FORCE_USE(triangulation);
       return 0;
-#endif
+#endif // TTK_ENABLE_MPI
 
       // ---------------------------------------------------------------------
       // print global performance
