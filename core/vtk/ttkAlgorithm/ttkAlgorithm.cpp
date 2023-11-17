@@ -124,15 +124,12 @@ vtkDataArray *
     ttk::ArrayPreconditioning arrayPreconditioning
       = ttk::ArrayPreconditioning();
     arrayPreconditioning.preconditionTriangulation(triangulation);
-    if(getGlobalOrder) {
-      arrayPreconditioning.setGlobalOrder(true);
-    }
-    int status;
+    arrayPreconditioning.setGlobalOrder(getGlobalOrder);
     ttkTypeMacroAT(scalarArray->GetDataType(), triangulation->getType(),
-                   (status = arrayPreconditioning.processScalarArray<T0, T1>(
-                      static_cast<const T1 *>(triangulation->getData()),
-                      ttkUtils::GetPointer<ttk::SimplexId>(newOrderArray),
-                      ttkUtils::GetPointer<T0>(scalarArray), nVertices)));
+                   (arrayPreconditioning.processScalarArray<T0, T1>(
+                     static_cast<const T1 *>(triangulation->getData()),
+                     ttkUtils::GetPointer<ttk::SimplexId>(newOrderArray),
+                     ttkUtils::GetPointer<T0>(scalarArray), nVertices)));
   } else {
     switch(scalarArray->GetDataType()) {
       vtkTemplateMacro(ttk::preconditionOrderArray(
@@ -158,6 +155,7 @@ vtkDataArray *
     ->GetAttributesAsFieldData(
       this->GetInputArrayAssociation(scalarArrayIdx, inputData))
     ->AddArray(newOrderArray);
+  TTK_FORCE_USE(triangulation);
 #endif
   return newOrderArray;
 }
@@ -234,9 +232,7 @@ vtkDataArray *ttkAlgorithm::GetOrderArray(vtkDataSet *const inputData,
                                                  scalarArrayIdx, getGlobalOrder,
                                                  orderArray, triangulation);
 
-            if(getGlobalOrder || !ttk::isRunningWithMPI()) {
-              triangulation->setIsOrderArrayGlobal(true);
-            }
+            triangulation->setIsOrderArrayGlobal(true);
 
             this->printMsg("Initializing order array.", 1,
                            timer.getElapsedTime(), this->threadNumber_);

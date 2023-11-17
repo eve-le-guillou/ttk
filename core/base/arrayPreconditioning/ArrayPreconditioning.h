@@ -162,25 +162,24 @@ namespace ttk {
         MPI_Type_commit(&MPI_sortedVertexType);
         std::vector<std::vector<globalOrder::sortedVertex>> verticesSorted(
           ttk::MPIsize_, std::vector<globalOrder::sortedVertex>());
-        std::vector<std::vector<std::vector<globalOrder::sortedVertex>>>
-          verticesSortedThread(
-            this->threadNumber_,
-            std::vector<std::vector<globalOrder::sortedVertex>>(
-              ttk::MPIsize_, std::vector<globalOrder::sortedVertex>()));
         // Compute orderOffset with MPI prefix sum
         ttk::SimplexId verticesToSortSize = verticesToSort.size();
         ttk::SimplexId orderOffset
           = std::accumulate(vertex_distribution.begin(),
                             vertex_distribution.begin() + ttk::MPIrank_, 0);
+        ttk::RankId rank{0};
 #ifdef TTK_ENABLE_OPENMP
-#pragma omp parallel firstprivate(verticesToSortSize) num_threads(threadNumber_)
+        std::vector<std::vector<std::vector<globalOrder::sortedVertex>>>
+          verticesSortedThread(
+            this->threadNumber_,
+            std::vector<std::vector<globalOrder::sortedVertex>>(
+              ttk::MPIsize_, std::vector<globalOrder::sortedVertex>()));
+#pragma omp parallel firstprivate(verticesToSortSize, rank) \
+  num_threads(threadNumber_)
         {
-#endif
-          ttk::RankId rank;
+
           int threadNumber = omp_get_thread_num();
-#ifdef TTK_ENABLE_OPENMP
 #pragma omp for
-#endif
           for(ttk::SimplexId i = 0; i < verticesToSortSize; i++) {
             rank = verticesToSort.at(i).rank;
             if(rank == ttk::MPIrank_) {
@@ -194,9 +193,7 @@ namespace ttk {
                   verticesToSort.at(i).globalId, orderOffset + i});
             }
           }
-#ifdef TTK_ENABLE_OPENMP
         }
-#endif
         verticesToSort.clear();
         MPI_Barrier(ttk::MPIcomm_);
         if(ttk::MPIrank_ == 0) {
@@ -214,6 +211,19 @@ namespace ttk {
           }
         }
         verticesSortedThread.clear();
+#else
+        for(ttk::SimplexId i = 0; i < verticesToSortSize; i++) {
+          rank = verticesToSort.at(i).rank;
+          if(rank == ttk::MPIrank_) {
+            orderArray[triangulation->getVertexLocalId(
+              verticesToSort.at(i).globalId)]
+              = orderOffset + i;
+          } else {
+            verticesSorted.at(rank).push_back(globalOrder::sortedVertex{
+              verticesToSort.at(i).globalId, orderOffset + i});
+          }
+        }
+#endif // TTK_ENABLE_OPENMP
         MPI_Barrier(ttk::MPIcomm_);
         if(ttk::MPIrank_ == 0) {
           printMsg("Data for post-processing copied");

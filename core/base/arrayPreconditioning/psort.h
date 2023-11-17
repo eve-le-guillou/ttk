@@ -38,6 +38,7 @@ THE SOFTWARE.
 */
 
 #pragma once
+#include "BaseClass.h"
 #include <Debug.h>
 
 #ifdef TTK_ENABLE_MPI
@@ -67,8 +68,8 @@ namespace p_sort {
                    MPI_Datatype &MPI_distanceType,
                    int nThreads) {
 
-    typedef
-      typename std::iterator_traits<_RandomAccessIter>::value_type dataType;
+    using dataType =
+      typename std::iterator_traits<_RandomAccessIter>::value_type;
 
     int n_real = ttk::MPIsize_;
     for(int i = 0; i < ttk::MPIsize_; ++i)
@@ -253,6 +254,7 @@ namespace p_sort {
       outleft = outleft_x;
       n_act = n_act_x;
     }
+    TTK_FORCE_USE(nThreads);
   }
 
   template <typename dataType>
