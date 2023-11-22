@@ -95,8 +95,6 @@ namespace p_sort {
     t_ranges[0]
       = std::make_pair(targets.data(), targets.data() + ttk::MPIsize_ - 1);
 
-    // invariant: subdist[i][ttk::MPIrank_] == d_ranges[i].second -
-    // d_ranges[i].first amount of data each proc still has in the search
     std::vector<std::vector<ttk::SimplexId>> subdist(
       ttk::MPIsize_ - 1, std::vector<ttk::SimplexId>(ttk::MPIsize_));
     std::copy(dist, dist + ttk::MPIsize_, subdist[0].begin());
@@ -126,7 +124,6 @@ namespace p_sort {
           medians[ttk::MPIrank_ * n_act + k] = *(last - 1);
       }
 
-      // std::cout << "Median allGather" << std::endl;
       MPI_Allgather(MPI_IN_PLACE, n_act, MPI_valueType, &medians[0], n_act,
                     MPI_valueType, ttk::MPIcomm_);
 
@@ -135,7 +132,6 @@ namespace p_sort {
 
       std::vector<ttk::SimplexId> ms_perm(n_real);
       for(int k = 0; k < n_act; ++k) {
-        // ttk::SimplexId ms_perm[n_real];
 
         for(int i = 0; i < n_real; ++i)
           ms_perm[i] = i * n_act + k;
@@ -162,7 +158,6 @@ namespace p_sort {
         queries[k] = medians[query_ind];
       }
       //------- find min and max ranks of the guesses
-      // ttk::SimplexId ind_local[2 * n_act];
       std::vector<ttk::SimplexId> ind_local(2 * n_act);
 
       for(int k = 0; k < n_act; ++k) {
@@ -174,7 +169,6 @@ namespace p_sort {
         ind_local[2 * k + 1] = ind_local_p.second - first;
       }
 
-      // ttk::SimplexId ind_all[2 * n_act * ttk::MPIsize_];
       std::vector<ttk::SimplexId> ind_all(2 * n_act * ttk::MPIsize_);
       MPI_Allgather(ind_local.data(), 2 * n_act, MPI_distanceType,
                     ind_all.data(), 2 * n_act, MPI_distanceType, ttk::MPIcomm_);
@@ -257,6 +251,11 @@ namespace p_sort {
     TTK_FORCE_USE(nThreads);
   }
 
+  /**
+   * This function as been heavily modified compared to the original psort to
+   * account for the case where more than INT_MAX elements need to be sent in
+   * the alltoall.
+   */
   template <typename dataType>
   static void alltoall(std::vector<std::vector<ttk::SimplexId>> &right_ends,
                        std::vector<dataType> &data,
@@ -264,21 +263,18 @@ namespace p_sort {
                        ttk::SimplexId *boundaries,
                        MPI_Datatype &MPI_valueType,
                        MPI_Datatype &MPI_distanceType) {
-
-    // Should be ttk::SimplexId, but MPI wants ints
-    char errMsg[] = "32-bit limit for MPI has overflowed";
+    // MPI_Alltoallv requires integers for displacements and counts.
+    // If there is a need to send more, then a second strategy is used
     ttk::SimplexId n_loc_ = data.size();
+    // char and not boolean because MPI doesn't know boolean
     char overflowInt{0};
-    ttk::SimplexId int_max_cus = INT_MAX;
-    ttk::SimplexId chunkSize = n_loc_ / int_max_cus + 1;
-
-    if(n_loc_ > int_max_cus) {
-      std::cout << errMsg << std::endl;
+    ttk::SimplexId chunkSize = n_loc_ / INT_MAX + 1;
+    if(n_loc_ > INT_MAX) {
       overflowInt = true;
     }
     int n_loc = static_cast<int>(n_loc_);
-    // Calculate the counts for redistributing data
-    // int send_counts[ttk::MPIsize_], send_disps[ttk::MPIsize_];
+    // Calculate the counts for redistributing data and detects potential
+    // overflows of INT_MAX
     std::vector<ttk::SimplexId> send_counts(ttk::MPIsize_);
     std::vector<ttk::SimplexId> recv_counts(ttk::MPIsize_);
 #pragma omp parallel for reduction(+ : overflowInt)
@@ -287,9 +283,8 @@ namespace p_sort {
         = right_ends[i + 1][ttk::MPIrank_] - right_ends[i][ttk::MPIrank_];
       ttk::SimplexId rcount
         = right_ends[ttk::MPIrank_ + 1][i] - right_ends[ttk::MPIrank_][i];
-      if(scount > int_max_cus || rcount > int_max_cus) {
+      if(scount > INT_MAX || rcount > INT_MAX) {
         overflowInt = 1;
-        std::cout << errMsg << std::endl;
       }
       send_counts[i] = scount;
       recv_counts[i] = rcount;
@@ -330,66 +325,9 @@ namespace p_sort {
       return;
     }
 
-    /*std::vector<int> recv_counts_chunks(ttk::MPIsize_);
-    std::vector<int> recv_disps_chunks(ttk::MPIsize_);
-    std::vector<int> send_counts_chunks(ttk::MPIsize_);
-    std::vector<int> send_disps_chunks(ttk::MPIsize_);
-    std::vector<ttk::SimplexId> send_disps(ttk::MPIsize_);
-    std::vector<ttk::SimplexId> recv_disps(ttk::MPIsize_);
-
-    for(int i = 0; i < ttk::MPIsize_; i++) {
-      recv_counts_chunks[i] = recv_counts[i] / chunkSize;
-      if(recv_counts[i] % chunkSize != 0) {
-        recv_counts_chunks[i]++;
-      }
-      send_counts_chunks[i] = send_counts[i] / chunkSize;
-      if(send_counts[i] % chunkSize != 0) {
-        send_counts_chunks[i]++;
-      }
-    }
-    recv_disps_chunks[0] = 0;
-    std::partial_sum(recv_counts_chunks.data(),
-                     recv_counts_chunks.data() + ttk::MPIsize_ - 1,
-                     recv_disps_chunks.data() + 1);
-    send_disps_chunks[0] = 0;
-    std::partial_sum(send_counts_chunks.data(),
-                     send_counts_chunks.data() + ttk::MPIsize_ - 1,
-                     send_disps_chunks.data() + 1);
-    send_disps[0] = 0;
-    std::partial_sum(send_counts.data(), send_counts.data() + ttk::MPIsize_ - 1,
-                     send_disps.data() + 1);
-    recv_disps[0] = 0;
-    std::partial_sum(recv_counts.data(), recv_counts.data() + ttk::MPIsize_ - 1,
-                     recv_disps.data() + 1);
-
-    int bufferSize = std::accumulate(
-      recv_counts_chunks.data(), recv_counts_chunks.data() + ttk::MPIsize_, 0);
-    std::vector<dataType> send_buffer_64bits(bufferSize * chunkSize);
-    std::vector<dataType> recv_buffer_64bits(bufferSize * chunkSize);
-
-    for(int p = 0; p < ttk::MPIsize_; p++) {
-      send_buffer_64bits.insert(
-        send_buffer_64bits.begin() + send_disps_chunks[p] * chunkSize,
-        data.data() + send_disps[p],
-        data.data() + send_disps[p] + send_counts[p]);
-    }
-
-    // Create chunk type
-    MPI_Datatype MPI_valueChunkType;
-    MPI_Type_contiguous(chunkSize, MPI_valueType, &MPI_valueChunkType);
-    MPI_Type_commit(&MPI_valueChunkType);
-
-    MPI_Alltoallv(send_buffer_64bits.data(), send_counts_chunks.data(),
-                  send_disps_chunks.data(), MPI_valueChunkType,
-                  recv_buffer_64bits.data(), recv_counts_chunks.data(),
-                  recv_disps_chunks.data(), MPI_valueChunkType, ttk::MPIcomm_);
-    for(int p = 0; p < ttk::MPIsize_; p++) {
-      trans_data.insert(
-        trans_data.begin() + recv_disps[p],
-        recv_buffer_64bits.data() + recv_disps_chunks[p] * chunkSize,
-        recv_buffer_64bits.data() + recv_disps_chunks[p] * chunkSize
-          + recv_counts[p]);
-    }*/
+    // if the alltoall needs to send more than INT_MAX elements,
+    // then multiple messages, of each at most INT_MAX elements,
+    // are sent until all elements are sent.
     std::vector<ttk::SimplexId> send_disps(ttk::MPIsize_);
     std::vector<ttk::SimplexId> recv_disps(ttk::MPIsize_);
     send_disps[0] = 0;
@@ -399,34 +337,32 @@ namespace p_sort {
     std::partial_sum(recv_counts.data(), recv_counts.data() + ttk::MPIsize_ - 1,
                      recv_disps.data() + 1);
 
-    // New strat for 64bits
     int moreToSend{1};
     int count{0};
-    std::vector<int>partial_recv_count(ttk::MPIsize_, 0);
-    std::vector<int>partial_send_count(ttk::MPIsize_, 0);
-    std::vector<int>partial_recv_displs(ttk::MPIsize_, 0);
-    std::vector<int>partial_send_displs(ttk::MPIsize_, 0);
-    std::vector<dataType> send_buffer_64bits(int_max_cus);
-    std::vector<dataType> recv_buffer_64bits(int_max_cus);
-    ttk::SimplexId messageSize
-      = std::max(int_max_cus / ttk::MPIsize_ - 1, (ttk::SimplexId)1);
-    while (moreToSend){
+    std::vector<int> partial_recv_count(ttk::MPIsize_, 0);
+    std::vector<int> partial_send_count(ttk::MPIsize_, 0);
+    std::vector<int> partial_recv_displs(ttk::MPIsize_, 0);
+    std::vector<int> partial_send_displs(ttk::MPIsize_, 0);
+    std::vector<dataType> send_buffer_64bits(INT_MAX);
+    std::vector<dataType> recv_buffer_64bits(INT_MAX);
+    ttk::SimplexId messageSize = std::max(INT_MAX / ttk::MPIsize_ - 1, 1);
+    while(moreToSend) {
+      // Preparing the send buffer of at most INT_MAX elements
       send_buffer_64bits.resize(0);
-      //recv_buffer_64bits.resize(0);
       moreToSend = 0;
-      for (int i = 0; i < ttk::MPIsize_; i++){
-        if (i>0){
+      for(int i = 0; i < ttk::MPIsize_; i++) {
+        if(i > 0) {
           partial_send_displs[i]
             = partial_send_displs[i - 1] + partial_send_count[i - 1];
           partial_recv_displs[i]
             = partial_recv_displs[i - 1] + partial_recv_count[i - 1];
         }
-        if (send_counts[i]-count*messageSize >0){
+        if(send_counts[i] - count * messageSize > 0) {
           moreToSend = 1;
-          if (send_counts[i]-count*messageSize>messageSize){
+          if(send_counts[i] - count * messageSize > messageSize) {
             partial_send_count[i] = messageSize;
           } else {
-            partial_send_count[i] = send_counts[i]-count*messageSize;
+            partial_send_count[i] = send_counts[i] - count * messageSize;
           }
           std::copy(data.begin() + send_disps[i] + count * messageSize,
                     data.begin() + send_disps[i] + count * messageSize
@@ -435,12 +371,11 @@ namespace p_sort {
         } else {
           partial_send_count[i] = 0;
         }
-        if (recv_counts[i]-count*messageSize >0){
-          //moreToSend = 1;
-          if (recv_counts[i]-count*messageSize>messageSize){
+        if(recv_counts[i] - count * messageSize > 0) {
+          if(recv_counts[i] - count * messageSize > messageSize) {
             partial_recv_count[i] = messageSize;
           } else {
-            partial_recv_count[i] = recv_counts[i]-count*messageSize;
+            partial_recv_count[i] = recv_counts[i] - count * messageSize;
           }
         } else {
           partial_recv_count[i] = 0;
@@ -450,16 +385,19 @@ namespace p_sort {
                     partial_send_displs.data(), MPI_valueType,
                     recv_buffer_64bits.data(), partial_recv_count.data(),
                     partial_recv_displs.data(), MPI_valueType, ttk::MPIcomm_);
+      // Receiving the buffer and placing it in the right vector
       for(int i = 0; i < ttk::MPIsize_; i++) {
         if(partial_recv_count[i] > 0) {
-          std::copy(recv_buffer_64bits.begin()+partial_recv_displs[i],
-    recv_buffer_64bits.begin()+partial_recv_displs[i]+partial_recv_count[i],
-    trans_data.begin()+recv_disps[i]+count*messageSize);
+          std::copy(recv_buffer_64bits.begin() + partial_recv_displs[i],
+                    recv_buffer_64bits.begin() + partial_recv_displs[i]
+                      + partial_recv_count[i],
+                    trans_data.begin() + recv_disps[i] + count * messageSize);
         }
       }
       count++;
-      MPI_Allreduce(MPI_IN_PLACE, &moreToSend, 1, MPI_INTEGER, MPI_SUM,
-    ttk::MPIcomm_);
+      // Test to see if more messages need to be sent
+      MPI_Allreduce(
+        MPI_IN_PLACE, &moreToSend, 1, MPI_INTEGER, MPI_SUM, ttk::MPIcomm_);
     }
 
     for(int i = 0; i < ttk::MPIsize_; ++i)
@@ -482,7 +420,6 @@ namespace p_sort {
     }
 
     _RandomAccessIter bufs[2] = {in, out};
-    // ttk::SimplexId locs[ttk::MPIsize_];
 
     std::vector<ttk::SimplexId> locs(ttk::MPIsize_, 0);
 
@@ -527,6 +464,22 @@ namespace p_sort {
     }
   }
 
+  /**
+   * @brief This function sorts a data vector in a distributed-memory context.
+   * It will first sort locally using multi-threading and then operate a global
+   * sort using a split and merge strategy. After sorting, each process will
+   * have the same number of vertices, but they will be sorted globally (process
+   * 0 will have all the smallest ones, etc).
+   *
+   * @param data The data vector to be sorted in distributed
+   * @param comp The comparator to use for the sort
+   * @param oppositeComp The opposite of the above comparator
+   * (for example, for greater than, its opposite would be less than)
+   * @param dist The number of elements to sort on each process
+   * @param MPI_valueType The MPI type of the data
+   * @param MPI_distanceType The MPI type of the indices
+   * @param nThreads The number of threads to use
+   */
   template <typename dataType, typename _Compare>
   void parallel_sort(std::vector<dataType> &data,
                      _Compare comp,

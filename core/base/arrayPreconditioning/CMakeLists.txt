@@ -8,5 +8,3 @@ ttk_add_base_library(arrayPreconditioning
     common
     triangulation
 )
-if(TTK_ENABLE_MPI_SORT)
-  endif()
