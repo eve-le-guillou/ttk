@@ -79,108 +79,33 @@ namespace ttk {
     }
 
     template <typename DT, typename triangulationType>
-    int processScalarArray(const triangulationType *triangulation,
-                           ttk::SimplexId *orderArray,
-                           const DT *scalarArray,
-                           const size_t nVerts) const { // start global timer
-      ttk::Timer globalTimer;
-
-      // print horizontal separator
-      this->printMsg(ttk::debug::Separator::L1); // L1 is the '=' separator
-      // print input parameters in table format
-      this->printMsg({
-        {"#Threads", std::to_string(this->threadNumber_)},
-        {"#Vertices", std::to_string(nVerts)},
-      });
-      this->printMsg(ttk::debug::Separator::L1);
-
-// -----------------------------------------------------------------------
-// Computing order Array
-// -----------------------------------------------------------------------
-#ifdef TTK_ENABLE_MPI
-      if(ttk::isRunningWithMPI()) {
-        ttk::Timer t_mpi;
-        ttk::SimplexId id = 0;
-        MPI_Datatype MPI_SimplexId = getMPIType(id);
-        ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-        std::vector<globalOrder::vertexToSort<DT>> verticesToSort;
-        verticesToSort.reserve(nVerts);
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp declare reduction (merge : std::vector<globalOrder::vertexToSort<DT>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
-#pragma omp parallel for reduction(merge : verticesToSort)
-#endif
-        for(size_t i = 0; i < nVerts; i++) {
-          if(triangulation->getVertexRank(i) == ttk::MPIrank_) {
-            verticesToSort.emplace_back(globalOrder::vertexToSort<DT>{
-              triangulation->getVertexGlobalId(i), scalarArray[i],
-              (ttk::RankId)ttk::MPIrank_});
-          }
-        }
-
-        MPI_Datatype MPI_vertexToSortType;
-
-        /*
-         *  WARNING: the struct is sent as an array of char, as experiments show
-         * that using MPI's built-in struct management yields poor performance
-         * when used with a templated struct.
-         */
-        MPI_Type_contiguous(sizeof(globalOrder::vertexToSort<DT>), MPI_CHAR,
-                            &MPI_vertexToSortType);
-        MPI_Type_commit(&MPI_vertexToSortType);
-
-        std::vector<ttk::SimplexId> vertex_distribution(ttk::MPIsize_);
-        ttk::SimplexId localVertexNumber = verticesToSort.size();
-        MPI_Allgather(&localVertexNumber, 1, MPI_SimplexId,
-                      vertex_distribution.data(), 1, MPI_SimplexId,
-                      ttk::MPIcomm_);
-        double elapsedTime
-          = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-        if(ttk::MPIrank_ == 0) {
-          printMsg("Preparation for sorting on " + std::to_string(ttk::MPIsize_)
-                   + " MPI processes lasted :" + std::to_string(elapsedTime));
-        }
-        ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-
-        p_sort::parallel_sort<globalOrder::vertexToSort<DT>>(
-          verticesToSort, globalOrder::comp<DT>, globalOrder::oppositeComp<DT>,
-          vertex_distribution, MPI_vertexToSortType, MPI_SimplexId,
-          threadNumber_);
-        elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-        if(ttk::MPIrank_ == 0) {
-          printMsg("Sorting on " + std::to_string(ttk::MPIsize_)
-                   + " MPI processes lasted :" + std::to_string(elapsedTime));
-        }
-        ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-        MPI_Datatype types[] = {MPI_SimplexId, MPI_SimplexId};
-        int lengths[] = {1, 1};
-        MPI_Datatype MPI_sortedVertexType;
-        const long int mpi_offsets[]
-          = {offsetof(globalOrder::sortedVertex, globalId),
-             offsetof(globalOrder::sortedVertex, order)};
-        MPI_Type_create_struct(
-          2, lengths, mpi_offsets, types, &MPI_sortedVertexType);
-        MPI_Type_commit(&MPI_sortedVertexType);
-        std::vector<std::vector<globalOrder::sortedVertex>> verticesSorted(
-          ttk::MPIsize_, std::vector<globalOrder::sortedVertex>());
-        // Compute orderOffset with MPI prefix sum
-        ttk::SimplexId verticesToSortSize = verticesToSort.size();
-        ttk::SimplexId orderOffset
-          = std::accumulate(vertex_distribution.begin(),
-                            vertex_distribution.begin() + ttk::MPIrank_, 0);
-        ttk::RankId rank{0};
+    int
+      postprocessing(const triangulationType *triangulation,
+                     ttk::SimplexId *orderArray,
+                     const ttk::SimplexId beginning,
+                     const ttk::SimplexId end,
+                     const ttk::SimplexId orderOffset,
+                     std::vector<globalOrder::vertexToSort<DT>> &verticesToSort,
+                     MPI_Datatype &MPI_sortedVertexType,
+                     MPI_Datatype &MPI_SimplexId,
+                     const ttk::SimplexId itNumber,
+                     const ttk::SimplexId localNbChunk) const {
+      printMsg("In postprocessing");
+      ttk::RankId rank{0};
+      std::vector<std::vector<globalOrder::sortedVertex>> verticesSorted(
+        ttk::MPIsize_, std::vector<globalOrder::sortedVertex>());
+      if(itNumber < localNbChunk + 1) {
 #ifdef TTK_ENABLE_OPENMP
         std::vector<std::vector<std::vector<globalOrder::sortedVertex>>>
           verticesSortedThread(
             this->threadNumber_,
             std::vector<std::vector<globalOrder::sortedVertex>>(
               ttk::MPIsize_, std::vector<globalOrder::sortedVertex>()));
-#pragma omp parallel firstprivate(verticesToSortSize, rank) \
-  num_threads(threadNumber_)
+#pragma omp parallel firstprivate(rank) num_threads(threadNumber_)
         {
-
           int threadNumber = omp_get_thread_num();
-#pragma omp for
-          for(ttk::SimplexId i = 0; i < verticesToSortSize; i++) {
+#pragma omp for schedule(static)
+          for(ttk::SimplexId i = beginning; i < end; i++) {
             rank = verticesToSort.at(i).rank;
             if(rank == ttk::MPIrank_) {
               orderArray[triangulation->getVertexLocalId(
@@ -194,11 +119,11 @@ namespace ttk {
             }
           }
         }
-        verticesToSort.clear();
-        MPI_Barrier(ttk::MPIcomm_);
-        if(ttk::MPIrank_ == 0) {
-          printMsg("Data for post-processing prepared");
-        }
+        // verticesToSort.clear();
+        // MPI_Barrier(ttk::MPIcomm_);
+        // if(ttk::MPIrank_ == 0) {
+        //  printMsg("Data for post-processing prepared");
+        //}
 #pragma omp parallel for schedule(static, 1)
         for(int j = 0; j < ttk::MPIsize_; j++) {
           for(int i = 0; i < this->threadNumber_; i++) {
@@ -210,9 +135,12 @@ namespace ttk {
             }
           }
         }
-        verticesSortedThread.clear();
+        {
+          std::vector<std::vector<std::vector<globalOrder::sortedVertex>>>()
+            .swap(verticesSortedThread);
+        }
 #else
-        for(ttk::SimplexId i = 0; i < verticesToSortSize; i++) {
+        for(ttk::SimplexId i = beginning; i < end; i++) {
           rank = verticesToSort.at(i).rank;
           if(rank == ttk::MPIrank_) {
             orderArray[triangulation->getVertexLocalId(
@@ -224,6 +152,7 @@ namespace ttk {
           }
         }
 #endif // TTK_ENABLE_OPENMP
+      }
         MPI_Barrier(ttk::MPIcomm_);
         if(ttk::MPIrank_ == 0) {
           printMsg("Data for post-processing copied");
@@ -290,10 +219,13 @@ namespace ttk {
               for(int i = 0; i < recvPerformedCount; i++) {
                 r = recvStatus[i].MPI_SOURCE;
                 if((recvMessageSize[r] > 0)) {
+                  printMsg("Recv message size: "
+                           + std::to_string(recvMessageSize[r]));
                   recvVerticesSorted.at(r).resize(recvMessageSize[r]);
                   MPI_Irecv(recvVerticesSorted.at(r).data(), recvMessageSize[r],
                             MPI_sortedVertexType, r, 1, ttk::MPIcomm_,
                             &recvRequestsData[recvCount]);
+
                   recvCount++;
                 }
               }
@@ -308,7 +240,7 @@ namespace ttk {
           if(recvPerformedCount > 0) {
             for(int i = 0; i < recvPerformedCount; i++) {
               r = recvStatusData[i].MPI_SOURCE;
-#pragma omp parallel for
+#pragma omp parallel for schedule(static)
               for(int j = 0; j < recvMessageSize[r]; j++) {
                 orderArray[triangulation->getVertexLocalId(
                   recvVerticesSorted.at(r).at(j).globalId)]
@@ -319,6 +251,130 @@ namespace ttk {
           }
         }
         MPI_Waitall(sendCount, sendRequestsData.data(), MPI_STATUSES_IGNORE);
+        return 0;
+    }
+
+    template <typename DT, typename triangulationType>
+    int processScalarArray(const triangulationType *triangulation,
+                           ttk::SimplexId *orderArray,
+                           const DT *scalarArray,
+                           const size_t nVerts) const { // start global timer
+      ttk::Timer globalTimer;
+
+      // print horizontal separator
+      this->printMsg(ttk::debug::Separator::L1); // L1 is the '=' separator
+      // print input parameters in table format
+      this->printMsg({
+        {"#Threads", std::to_string(this->threadNumber_)},
+        {"#Vertices", std::to_string(nVerts)},
+      });
+      this->printMsg(ttk::debug::Separator::L1);
+
+// -----------------------------------------------------------------------
+// Computing order Array
+// -----------------------------------------------------------------------
+#ifdef TTK_ENABLE_MPI
+      if(ttk::isRunningWithMPI()) {
+        ttk::Timer t_mpi;
+        ttk::SimplexId id = 0;
+        MPI_Datatype MPI_SimplexId = getMPIType(id);
+        ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+        std::vector<globalOrder::vertexToSort<DT>> verticesToSort;
+        verticesToSort.reserve(nVerts);
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp declare reduction (merge : std::vector<globalOrder::vertexToSort<DT>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+#pragma omp parallel for reduction(merge : verticesToSort) schedule(static)
+#endif
+        for(size_t i = 0; i < nVerts; i++) {
+          if(triangulation->getVertexRank(i) == ttk::MPIrank_) {
+            verticesToSort.emplace_back(globalOrder::vertexToSort<DT>{
+              triangulation->getVertexGlobalId(i), scalarArray[i],
+              (ttk::RankId)ttk::MPIrank_});
+          }
+        }
+
+        MPI_Datatype MPI_vertexToSortType;
+
+        /*
+         *  WARNING: the struct is sent as an array of char, as experiments show
+         * that using MPI's built-in struct management yields poor performance
+         * when used with a templated struct.
+         */
+        MPI_Type_contiguous(sizeof(globalOrder::vertexToSort<DT>), MPI_CHAR,
+                            &MPI_vertexToSortType);
+        MPI_Type_commit(&MPI_vertexToSortType);
+
+        std::vector<ttk::SimplexId> vertex_distribution(ttk::MPIsize_);
+        ttk::SimplexId localVertexNumber = verticesToSort.size();
+        MPI_Allgather(&localVertexNumber, 1, MPI_SimplexId,
+                      vertex_distribution.data(), 1, MPI_SimplexId,
+                      ttk::MPIcomm_);
+        double elapsedTime
+          = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+        if(ttk::MPIrank_ == 0) {
+          printMsg("Preparation for sorting on " + std::to_string(ttk::MPIsize_)
+                   + " MPI processes lasted :" + std::to_string(elapsedTime));
+        }
+        ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+        printMsg("verticesToSort size: "
+                 + std::to_string(verticesToSort.size()));
+        p_sort::parallel_sort<globalOrder::vertexToSort<DT>>(
+          verticesToSort, globalOrder::comp<DT>, globalOrder::oppositeComp<DT>,
+          vertex_distribution, MPI_vertexToSortType, MPI_SimplexId,
+          threadNumber_);
+        elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+        if(ttk::MPIrank_ == 0) {
+          printMsg("Sorting on " + std::to_string(ttk::MPIsize_)
+                   + " MPI processes lasted :" + std::to_string(elapsedTime));
+        }
+        ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+        MPI_Datatype types[] = {MPI_SimplexId, MPI_SimplexId};
+        int lengths[] = {1, 1};
+        MPI_Datatype MPI_sortedVertexType;
+        const long int mpi_offsets[]
+          = {offsetof(globalOrder::sortedVertex, globalId),
+             offsetof(globalOrder::sortedVertex, order)};
+        MPI_Type_create_struct(
+          2, lengths, mpi_offsets, types, &MPI_sortedVertexType);
+        MPI_Type_commit(&MPI_sortedVertexType);
+
+        // Compute orderOffset with MPI prefix sum
+        ttk::SimplexId verticesToSortSize = verticesToSort.size();
+        ttk::SimplexId orderOffset
+          = std::accumulate(vertex_distribution.begin(),
+                            vertex_distribution.begin() + ttk::MPIrank_, 0);
+        ttk::SimplexId chunkSize = 500000000;
+        ttk::SimplexId nbChunk = std::floor(verticesToSortSize / chunkSize);
+        ttk::SimplexId rest = verticesToSortSize % chunkSize;
+        ttk::SimplexId nbChunkTotal{nbChunk};
+        if(rest > 0) {
+          nbChunkTotal++;
+        }
+        MPI_Allreduce(MPI_IN_PLACE, &nbChunkTotal, 1, MPI_SimplexId, MPI_MAX,
+                      ttk::MPIcomm_);
+        for(int chunk = 0; chunk < nbChunk; chunk++) {
+          postprocessing<DT, triangulationType>(
+            triangulation, orderArray, chunk * chunkSize,
+            (chunk + 1) * chunkSize, orderOffset, verticesToSort,
+            MPI_sortedVertexType, MPI_SimplexId, chunk, nbChunk);
+        }
+        ttk::SimplexId beginningChunk = nbChunk;
+        printMsg("Processing the rest");
+        if(rest > 0) {
+          beginningChunk++;
+          printMsg("rest: " + std::to_string(rest)
+                   + ", nbChunk: " + std::to_string(nbChunk));
+          postprocessing<DT, triangulationType>(
+            triangulation, orderArray, nbChunk * chunkSize,
+            nbChunk * chunkSize + rest, orderOffset, verticesToSort,
+            MPI_sortedVertexType, MPI_SimplexId, nbChunk, nbChunk);
+        }
+        for(int chunk = beginningChunk; chunk < nbChunkTotal; chunk++) {
+          postprocessing<DT, triangulationType>(
+            triangulation, orderArray, nbChunk * chunkSize + rest,
+            nbChunk * chunkSize + rest, orderOffset, verticesToSort,
+            MPI_sortedVertexType, MPI_SimplexId, chunk, nbChunk);
+        }
 
         elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
         if(ttk::MPIrank_ == 0) {
