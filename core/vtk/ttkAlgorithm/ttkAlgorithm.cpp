@@ -116,10 +116,12 @@ vtkDataArray *
   }
 
   std::vector<int> neighbors;
+  std::map<int, int> neighborsToId;
 #ifdef TTK_ENABLE_MPI
   if(ttk::hasInitializedMPI()) {
     this->MPIGhostPipelinePreconditioning(inputData);
-    this->MPIPipelinePreconditioning(inputData, neighbors, nullptr);
+    this->MPIPipelinePreconditioning(
+      inputData, neighbors, neighborsToId, nullptr);
   }
   if(ttk::isRunningWithMPI() && getGlobalOrder) {
     ttk::ArrayPreconditioning arrayPreconditioning
