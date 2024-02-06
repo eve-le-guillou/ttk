@@ -24,7 +24,10 @@
 #include <DiscreteGradient.h>
 
 #include <algorithm>
+#include <array>
+#include <csignal>
 #include <numeric>
+#include <string>
 
 namespace ttk {
   class DiscreteMorseSandwich : virtual public Debug {
@@ -308,14 +311,15 @@ namespace ttk {
      * @param[in] extremaOrder Order on extrema
      * @param[in] pairDim Pair birth simplex dimension
      */
-    void tripletsToPersistencePairs(std::vector<PersistencePair> &pairs,
-                                    std::vector<bool> &pairedExtrema,
-                                    std::vector<bool> &pairedSaddles,
-                                    std::vector<SimplexId> &reps,
-                                    std::vector<tripletType> &triplets,
-                                    const SimplexId *const saddlesOrder,
-                                    const SimplexId *const extremaOrder,
-                                    const SimplexId pairDim) const;
+    void tripletsToPersistencePairs(
+      std::vector<PersistencePair> &pairs,
+      std::vector<bool> &pairedExtrema,
+      std::vector<bool> &pairedSaddles,
+      std::vector<std::array<ttk::SimplexId, 2>> &reps,
+      std::vector<tripletType> &triplets,
+      const SimplexId *const saddlesOrder,
+      const SimplexId *const extremaOrder,
+      const SimplexId pairDim) const;
 
     /**
      * @brief Detect 1-saddles paired to a given 2-saddle
@@ -440,12 +444,24 @@ namespace ttk {
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp task
 #endif // TTK_ENABLE_OPENMP
-        this->firstRepMin_.resize(triangulation.getNumberOfVertices());
+        {
+          this->firstRepMin_.resize(triangulation.getNumberOfVertices(),
+                                    std::array<ttk::SimplexId, 2>{0, -1});
+          for(int i = 0; i < triangulation.getNumberOfVertices(); i++) {
+            this->firstRepMin_[i][0] = i;
+          }
+        }
         if(dim > 1) {
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp task
 #endif
-          this->firstRepMax_.resize(triangulation.getNumberOfCells());
+          {
+            this->firstRepMax_.resize(triangulation.getNumberOfCells(),
+                                      std::array<ttk::SimplexId, 2>{0, -1});
+            for(int i = 0; i < triangulation.getNumberOfCells(); i++) {
+              this->firstRepMax_[i][0] = i;
+            }
+          }
         }
         if(dim > 2) {
 #ifdef TTK_ENABLE_OPENMP
@@ -507,8 +523,10 @@ namespace ttk {
     dcg::DiscreteGradient dg_{};
 
     // factor memory allocations outside computation loops
-    mutable std::vector<SimplexId> firstRepMin_{}, firstRepMax_{},
-      edgeTrianglePartner_{}, s2Mapping_{}, s1Mapping_{};
+    mutable std::vector<std::array<ttk::SimplexId, 2>> firstRepMin_{},
+      firstRepMax_{};
+    mutable std::vector<ttk::SimplexId> edgeTrianglePartner_{}, s2Mapping_{},
+      s1Mapping_{};
     mutable std::vector<EdgeSimplex> critEdges_{};
     mutable std::array<std::vector<bool>, 4> pairedCritCells_{};
     mutable std::vector<bool> onBoundary_{};
@@ -637,7 +655,7 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
   Timer tmseq{};
 
   auto &firstRep{this->firstRepMin_};
-  std::iota(firstRep.begin(), firstRep.end(), 0);
+  // std::iota(firstRep.begin(), firstRep.end(), 0);
   std::vector<tripletType> sadMinTriplets{};
 
   for(size_t i = 0; i < saddle1ToMinima.size(); ++i) {
@@ -711,7 +729,7 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
   Timer tmseq{};
 
   auto &firstRep{this->firstRepMax_};
-  std::iota(firstRep.begin(), firstRep.end(), 0);
+  // std::iota(firstRep.begin(), firstRep.end(), 0);
   std::vector<tripletType> sadMaxTriplets{};
 
   for(size_t i = 0; i < saddle2ToMaxima.size(); ++i) {
