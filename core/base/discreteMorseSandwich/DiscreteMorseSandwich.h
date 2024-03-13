@@ -319,7 +319,8 @@ namespace ttk {
       std::vector<tripletType> &triplets,
       const SimplexId *const saddlesOrder,
       const SimplexId *const extremaOrder,
-      const SimplexId pairDim) const;
+      const SimplexId pairDim,
+      int &rerunCounter) const;
 
     /**
      * @brief Detect 1-saddles paired to a given 2-saddle
@@ -670,12 +671,13 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
     }
     sadMinTriplets.emplace_back(tripletType{s1, mins[0], mins[1]});
   }
-
+  int rerunCounter = 0;
   tripletsToPersistencePairs(pairs, pairedMinima, paired1Saddles, firstRep,
-                             sadMinTriplets, critEdgesOrder.data(), offsets, 0);
+                             sadMinTriplets, critEdgesOrder.data(), offsets, 0,
+                             rerunCounter);
 
   const auto nMinSadPairs = pairs.size();
-
+  printMsg("RerunCounter: " + std::to_string(rerunCounter));
   this->printMsg(
     "Computed " + std::to_string(nMinSadPairs) + " min-saddle pairs", 1.0,
     tm.getElapsedTime(), this->threadNumber_);
@@ -761,16 +763,17 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
   }
 
   const auto nMinSadPairs = pairs.size();
-
+  int rerunCounter = 0;
   tripletsToPersistencePairs(pairs, pairedMaxima, pairedSaddles, firstRep,
                              sadMaxTriplets, critSaddlesOrder.data(),
-                             critMaxsOrder.data(), dim - 1);
+                             critMaxsOrder.data(), dim - 1, rerunCounter);
 
   const auto nSadMaxPairs = pairs.size() - nMinSadPairs;
 
   this->printMsg(
     "Computed " + std::to_string(nSadMaxPairs) + " saddle-max pairs", 1.0,
     tm.getElapsedTime(), this->threadNumber_);
+  printMsg("RerunCounter: " + std::to_string(rerunCounter));
 
   this->printMsg("saddle-max pairs sequential part", 1.0,
                  tmseq.getElapsedTime(), 1, debug::LineMode::NEW,

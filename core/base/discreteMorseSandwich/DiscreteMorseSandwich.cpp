@@ -1,5 +1,7 @@
 #include <DiscreteMorseSandwich.h>
+#include <algorithm>
 #include <array>
+#include <random>
 #include <string>
 #include <unordered_map>
 
@@ -15,7 +17,8 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   std::vector<tripletType> &triplets,
   const SimplexId *const saddlesOrder,
   const SimplexId *const extremaOrder,
-  const SimplexId pairDim) const {
+  const SimplexId pairDim,
+  int &rerunCounter) const {
   // comparison functions
   const auto cmpSadMax
     = [=](const tripletType &t0, const tripletType &t1) -> bool {
@@ -55,10 +58,24 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     cmpSadMin);*/
   } else {
     // saddle-saddle pairs from 1-saddles to 2-saddles
-    /*TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(),
-    cmpSadMax);*/
+    TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(), cmpSadMax);
   }
 
+  auto rng = std::default_random_engine{0};
+  std::shuffle(std::begin(triplets), std::end(triplets), rng);
+
+  std::vector<bool> certain(reps.size(), true);
+
+  std::vector<std::set<ttk::SimplexId>> extremaToSaddle(reps.size());
+  for(int i = 0; i < triplets.size(); i++) {
+    auto t = triplets[i];
+    extremaToSaddle[t[1]].insert(saddlesOrder[t[0]]);
+    if(t[2] != -1) {
+      extremaToSaddle[t[2]].insert(saddlesOrder[t[0]]);
+    } else {
+      certain[t[1]] = false;
+    }
+  }
   const bool increasing = (pairDim > 0);
 
   std::vector<ttk::SimplexId> saddleToPairedExtrema(pairedSaddles.size(), -1);
@@ -68,45 +85,92 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
         SimplexId v, SimplexId sv) -> std::array<ttk::SimplexId, 2> {
     auto rep = reps[v];
     ttk::SimplexId s = rep[1];
+    if(sv == 351812 || sv == 220131) {
+      printMsg("enter getRep for " + std::to_string(sv)
+               + ", s: " + std::to_string(s) + ", v: " + std::to_string(v));
+    }
     while(rep[0] != v) {
       s = rep[1];
       if(s != -1 && sv != s
          && ((saddlesOrder[s] < saddlesOrder[sv]) == increasing)) {
+        /*if (sv == s){
+          printErr("Here is your problem");
+        }*/
         break;
       }
       v = rep[0];
       rep = reps[v];
+      if(sv == 351812 || sv == 220131) {
+        printMsg("in getRep for " + std::to_string(sv)
+                 + ", s: " + std::to_string(s) + ", v: " + std::to_string(v));
+      }
     }
     // In case of the shadow triplet
-    if(rep[0] == v && s != -1) {
+    if(increasing && rep[0] == v && s != -1) {
+      // printMsg("Here comes the shadow triplet");
+      /*if (sv == 4943){
+        printMsg("right before out of getRep for "+std::to_string(sv)+", s:
+      "+std::to_string(s)+", v: "+std::to_string(v));
+      }  */
       s = rep[1];
+    }
+    if(sv == 351812 || sv == 220131) {
+      printMsg("out of getRep for " + std::to_string(sv)
+               + ", s: " + std::to_string(s) + ", v: " + std::to_string(v));
     }
     return std::array<ttk::SimplexId, 2>{v, s};
   };
 
-  const auto addPair
-    = [this, &saddleToPairedExtrema, &pairedExtrema, &pairedSaddles, increasing,
-       pairDim](const SimplexId sad, const SimplexId extr) {
-        saddleToPairedExtrema[sad] = extr;
-        pairedSaddles[sad] = true;
-        pairedExtrema[extr] = true;
-      };
-
-  const auto removePair = [this, &saddleToPairedExtrema, &pairedExtrema,
-                           &pairedSaddles, increasing](const SimplexId sad) {
-    if(saddleToPairedExtrema[sad] != -1) {
-      pairedExtrema[saddleToPairedExtrema[sad]] = false;
-      saddleToPairedExtrema[sad] = -1;
+  const auto addPair = [this, &saddleToPairedExtrema, &pairedExtrema,
+                        &pairedSaddles, &extremaOrder, increasing,
+                        &saddlesOrder,
+                        pairDim](const SimplexId sad, const SimplexId extr) {
+    if(sad == 220131 || sad == 351812 || sad == 221731) {
+      printMsg("AddPair of " + std::to_string(sad) + ", " + std::to_string(extr)
+               + ", with order: " + std::to_string(extremaOrder[extr]));
     }
-    pairedSaddles[sad] = false;
+    if(extr == 21004) {
+      printMsg("AddPair of " + std::to_string(sad) + ", " + std::to_string(extr)
+               + ", with order: " + std::to_string(saddlesOrder[sad]));
+    }
+    saddleToPairedExtrema[sad] = extr;
+    pairedSaddles[sad] = true;
+    pairedExtrema[extr] = true;
   };
 
+  const auto removePair
+    = [this, &saddleToPairedExtrema, &pairedExtrema, &pairedSaddles, increasing,
+       &saddlesOrder](const SimplexId sad) {
+        if(saddleToPairedExtrema[sad] != -1) {
+          if(sad == 220131 || sad == 351812) {
+            printMsg("removePair of " + std::to_string(sad));
+          }
+          /*if (sad == 7159 || sad == 1183){
+              printErr("removePair of "+std::to_string(sad)+",
+          "+std::to_string(saddleToPairedExtrema[sad]));
+            }
+          if (saddleToPairedExtrema[sad] == 1019){
+            printErr("Remove 1019 of having pair by "+std::to_string(sad)+",
+          with order: "+std::to_string(saddlesOrder[sad]));
+          }*/
+
+          pairedExtrema[saddleToPairedExtrema[sad]] = false;
+          saddleToPairedExtrema[sad] = -1;
+        }
+        pairedSaddles[sad] = false;
+      };
+
   std::unordered_map<ttk::SimplexId, std::array<ttk::SimplexId, 2>> svToR;
-  const std::function<int(tripletType)> processTriplet =
-    [this, &increasing, &pairedExtrema, &pairedSaddles, &saddleToPairedExtrema,
-     &extremaOrder, &reps, &getRep, &addPair, &removePair, &saddlesOrder,
-     &processTriplet, &svToR](tripletType t) -> int {
+  const std::function<int(tripletType)> processTriplet
+    = [this, &increasing, &pairedExtrema, &pairedSaddles,
+       &saddleToPairedExtrema, &extremaOrder, &reps, &getRep, &addPair,
+       &removePair, &saddlesOrder, &processTriplet, &svToR, &rerunCounter,
+       &certain, &extremaToSaddle](tripletType t) -> int {
     const auto sv = t[0];
+    if(sv == 351812 || sv == 220131 || sv == 221731) {
+      printMsg("sv0: " + std::to_string(sv) + ", t1: " + std::to_string(t[1])
+               + ", t2: " + std::to_string(t[2]));
+    }
     auto rep1 = getRep(t[1], sv);
     auto r1 = rep1[0];
     auto s1 = rep1[1];
@@ -125,18 +189,40 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
         // indicate a virtual maximum of infinite persistence on the
         // boundary component. a pair is created with the other
         // maximum
-        if(s1 != -1 && sv != s1 && pairedToR1
+        if(s1 != -1 && pairedToR1
            && ((saddlesOrder[s1] < saddlesOrder[sv]) == increasing)) {
           removePair(s1);
-          reps[r1][0] = r1;
+        } else {
+          if(s1 == 6505) {
+            printMsg("Not removed");
+          }
         }
+        if(r1 == 1165) {
+          printMsg("After removePair: s1: " + std::to_string(s1)
+                   + ", pairedToR1: " + std::to_string(pairedToR1)
+                   + " order: " + std::to_string(saddlesOrder[s1]));
+        }
+        /*if (sv == 7159 || sv == 1183){
+          printMsg("sv1: "+std::to_string(sv)+", r1: "+std::to_string(r1)
+          +", s1: "+std::to_string(s1));
+        }    */
         addPair(sv, r1);
         svToR[sv] = std::array<ttk::SimplexId, 2>{t[1], t[2]};
         reps[r1][1] = sv;
-        if(s1 != -1 && sv != s1 && pairedToR1
+        reps[r1][0] = r1;
+        // certain[r1] = false;
+        if(s1 != -1 && pairedToR1
            && ((saddlesOrder[s1] < saddlesOrder[sv]) == increasing)) {
+          if(s1 == 7505) {
+            printMsg("Rerun for s1: " + std::to_string(s1) + ", from "
+                     + std::to_string(sv));
+          }
+          rerunCounter++;
           return processTriplet(tripletType{s1, svToR[s1][0], svToR[s1][1]});
         }
+      } else {
+        if(s1 == 7505)
+          printMsg("Pair not made");
       }
       return 0;
     }
@@ -144,6 +230,14 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     auto r2 = rep2[0];
     auto s2 = rep2[1];
     bool pairedR2 = pairedExtrema[r2];
+    if(sv == 351812 || sv == 220131 || sv == 221731) {
+      printMsg("sv2: " + std::to_string(sv)
+               + " with order: " + std::to_string(saddlesOrder[sv])
+               + +", r1: " + std::to_string(r1) + ", s1: " + std::to_string(s1)
+               + " with order: " + std::to_string(saddlesOrder[s1])
+               + +", r2: " + std::to_string(r2) + ", s2: " + std::to_string(s2)
+               + " with order: " + std::to_string(saddlesOrder[s2]));
+    }
     if(s2 != -1 && sv != s2
        && ((saddlesOrder[s2] < saddlesOrder[sv]) == increasing))
       pairedR2 = false;
@@ -159,20 +253,104 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
         std::swap(s1, s2);
       }
       if(!pairedR1) {
-        addPair(sv, r1);
-        // TODO: les prochaines lignes, que sur r1
-        if(s1 != -1 && sv != s1 && pairedToR1
+        if(s1 != -1 && pairedToR1
            && ((saddlesOrder[s1] < saddlesOrder[sv]) == increasing)) {
           removePair(s1);
         }
+        addPair(sv, r1);
         svToR[sv] = std::array<ttk::SimplexId, 2>{t[1], t[2]};
         reps[r1][0] = r2;
         reps[r1][1] = sv;
-        if(s1 != -1 && sv != s1 && pairedToR1
+        /*if((t[1] == 984 && sv == 1183 )||(sv == 4459)){
+          printErr("change rep sv: "+std::to_string(sv)+", r1:
+        "+std::to_string(r1)+", r2: "+std::to_string(r2));
+        }*/
+        // if (r1 != t[1]){
+        // printErr("HERE IS YOUR PATH COMPRESSION: for "+std::to_string(r1)+"
+        // and "+std::to_string(t[1]));
+        /*printMsg("Path compression, replace "+std::to_string(reps[t[1]][1])+"
+        with order: " +std::to_string(saddlesOrder[reps[t[1]][1]])+", with
+        "+std::to_string(sv)
+        +" with order: "+std::to_string(saddlesOrder[sv]));*/
+        if(certain[r1] && certain[r2] && certain[t[1]] && certain[t[2]]) {
+          if(!extremaToSaddle[r1].empty()) {
+            ttk::SimplexId extrSaddleOrder;
+            if(increasing) {
+              auto it = extremaToSaddle[r1].rbegin();
+              extrSaddleOrder = (*it);
+            } else {
+              auto it = extremaToSaddle[r1].begin();
+              extrSaddleOrder = (*it);
+            }
+            // printMsg("extrSaddleOrder: "+std::to_string(extrSaddleOrder)+",
+            // with sv order: "+std::to_string(saddlesOrder[sv]));
+            /*std::string s = "";
+            auto it = extremaToSaddle[r1].begin();
+            while (it != extremaToSaddle[r1].end()){
+              s += std::to_string((*it))+", ";
+              it++;
+            }
+            printMsg("extremaToSaddle: "+s);*/
+            // printErr("PATH COMPRESSION 1: "+std::to_string(minSaddleOrder)+",
+            // "+std::to_string(saddlesOrder[sv]));
+            if(extrSaddleOrder == saddlesOrder[sv]) {
+              if(sv == 220131 || sv == 351812 || sv == 221731) {
+                printErr("PATH COMPRESSION for : " + std::to_string(sv));
+              }
+              reps[t[1]][0] = r2;
+              if(r2 != t[1]) {
+                // reps[t[1]][1] = sv;
+              } else {
+                if(sv == 220131 || sv == 351812 || sv == 221731) {
+                  printErr("NO REAL PATH COMPRESSION for : "
+                           + std::to_string(sv));
+                }
+              }
+              extremaToSaddle[r1].erase(saddlesOrder[sv]);
+              extremaToSaddle[r2].erase(saddlesOrder[sv]);
+              extremaToSaddle[r1].insert(
+                extremaToSaddle[r2].begin(), extremaToSaddle[r2].end());
+              extremaToSaddle[r2].insert(
+                extremaToSaddle[r1].begin(), extremaToSaddle[r1].end());
+            } else {
+              certain[r1] = false;
+              certain[r2] = false;
+              certain[t[1]] = false;
+              certain[t[2]] = false;
+            }
+          }
+        } else {
+          certain[r1] = false;
+          certain[r2] = false;
+          certain[t[1]] = false;
+          certain[t[2]] = false;
+        }
+
+        //}
+
+        /*if (t[1] == 1721 || r1 == 1721){
+          printMsg("change rep of 1721: r1: "+std::to_string(r1)+", t1:
+        "+std::to_string(t[1])
+          +", sv: "+std::to_string(sv)+", to: "+std::to_string(r2));
+        }
+        if (t[1] == 1646 || r1 == 1646){
+          printMsg("change rep of 1646: r1: "+std::to_string(r1)+", t1:
+        "+std::to_string(t[1])
+          +", sv: "+std::to_string(sv)+", to: "+std::to_string(r2));
+        }*/
+        if(s1 != -1 && pairedToR1
            && ((saddlesOrder[s1] < saddlesOrder[sv]) == increasing)) {
+          if(s1 == 6505) {
+            printMsg("Rerun for s1: " + std::to_string(s1) + ", from "
+                     + std::to_string(sv));
+          }
+          // printMsg("HERE BEFORE RERUN");
+          rerunCounter++;
           return processTriplet(tripletType{s1, svToR[s1][0], svToR[s1][1]});
         }
       }
+    } else {
+      // printErr("Same r1 and r2: "+std::to_string(r1));
     }
 
     return 0;
@@ -181,16 +359,21 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   for(const auto &t : triplets) {
     processTriplet(t);
   }
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp declare reduction (merge : std::vector<PersistencePair> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
-#pragma omp parallel for reduction(merge : pairs) schedule(static)
-#endif
+  //#ifdef TTK_ENABLE_OPENMP
+  //#pragma omp declare reduction (merge : std::vector<PersistencePair> :
+  //omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) #pragma omp
+  //parallel for reduction(merge : pairs) schedule(static) #endif
   for(int i = 0; i < saddleToPairedExtrema.size(); i++) {
     if(saddleToPairedExtrema[i] != -1) {
       if(increasing) {
         pairs.emplace_back(i, saddleToPairedExtrema[i], pairDim);
       } else {
         pairs.emplace_back(saddleToPairedExtrema[i], i, pairDim);
+      }
+      // printMsg(std::to_string(pairs.size()));
+      if(pairs.size() - 1 == 3695 || pairs.size() - 1 == 2160) {
+        printErr("pairs: " + std::to_string(i) + ", "
+                 + std::to_string(saddleToPairedExtrema[i]));
       }
     }
   }
