@@ -59,9 +59,8 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     cmpSadMin);*/
   } else {
     // saddle-saddle pairs from 1-saddles to 2-saddles
-    // TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(),
-    // cmpSadMax);
-    std::reverse(triplets.begin(), triplets.end());
+    TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(), cmpSadMax);
+    // std::reverse(triplets.begin(), triplets.end());
   }
 
   // auto rng = std::default_random_engine{0};
@@ -260,10 +259,11 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
             }
             //printMsg("extremaToSaddle: "+s+" with extrSaddleOrder:
             "+std::to_string(extrSaddleOrder));          */
-            extremaToSaddle[r1].pop_back();
             if(extrSaddleOrder == saddlesOrder[sv]) {
               PCCounter++;
               reps[t[1]][0] = r2;
+              extremaToSaddle[r1].pop_back();
+              extremaToSaddle[r2].pop_back();
               // extremaToSaddle[r1].erase(saddlesOrder[sv]);
               // extremaToSaddle[r2].erase(saddlesOrder[sv]);
               std::vector<ttk::SimplexId> union_vec;
@@ -278,19 +278,17 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
                     std::set_union(
                       extremaToSaddle[r1].begin(), extremaToSaddle[r1].end(),
                       extremaToSaddle[r2].begin(), extremaToSaddle[r2].end(),
-                      std::back_inserter(union_vec),
+                      std::back_inserter(extremaToSaddle[r1]),
                       std::less<ttk::SimplexId>{});
                   } else {
                     std::set_union(
                       extremaToSaddle[r1].begin(), extremaToSaddle[r1].end(),
                       extremaToSaddle[r2].begin(), extremaToSaddle[r2].end(),
-                      std::back_inserter(union_vec),
+                      std::back_inserter(extremaToSaddle[r1]),
                       std::greater<ttk::SimplexId>{});
                   }
-                  // printErr("HERE1");
-                  std::copy(union_vec.begin(), union_vec.end(),
-                            std::back_inserter(extremaToSaddle[r1]));
-                  std::copy(union_vec.begin(), union_vec.end(),
+                  std::copy(extremaToSaddle[r1].begin(),
+                            extremaToSaddle[r1].end(),
                             std::back_inserter(extremaToSaddle[r2]));
                 }
               } else {
