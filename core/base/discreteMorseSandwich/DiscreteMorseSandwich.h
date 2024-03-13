@@ -320,7 +320,8 @@ namespace ttk {
       const SimplexId *const saddlesOrder,
       const SimplexId *const extremaOrder,
       const SimplexId pairDim,
-      int &rerunCounter) const;
+      int &rerunCounter,
+      int &PCCounter) const;
 
     /**
      * @brief Detect 1-saddles paired to a given 2-saddle
@@ -672,12 +673,22 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
     sadMinTriplets.emplace_back(tripletType{s1, mins[0], mins[1]});
   }
   int rerunCounter = 0;
+  int PCCounter = 0;
   tripletsToPersistencePairs(pairs, pairedMinima, paired1Saddles, firstRep,
                              sadMinTriplets, critEdgesOrder.data(), offsets, 0,
-                             rerunCounter);
+                             rerunCounter, PCCounter);
 
   const auto nMinSadPairs = pairs.size();
-  printMsg("RerunCounter: " + std::to_string(rerunCounter));
+  printMsg("Rerun " + std::to_string(rerunCounter) + " times for minSaddle");
+  printMsg("Rerun "
+           + std::to_string(((float)rerunCounter / (float)nMinSadPairs) * 100)
+           + " percent for minSaddle");
+  printMsg("Path compression " + std::to_string(PCCounter)
+           + " times for minSaddle");
+  printMsg("Path compression "
+           + std::to_string(((float)PCCounter / (float)nMinSadPairs) * 100)
+           + " percent for minSaddle");
+
   this->printMsg(
     "Computed " + std::to_string(nMinSadPairs) + " min-saddle pairs", 1.0,
     tm.getElapsedTime(), this->threadNumber_);
@@ -764,16 +775,26 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
 
   const auto nMinSadPairs = pairs.size();
   int rerunCounter = 0;
+  int PCCounter = 0;
   tripletsToPersistencePairs(pairs, pairedMaxima, pairedSaddles, firstRep,
                              sadMaxTriplets, critSaddlesOrder.data(),
-                             critMaxsOrder.data(), dim - 1, rerunCounter);
+                             critMaxsOrder.data(), dim - 1, rerunCounter,
+                             PCCounter);
 
   const auto nSadMaxPairs = pairs.size() - nMinSadPairs;
 
   this->printMsg(
     "Computed " + std::to_string(nSadMaxPairs) + " saddle-max pairs", 1.0,
     tm.getElapsedTime(), this->threadNumber_);
-  printMsg("RerunCounter: " + std::to_string(rerunCounter));
+  printMsg("Rerun " + std::to_string(rerunCounter) + " times for saddleMax");
+  printMsg("Rerun "
+           + std::to_string(((float)rerunCounter / (float)nSadMaxPairs) * 100)
+           + " percent for saddleMax");
+  printMsg("Path compression " + std::to_string(PCCounter)
+           + " times for saddleMax");
+  printMsg("Path compression "
+           + std::to_string(((float)PCCounter / (float)nSadMaxPairs) * 100)
+           + " percent for saddleMax");
 
   this->printMsg("saddle-max pairs sequential part", 1.0,
                  tmseq.getElapsedTime(), 1, debug::LineMode::NEW,
