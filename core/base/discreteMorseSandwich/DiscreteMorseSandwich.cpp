@@ -59,8 +59,9 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     cmpSadMin);*/
   } else {
     // saddle-saddle pairs from 1-saddles to 2-saddles
-    TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(), cmpSadMax);
-    // std::reverse(triplets.begin(), triplets.end());
+    // TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(),
+    // cmpSadMax);
+    std::reverse(triplets.begin(), triplets.end());
   }
 
   // auto rng = std::default_random_engine{0};
@@ -70,57 +71,13 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   std::vector<bool> certain(reps.size(), true);
   std::vector<std::vector<ttk::SimplexId>> extremaToSaddle(
     reps.size(), std::vector<ttk::SimplexId>());
-  if(increasing) {
-    for(int i = 0; i < triplets.size(); i++) {
-      auto t = triplets[i];
-      if(extremaToSaddle[t[1]].size() == 0) {
-        extremaToSaddle[t[1]].push_back(saddlesOrder[t[0]]);
-      } else {
-        extremaToSaddle[t[1]].insert(
-          std::upper_bound(extremaToSaddle[t[1]].begin(),
-                           extremaToSaddle[t[1]].end(), saddlesOrder[t[0]],
-                           std::less<ttk::SimplexId>{}),
-          saddlesOrder[t[0]]);
-      }
-      if(t[2] != -1) {
-        if(extremaToSaddle[t[2]].size() == 0) {
-          extremaToSaddle[t[2]].push_back(saddlesOrder[t[0]]);
-        } else {
-          extremaToSaddle[t[2]].insert(
-            std::upper_bound(extremaToSaddle[t[2]].begin(),
-                             extremaToSaddle[t[2]].end(), saddlesOrder[t[0]],
-                             std::less<ttk::SimplexId>{}),
-            saddlesOrder[t[0]]);
-        }
-      } else {
-        certain[t[1]] = false;
-      }
-    }
-  } else {
-    for(int i = 0; i < triplets.size(); i++) {
-      auto t = triplets[i];
-      if(extremaToSaddle[t[1]].size() == 0) {
-        extremaToSaddle[t[1]].push_back(saddlesOrder[t[0]]);
-      } else {
-        extremaToSaddle[t[1]].insert(
-          std::upper_bound(extremaToSaddle[t[1]].begin(),
-                           extremaToSaddle[t[1]].end(), saddlesOrder[t[0]],
-                           std::greater<ttk::SimplexId>{}),
-          saddlesOrder[t[0]]);
-      }
-      if(t[2] != -1) {
-        if(extremaToSaddle[t[2]].size() == 0) {
-          extremaToSaddle[t[2]].push_back(saddlesOrder[t[0]]);
-        } else {
-          extremaToSaddle[t[2]].insert(
-            std::upper_bound(extremaToSaddle[t[2]].begin(),
-                             extremaToSaddle[t[2]].end(), saddlesOrder[t[0]],
-                             std::greater<ttk::SimplexId>{}),
-            saddlesOrder[t[0]]);
-        }
-      } else {
-        certain[t[1]] = false;
-      }
+  for(int i = 0; i < triplets.size(); i++) {
+    auto t = triplets[i];
+    extremaToSaddle[t[1]].push_back(saddlesOrder[t[0]]);
+    if(t[2] != -1) {
+      extremaToSaddle[t[2]].push_back(saddlesOrder[t[0]]);
+    } else {
+      certain[t[1]] = false;
     }
   }
   /*int startingSizeMoy = 0;
@@ -250,7 +207,15 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
         reps[r1][1] = sv;
         if(certain[r1] && certain[r2] && certain[t[1]] && certain[t[2]]) {
           if(!extremaToSaddle[r1].empty()) {
-            ttk::SimplexId extrSaddleOrder = extremaToSaddle[r1].back();
+            std::vector<ttk::SimplexId>::iterator it;
+            if(increasing) {
+              it = std::min_element(
+                extremaToSaddle[r1].begin(), extremaToSaddle[r1].end());
+            } else {
+              it = std::max_element(
+                extremaToSaddle[r1].begin(), extremaToSaddle[r1].end());
+            }
+            ttk::SimplexId extrSaddleOrder = (*it);
             /*std::string s ="";
             auto it = extremaToSaddle[r1].begin();
             while (it != extremaToSaddle[r1].end()){
@@ -262,44 +227,22 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
             if(extrSaddleOrder == saddlesOrder[sv]) {
               PCCounter++;
               reps[t[1]][0] = r2;
-              extremaToSaddle[r1].pop_back();
-              extremaToSaddle[r2].pop_back();
+              extremaToSaddle[r1].erase(std::remove(extremaToSaddle[r1].begin(),
+                                                    extremaToSaddle[r1].end(),
+                                                    extrSaddleOrder));
+              extremaToSaddle[r2].erase(std::remove(extremaToSaddle[r2].begin(),
+                                                    extremaToSaddle[r2].end(),
+                                                    extrSaddleOrder));
               // extremaToSaddle[r1].erase(saddlesOrder[sv]);
               // extremaToSaddle[r2].erase(saddlesOrder[sv]);
-              std::vector<ttk::SimplexId> union_vec;
-              if(!extremaToSaddle[r2].empty()) {
-                if(extremaToSaddle[r1].empty()) {
-                  // printErr("HERE0");
-                  std::copy(extremaToSaddle[r2].begin(),
-                            extremaToSaddle[r2].end(),
-                            std::back_inserter(extremaToSaddle[r1]));
-                } else {
-                  if(increasing) {
-                    std::set_union(
-                      extremaToSaddle[r1].begin(), extremaToSaddle[r1].end(),
-                      extremaToSaddle[r2].begin(), extremaToSaddle[r2].end(),
-                      std::back_inserter(extremaToSaddle[r1]),
-                      std::less<ttk::SimplexId>{});
-                  } else {
-                    std::set_union(
-                      extremaToSaddle[r1].begin(), extremaToSaddle[r1].end(),
-                      extremaToSaddle[r2].begin(), extremaToSaddle[r2].end(),
-                      std::back_inserter(extremaToSaddle[r1]),
-                      std::greater<ttk::SimplexId>{});
-                  }
-                  std::copy(extremaToSaddle[r1].begin(),
-                            extremaToSaddle[r1].end(),
-                            std::back_inserter(extremaToSaddle[r2]));
-                }
-              } else {
-                if(!extremaToSaddle[r1].empty()) {
-                  // printErr("HERE2");
-                  std::copy(extremaToSaddle[r1].begin(),
-                            extremaToSaddle[r1].end(),
-                            std::back_inserter(extremaToSaddle[r2]));
-                }
-              }
-
+              // std::vector<ttk::SimplexId> union_vec;
+              size_t size = extremaToSaddle[r1].size();
+              extremaToSaddle[r1].insert(extremaToSaddle[r1].end(),
+                                         extremaToSaddle[r2].begin(),
+                                         extremaToSaddle[r2].end());
+              extremaToSaddle[r2].insert(extremaToSaddle[r2].end(),
+                                         extremaToSaddle[r1].begin(),
+                                         extremaToSaddle[r1].begin() + size);
               /*extremaToSaddle[r1].insert(
                 extremaToSaddle[r2].begin(), extremaToSaddle[r2].end());
               extremaToSaddle[r2].insert(
