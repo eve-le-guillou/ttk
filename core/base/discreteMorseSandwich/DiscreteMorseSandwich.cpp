@@ -209,10 +209,10 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
           if(!extremaToSaddle[r1].empty()) {
             std::vector<ttk::SimplexId>::iterator it;
             if(increasing) {
-              it = std::min_element(
+              it = std::max_element(
                 extremaToSaddle[r1].begin(), extremaToSaddle[r1].end());
             } else {
-              it = std::max_element(
+              it = std::min_element(
                 extremaToSaddle[r1].begin(), extremaToSaddle[r1].end());
             }
             ttk::SimplexId extrSaddleOrder = (*it);
@@ -222,7 +222,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
               s += std::to_string((*it))+", ";
               it++;
             }
-            //printMsg("extremaToSaddle: "+s+" with extrSaddleOrder:
+            printMsg("extremaToSaddle: "+s+" with extrSaddleOrder:
             "+std::to_string(extrSaddleOrder));          */
             if(extrSaddleOrder == saddlesOrder[sv]) {
               PCCounter++;
