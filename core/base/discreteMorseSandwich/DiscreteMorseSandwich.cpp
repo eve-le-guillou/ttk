@@ -68,32 +68,6 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   // std::shuffle(std::begin(triplets), std::end(triplets), rng);
   const bool increasing = (pairDim > 0);
 
-  std::vector<bool> certain(reps.size(), true);
-  std::vector<std::vector<ttk::SimplexId>> extremaToSaddle(
-    reps.size(), std::vector<ttk::SimplexId>());
-  for(int i = 0; i < triplets.size(); i++) {
-    auto t = triplets[i];
-    extremaToSaddle[t[1]].push_back(saddlesOrder[t[0]]);
-    if(t[2] != -1) {
-      extremaToSaddle[t[2]].push_back(saddlesOrder[t[0]]);
-    } else {
-      certain[t[1]] = false;
-    }
-  }
-  /*int startingSizeMoy = 0;
-  int totalNumber = 0;
-  size_t max = 0;
-  for(int i = 0; i < reps.size(); i++) {
-    if (!extremaToSaddle[i].empty()){
-      startingSizeMoy += extremaToSaddle[i].size();
-      max = std::max(max, extremaToSaddle[i].size());
-      totalNumber++;
-    }
-  }
-  printErr("Mean number of extremaToSaddle:
-  "+std::to_string(startingSizeMoy/totalNumber)); printErr("Max number of
-  extremaToSaddle: "+std::to_string(max));
-*/
   std::vector<ttk::SimplexId> saddleToPairedExtrema(pairedSaddles.size(), -1);
   // get representative of current extremum
   const auto getRep
@@ -137,11 +111,10 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
       };
 
   std::unordered_map<ttk::SimplexId, std::array<ttk::SimplexId, 2>> svToR;
-  const std::function<int(tripletType)> processTriplet
-    = [this, &increasing, &pairedExtrema, &pairedSaddles,
-       &saddleToPairedExtrema, &extremaOrder, &reps, &getRep, &addPair,
-       &removePair, &saddlesOrder, &processTriplet, &svToR, &rerunCounter,
-       &certain, &extremaToSaddle, &PCCounter](tripletType t) -> int {
+  const std::function<int(tripletType)> processTriplet =
+    [this, &increasing, &pairedExtrema, &pairedSaddles, &saddleToPairedExtrema,
+     &extremaOrder, &reps, &getRep, &addPair, &removePair, &saddlesOrder,
+     &processTriplet, &svToR, &rerunCounter, &PCCounter](tripletType t) -> int {
     const auto sv = t[0];
     auto rep1 = getRep(t[1], sv);
     auto r1 = rep1[0];
@@ -205,61 +178,6 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
         svToR[sv] = std::array<ttk::SimplexId, 2>{t[1], t[2]};
         reps[r1][0] = r2;
         reps[r1][1] = sv;
-        if(certain[r1] && certain[r2] && certain[t[1]] && certain[t[2]]) {
-          if(!extremaToSaddle[r1].empty()) {
-            std::vector<ttk::SimplexId>::iterator it;
-            if(increasing) {
-              it = std::max_element(
-                extremaToSaddle[r1].begin(), extremaToSaddle[r1].end());
-            } else {
-              it = std::min_element(
-                extremaToSaddle[r1].begin(), extremaToSaddle[r1].end());
-            }
-            ttk::SimplexId extrSaddleOrder = (*it);
-            /*std::string s ="";
-            auto it = extremaToSaddle[r1].begin();
-            while (it != extremaToSaddle[r1].end()){
-              s += std::to_string((*it))+", ";
-              it++;
-            }
-            printMsg("extremaToSaddle: "+s+" with extrSaddleOrder:
-            "+std::to_string(extrSaddleOrder));          */
-            if(extrSaddleOrder == saddlesOrder[sv]) {
-              PCCounter++;
-              reps[t[1]][0] = r2;
-              extremaToSaddle[r1].erase(std::remove(extremaToSaddle[r1].begin(),
-                                                    extremaToSaddle[r1].end(),
-                                                    extrSaddleOrder));
-              extremaToSaddle[r2].erase(std::remove(extremaToSaddle[r2].begin(),
-                                                    extremaToSaddle[r2].end(),
-                                                    extrSaddleOrder));
-              // extremaToSaddle[r1].erase(saddlesOrder[sv]);
-              // extremaToSaddle[r2].erase(saddlesOrder[sv]);
-              // std::vector<ttk::SimplexId> union_vec;
-              size_t size = extremaToSaddle[r1].size();
-              extremaToSaddle[r1].insert(extremaToSaddle[r1].end(),
-                                         extremaToSaddle[r2].begin(),
-                                         extremaToSaddle[r2].end());
-              extremaToSaddle[r2].insert(extremaToSaddle[r2].end(),
-                                         extremaToSaddle[r1].begin(),
-                                         extremaToSaddle[r1].begin() + size);
-              /*extremaToSaddle[r1].insert(
-                extremaToSaddle[r2].begin(), extremaToSaddle[r2].end());
-              extremaToSaddle[r2].insert(
-                extremaToSaddle[r1].begin(), extremaToSaddle[r1].end());*/
-            } else {
-              certain[r1] = false;
-              certain[r2] = false;
-              certain[t[1]] = false;
-              certain[t[2]] = false;
-            }
-          }
-        } else {
-          certain[r1] = false;
-          certain[r2] = false;
-          certain[t[1]] = false;
-          certain[t[2]] = false;
-        }
         if(s1 != -1 && pairedToR1
            && ((saddlesOrder[s1] < saddlesOrder[sv]) == increasing)) {
           rerunCounter++;
