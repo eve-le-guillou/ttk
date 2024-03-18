@@ -21,7 +21,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   int &rerunCounter,
   int &PCCounter) const {
   // comparison functions
-  /*const auto cmpSadMax
+  const auto cmpSadMax
     = [=](const tripletType &t0, const tripletType &t1) -> bool {
     const auto s0 = t0[0];
     const auto s1 = t1[0];
@@ -41,7 +41,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
       return extremaOrder[m0] < extremaOrder[m1];
   };
 
-  const auto cmpSadMin
+  /*const auto cmpSadMin
     = [=](const tripletType &t0, const tripletType &t1) -> bool {
     const auto s0 = t0[0];
     const auto s1 = t1[0];
@@ -77,7 +77,8 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     ttk::SimplexId s = rep[1];
     while(rep[0] != v) {
       s = rep[1];
-      if(s != -1 && ((saddlesOrder[s] < saddlesOrder[sv]) == increasing)) {
+      if(s != -1 && (sv != s)
+         && ((saddlesOrder[s] < saddlesOrder[sv]) == increasing)) {
         break;
       }
       v = rep[0];
@@ -120,7 +121,8 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     auto s1 = rep1[1];
     bool pairedR1 = pairedExtrema[r1];
     bool isR1Invalid
-      = (s1 != -1 && ((saddlesOrder[s1] < saddlesOrder[sv]) == increasing));
+      = (s1 != -1 && (sv != s1)
+         && ((saddlesOrder[s1] < saddlesOrder[sv]) == increasing));
     if(isR1Invalid)
       pairedR1 = false;
     isR1Invalid = isR1Invalid && (saddleToPairedExtrema[s1] == r1);
@@ -151,7 +153,8 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     auto s2 = rep2[1];
     bool pairedR2 = pairedExtrema[r2];
     bool isR2Invalid
-      = (s2 != -1 && ((saddlesOrder[s2] < saddlesOrder[sv]) == increasing));
+      = (s2 != -1 && (sv != s2)
+         && ((saddlesOrder[s2] < saddlesOrder[sv]) == increasing));
     if(isR2Invalid)
       pairedR2 = false;
     isR2Invalid = isR2Invalid && (saddleToPairedExtrema[s2] == r2);
