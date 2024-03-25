@@ -463,6 +463,8 @@ namespace ttk {
           for(int i = 0; i < triangulation.getNumberOfVertices(); i++) {
             this->firstRepMin_[i].push_back(
               std::array<ttk::SimplexId, 2>{i, -1});
+            this->firstRepMin_[i].reserve(
+              int(triangulation.getNumberOfVertices() * 0.1));
           }
         }
         if(dim > 1) {
@@ -476,6 +478,8 @@ namespace ttk {
             for(int i = 0; i < triangulation.getNumberOfCells(); i++) {
               this->firstRepMax_[i].push_back(
                 std::array<ttk::SimplexId, 2>{i, -1});
+              this->firstRepMax_[i].reserve(
+                int(triangulation.getNumberOfCells() * 0.1));
             }
           }
         }
