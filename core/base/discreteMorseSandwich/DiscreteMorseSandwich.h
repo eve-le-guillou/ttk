@@ -315,23 +315,12 @@ namespace ttk {
       std::vector<PersistencePair> &pairs,
       std::vector<bool> &pairedExtrema,
       std::vector<bool> &pairedSaddles,
-      std::vector<std::vector<std::array<ttk::SimplexId, 2>>> &reps,
+      std::vector<std::array<ttk::SimplexId, 2>> &reps,
       std::vector<tripletType> &triplets,
       const SimplexId *const saddlesOrder,
       const SimplexId *const extremaOrder,
       const SimplexId pairDim,
-      int &rerunCounter,
-      int &PCCounter) const;
-
-    void
-      tripletsToPersistencePairs_original(std::vector<PersistencePair> &pairs,
-                                          std::vector<bool> &pairedExtrema,
-                                          std::vector<bool> &pairedSaddles,
-                                          std::vector<SimplexId> &reps,
-                                          std::vector<tripletType> &triplets,
-                                          const SimplexId *const saddlesOrder,
-                                          const SimplexId *const extremaOrder,
-                                          const SimplexId pairDim) const;
+      const std::vector<std::array<ttk::SimplexId, 2>> &svToR) const;
 
     /**
      * @brief Detect 1-saddles paired to a given 2-saddle
@@ -457,14 +446,10 @@ namespace ttk {
 #pragma omp task
 #endif // TTK_ENABLE_OPENMP
         {
-          this->firstRepMin_.resize(
-            triangulation.getNumberOfVertices(),
-            std::vector<std::array<ttk::SimplexId, 2>>());
+          this->firstRepMin_.resize(triangulation.getNumberOfVertices(),
+                                    std::array<ttk::SimplexId, 2>{0, -1});
           for(int i = 0; i < triangulation.getNumberOfVertices(); i++) {
-            this->firstRepMin_[i].push_back(
-              std::array<ttk::SimplexId, 2>{i, -1});
-            this->firstRepMin_[i].reserve(
-              int(triangulation.getNumberOfVertices() * 0.1));
+            this->firstRepMin_[i][0] = i;
           }
         }
         if(dim > 1) {
@@ -472,14 +457,10 @@ namespace ttk {
 #pragma omp task
 #endif
           {
-            this->firstRepMax_.resize(
-              triangulation.getNumberOfCells(),
-              std::vector<std::array<ttk::SimplexId, 2>>());
+            this->firstRepMax_.resize(triangulation.getNumberOfCells(),
+                                      std::array<ttk::SimplexId, 2>{0, -1});
             for(int i = 0; i < triangulation.getNumberOfCells(); i++) {
-              this->firstRepMax_[i].push_back(
-                std::array<ttk::SimplexId, 2>{i, -1});
-              this->firstRepMax_[i].reserve(
-                int(triangulation.getNumberOfCells() * 0.1));
+              this->firstRepMax_[i][0] = i;
             }
           }
         }
@@ -543,8 +524,8 @@ namespace ttk {
     dcg::DiscreteGradient dg_{};
 
     // factor memory allocations outside computation loops
-    mutable std::vector<std::vector<std::array<ttk::SimplexId, 2>>>
-      firstRepMin_{}, firstRepMax_{};
+    mutable std::vector<std::array<ttk::SimplexId, 2>> firstRepMin_{},
+      firstRepMax_{};
     mutable std::vector<ttk::SimplexId> edgeTrianglePartner_{}, s2Mapping_{},
       s1Mapping_{};
     mutable std::vector<EdgeSimplex> critEdges_{};
@@ -675,10 +656,10 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
   Timer tmseq{};
 
   auto &firstRep{this->firstRepMin_};
-  // std::vector<ttk::SimplexId> firstRep_original(firstRepMin_.size());
-  // std::iota(firstRep_original.begin(), firstRep_original.end(), 0);
+  // std::iota(firstRep.begin(), firstRep.end(), 0);
   std::vector<tripletType> sadMinTriplets{};
-  std::vector<std::array<ttk::SimplexId, 2>> svToR();
+  std::vector<std::array<ttk::SimplexId, 2>> svToR(
+    paired1Saddles.size(), {-1, -1});
   for(size_t i = 0; i < saddle1ToMinima.size(); ++i) {
     auto &mins = saddle1ToMinima[i];
     const auto s1 = criticalEdges[i];
@@ -689,27 +670,15 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
     if(mins.size() != 2) {
       continue;
     }
+    svToR[s1][0] = mins[0];
+    svToR[s1][1] = mins[1];
     sadMinTriplets.emplace_back(tripletType{s1, mins[0], mins[1]});
   }
-  int rerunCounter = 0;
-  int PCCounter = 0;
-  /*tripletsToPersistencePairs_original(pairs, pairedMinima, paired1Saddles,
-     firstRep_original, sadMinTriplets, critEdgesOrder.data(), offsets, 0);*/
-
   tripletsToPersistencePairs(pairs, pairedMinima, paired1Saddles, firstRep,
                              sadMinTriplets, critEdgesOrder.data(), offsets, 0,
-                             rerunCounter, PCCounter);
+                             svToR);
 
   const auto nMinSadPairs = pairs.size();
-  printMsg("Rerun " + std::to_string(rerunCounter) + " times for minSaddle");
-  printMsg("Rerun "
-           + std::to_string(((float)rerunCounter / (float)nMinSadPairs) * 100)
-           + " percent for minSaddle");
-  printMsg("Path compression " + std::to_string(PCCounter)
-           + " times for minSaddle");
-  printMsg("Path compression "
-           + std::to_string(((float)PCCounter / (float)nMinSadPairs) * 100)
-           + " percent for minSaddle");
 
   this->printMsg(
     "Computed " + std::to_string(nMinSadPairs) + " min-saddle pairs", 1.0,
@@ -764,9 +733,10 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
   Timer tmseq{};
 
   auto &firstRep{this->firstRepMax_};
-  // std::vector<ttk::SimplexId> firstRep_original(firstRepMax_.size());
-  // std::iota(firstRep_original.begin(), firstRep_original.end(), 0);
+  // std::iota(firstRep.begin(), firstRep.end(), 0);
   std::vector<tripletType> sadMaxTriplets{};
+  std::vector<std::array<ttk::SimplexId, 2>> svToR(
+    pairedSaddles.size(), {-1, -1});
 
   for(size_t i = 0; i < saddle2ToMaxima.size(); ++i) {
     auto &maxs = saddle2ToMaxima[i];
@@ -791,37 +761,23 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
     }
 
     const auto s2 = criticalSaddles[i];
+    svToR[s2][0] = maxs[0];
+    svToR[s2][1] = maxs[1];
     if(!pairedSaddles[s2]) {
       sadMaxTriplets.emplace_back(tripletType{s2, maxs[0], maxs[1]});
     }
   }
 
   const auto nMinSadPairs = pairs.size();
-  int rerunCounter = 0;
-  int PCCounter = 0;
-  /*tripletsToPersistencePairs_original(pairs, pairedMaxima, pairedSaddles,
-     firstRep_original, sadMaxTriplets, critSaddlesOrder.data(),
-                             critMaxsOrder.data(), dim - 1);*/
-
   tripletsToPersistencePairs(pairs, pairedMaxima, pairedSaddles, firstRep,
                              sadMaxTriplets, critSaddlesOrder.data(),
-                             critMaxsOrder.data(), dim - 1, rerunCounter,
-                             PCCounter);
+                             critMaxsOrder.data(), dim - 1, svToR);
 
   const auto nSadMaxPairs = pairs.size() - nMinSadPairs;
 
   this->printMsg(
     "Computed " + std::to_string(nSadMaxPairs) + " saddle-max pairs", 1.0,
     tm.getElapsedTime(), this->threadNumber_);
-  printMsg("Rerun " + std::to_string(rerunCounter) + " times for saddleMax");
-  printMsg("Rerun "
-           + std::to_string(((float)rerunCounter / (float)nSadMaxPairs) * 100)
-           + " percent for saddleMax");
-  printMsg("Path compression " + std::to_string(PCCounter)
-           + " times for saddleMax");
-  printMsg("Path compression "
-           + std::to_string(((float)PCCounter / (float)nSadMaxPairs) * 100)
-           + " percent for saddleMax");
 
   this->printMsg("saddle-max pairs sequential part", 1.0,
                  tmseq.getElapsedTime(), 1, debug::LineMode::NEW,

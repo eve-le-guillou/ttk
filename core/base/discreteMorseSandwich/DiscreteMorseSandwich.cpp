@@ -13,13 +13,12 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   std::vector<PersistencePair> &pairs,
   std::vector<bool> &pairedExtrema,
   std::vector<bool> &pairedSaddles,
-  std::vector<std::vector<std::array<SimplexId, 2>>> &reps,
+  std::vector<std::array<SimplexId, 2>> &reps,
   std::vector<tripletType> &triplets,
   const SimplexId *const saddlesOrder,
   const SimplexId *const extremaOrder,
   const SimplexId pairDim,
-  int &rerunCounter,
-  int &PCCounter) const {
+  const std::vector<std::array<ttk::SimplexId, 2>> &svToR) const {
   // comparison functions
   const auto cmpSadMax
     = [=](const tripletType &t0, const tripletType &t1) -> bool {
@@ -59,95 +58,66 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     cmpSadMin);*/
   } else {
     // saddle-saddle pairs from 1-saddles to 2-saddles
-    TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(), cmpSadMax);
+    // TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(),
+    // cmpSadMax);
     // std::reverse(triplets.begin(), triplets.end());
   }
 
-  // auto rng = std::default_random_engine{0};
-  // std::shuffle(std::begin(triplets), std::end(triplets), rng);
-
+  auto rng = std::default_random_engine{0};
+  std::shuffle(std::begin(triplets), std::end(triplets), rng);
   const bool increasing = (pairDim > 0);
-
-  std::vector<ttk::SimplexId> saddleToPairedExtrema(pairedSaddles.size(), -1);
-
-  const auto getClosestRep
-    = [this, increasing, &saddlesOrder, &reps](
-        SimplexId sv, std::vector<std::array<ttk::SimplexId, 2>> &repVect)
-    -> std::array<ttk::SimplexId, 2> {
-    if(repVect.size() == 1) {
-      return repVect[0];
-    }
-    ttk::SimplexId i = repVect.size() - 1;
-    auto rep = repVect[i];
-    while(i > 0
-          && (((saddlesOrder[rep[1]] < saddlesOrder[sv]) == increasing)
-              || rep[1] == sv)) {
-      i--;
-      rep = repVect[i];
-    }
-    return repVect[i];
-  };
-
+  ttk::SimplexId saddleNumber = pairedSaddles.size();
+  std::vector<ttk::SimplexId> saddleToPairedExtrema(saddleNumber, -1);
   // get representative of current extremum
   const auto getRep
-    = [this, &reps, &saddlesOrder, increasing, &getClosestRep](
+    = [this, &reps, &saddlesOrder, increasing](
         SimplexId v, SimplexId sv) -> std::array<ttk::SimplexId, 2> {
-    auto rep = getClosestRep(sv, reps[v]);
+    auto rep = reps[v];
     ttk::SimplexId s = rep[1];
     while(rep[0] != v) {
       s = rep[1];
+      if(s != -1 && ((saddlesOrder[s] < saddlesOrder[sv]) == increasing)) {
+        break;
+      }
       v = rep[0];
-      rep = getClosestRep(sv, reps[v]);
+      rep = reps[v];
+    }
+    // In case of the shadow triplet
+    if(increasing && rep[0] == v && s != -1) {
+      s = rep[1];
     }
     return std::array<ttk::SimplexId, 2>{v, s};
   };
 
   const auto addPair
-    = [this, &saddleToPairedExtrema, &pairedExtrema, &pairedSaddles,
-       &extremaOrder, increasing, &saddlesOrder,
-       pairDim](const SimplexId sad, const SimplexId extr) {
+    = [this, &saddleToPairedExtrema, &pairedExtrema, &pairedSaddles](
+        const SimplexId sad, const SimplexId extr) {
         saddleToPairedExtrema[sad] = extr;
         pairedSaddles[sad] = true;
         pairedExtrema[extr] = true;
       };
 
-  const auto removePair
-    = [this, &saddleToPairedExtrema, &pairedExtrema, &pairedSaddles, increasing,
-       &saddlesOrder](const SimplexId sad) {
-        if(saddleToPairedExtrema[sad] != -1) {
-          pairedExtrema[saddleToPairedExtrema[sad]] = false;
-          saddleToPairedExtrema[sad] = -1;
-        }
-        pairedSaddles[sad] = false;
-      };
-
-  const auto findIncorrectSaddle
-    = [this, &saddleToPairedExtrema](
-        const ttk::SimplexId r,
-        std::vector<std::array<ttk::SimplexId, 2>> &repVect) -> ttk::SimplexId {
-    auto it = repVect.rbegin();
-    while((*it)[1] != -1 && saddleToPairedExtrema[(*it)[1]] != r) {
-      it++;
-    }
-    return (*it)[1];
+  const auto removePair = [this, &saddleToPairedExtrema, &pairedExtrema,
+                           &pairedSaddles](const SimplexId sad) {
+    pairedExtrema[saddleToPairedExtrema[sad]] = false;
+    saddleToPairedExtrema[sad] = -1;
+    pairedSaddles[sad] = false;
   };
 
-  std::unordered_map<ttk::SimplexId, std::array<ttk::SimplexId, 2>> svToR;
-  const std::function<int(tripletType)> processTriplet
-    = [this, &increasing, &pairedExtrema, &pairedSaddles,
-       &saddleToPairedExtrema, &extremaOrder, &reps, &getRep, &addPair,
-       &removePair, &saddlesOrder, &processTriplet, &svToR, &rerunCounter,
-       &PCCounter, &findIncorrectSaddle](tripletType t) -> int {
+  const std::function<int(tripletType)> processTriplet =
+    [this, &increasing, &pairedExtrema, &pairedSaddles, &saddleToPairedExtrema,
+     &extremaOrder, &reps, &getRep, &addPair, &removePair, &saddlesOrder,
+     &processTriplet, &svToR](tripletType t) -> int {
     const auto sv = t[0];
     auto rep1 = getRep(t[1], sv);
     auto r1 = rep1[0];
-    auto s1 = findIncorrectSaddle(r1, reps[r1]);
+    auto s1 = rep1[1];
     bool pairedR1 = pairedExtrema[r1];
     bool isR1Invalid
-      = (s1 != -1 && (sv != s1)
-         && ((saddlesOrder[s1] < saddlesOrder[sv]) == increasing));
+      = (s1 != -1 && ((saddlesOrder[s1] < saddlesOrder[sv]) == increasing));
     if(isR1Invalid)
       pairedR1 = false;
+    isR1Invalid = isR1Invalid && (saddleToPairedExtrema[s1] == r1);
     if(t[2] < 0) {
       // deal with "shadow" triplets (a 2-saddle with only one
       // ascending 1-separatrix leading to an unique maximum)
@@ -160,10 +130,9 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
           removePair(s1);
         }
         addPair(sv, r1);
-        svToR[sv] = std::array<ttk::SimplexId, 2>{t[1], t[2]};
-        reps[r1].push_back(std::array<ttk::SimplexId, 2>{r1, sv});
+        reps[r1][1] = sv;
+        reps[r1][0] = r1;
         if(isR1Invalid) {
-          rerunCounter++;
           return processTriplet(tripletType{s1, svToR[s1][0], svToR[s1][1]});
         }
       }
@@ -171,13 +140,13 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     }
     auto rep2 = getRep(t[2], sv);
     auto r2 = rep2[0];
-    auto s2 = findIncorrectSaddle(r2, reps[r2]);
+    auto s2 = rep2[1];
     bool pairedR2 = pairedExtrema[r2];
     bool isR2Invalid
-      = (s2 != -1 && (sv != s2)
-         && ((saddlesOrder[s2] < saddlesOrder[sv]) == increasing));
+      = (s2 != -1 && ((saddlesOrder[s2] < saddlesOrder[sv]) == increasing));
     if(isR2Invalid)
       pairedR2 = false;
+    isR2Invalid = isR2Invalid && (saddleToPairedExtrema[s2] == r2);
     if(r1 != r2) {
       if((((extremaOrder[r1] > extremaOrder[r2]) == increasing) || pairedR1)
          && !pairedR2) {
@@ -191,14 +160,9 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
           removePair(s1);
         }
         addPair(sv, r1);
-        svToR[sv] = std::array<ttk::SimplexId, 2>{t[1], t[2]};
-        reps[r1].push_back(std::array<ttk::SimplexId, 2>{r2, sv});
-        if(t[1] != r1 && t[1] != r2) {
-          reps[t[1]].push_back(std::array<ttk::SimplexId, 2>{r2, sv});
-          PCCounter++;
-        }
+        reps[r1][0] = r2;
+        reps[r1][1] = sv;
         if(isR1Invalid) {
-          rerunCounter++;
           return processTriplet(tripletType{s1, svToR[s1][0], svToR[s1][1]});
         }
       }
@@ -210,150 +174,17 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   for(const auto &t : triplets) {
     processTriplet(t);
   }
+
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp declare reduction (merge : std::vector<PersistencePair> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge : pairs) schedule(static)
 #endif
-  for(int i = 0; i < saddleToPairedExtrema.size(); i++) {
+  for(int i = 0; i < saddleNumber; i++) {
     if(saddleToPairedExtrema[i] != -1) {
       if(increasing) {
         pairs.emplace_back(i, saddleToPairedExtrema[i], pairDim);
       } else {
         pairs.emplace_back(saddleToPairedExtrema[i], i, pairDim);
-      }
-    }
-  }
-}
-
-void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs_original(
-  std::vector<PersistencePair> &pairs,
-  std::vector<bool> &pairedExtrema,
-  std::vector<bool> &pairedSaddles,
-  std::vector<SimplexId> &reps,
-  std::vector<tripletType> &triplets,
-  const SimplexId *const saddlesOrder,
-  const SimplexId *const extremaOrder,
-  const SimplexId pairDim) const {
-
-  // comparison functions
-  const auto cmpSadMax
-    = [=](const tripletType &t0, const tripletType &t1) -> bool {
-    const auto s0 = t0[0];
-    const auto s1 = t1[0];
-    const auto m0 = t0[2];
-    const auto m1 = t1[2];
-
-#ifdef _LIBCPP_VERSION
-    // libc++'s std::sort compares an entry to itself
-    if(&t0 == &t1) {
-      return true;
-    }
-#endif // _LIBCPP_VERSION
-
-    if(s0 != s1)
-      return saddlesOrder[s0] > saddlesOrder[s1];
-    else
-      return extremaOrder[m0] < extremaOrder[m1];
-  };
-
-  const auto cmpSadMin
-    = [=](const tripletType &t0, const tripletType &t1) -> bool {
-    const auto s0 = t0[0];
-    const auto s1 = t1[0];
-    const auto m0 = t0[2];
-    const auto m1 = t1[2];
-    if(s0 != s1)
-      return saddlesOrder[s0] < saddlesOrder[s1];
-    else
-      return extremaOrder[m0] > extremaOrder[m1];
-  };
-
-  // sort triplets
-  if(pairDim == 0) {
-    TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(), cmpSadMin);
-  } else {
-    // saddle-saddle pairs from 1-saddles to 2-saddles
-    TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(), cmpSadMax);
-  }
-
-  // get representative of current extremum
-  const auto getRep = [&reps](SimplexId v) -> SimplexId {
-    auto r = reps[v];
-    while(r != v) {
-      v = r;
-      r = reps[v];
-    }
-    return r;
-  };
-
-  const bool increasing = (pairDim > 0);
-
-  const auto addPair = [&pairs, &pairedExtrema, &pairedSaddles, increasing,
-                        pairDim](const SimplexId sad, const SimplexId extr) {
-    if(increasing) {
-      pairs.emplace_back(sad, extr, pairDim);
-    } else {
-      pairs.emplace_back(extr, sad, pairDim);
-    }
-    pairedSaddles[sad] = true;
-    pairedExtrema[extr] = true;
-  };
-
-  for(const auto &t : triplets) {
-    const auto sv = t[0];
-
-    auto r1 = getRep(t[1]);
-
-    if(t[2] < 0) {
-      // deal with "shadow" triplets (a 2-saddle with only one
-      // ascending 1-separatrix leading to an unique maximum)
-      if(!pairedExtrema[r1] && !pairedSaddles[sv]) {
-        // when considering the boundary, the "-1" of the triplets
-        // indicate a virtual maximum of infinite persistence on the
-        // boundary component. a pair is created with the other
-        // maximum
-        addPair(sv, r1);
-        if(sv == 300 || sv == 18)
-          printMsg("AddPair between " + std::to_string(sv) + ", and "
-                   + std::to_string(r1));
-      }
-
-      continue;
-    }
-
-    auto r2 = getRep(t[2]);
-    if(sv == 300 || sv == 18) {
-      printMsg("sv: " + std::to_string(sv) + ", t[1]: " + std::to_string(t[1])
-               + ", r1: " + std::to_string(r1) + ", t[2]: "
-               + std::to_string(t[2]) + ", r2: " + std::to_string(r2));
-    }
-    if(r1 != r2) {
-      if(((extremaOrder[r1] > extremaOrder[r2]) == increasing
-          || pairedExtrema[r1])
-         && !pairedExtrema[r2]) {
-        std::swap(r1, r2);
-        if(sv == 300 || sv == 18) {
-          printMsg("Swaping for " + std::to_string(sv)
-                   + ", because: " + std::to_string(pairedExtrema[r1])
-                   + ", or : " + std::to_string(!pairedExtrema[r1]) + ", and: "
-                   + std::to_string((extremaOrder[r1] > extremaOrder[r2])
-                                    == increasing));
-        }
-      }
-      if(sv == 300 || sv == 18) {
-        printMsg("No swaping for " + std::to_string(sv)
-                 + ", because: " + std::to_string(pairedExtrema[r1])
-                 + ", or : " + std::to_string(!pairedExtrema[r2]) + ", and: "
-                 + std::to_string(
-                   ((extremaOrder[r1] > extremaOrder[r2]) == increasing)));
-      }
-      if(!pairedExtrema[r1]) {
-        addPair(sv, r1);
-        if(sv == 300 || sv == 18)
-          printMsg("AddPair between " + std::to_string(sv) + ", and "
-                   + std::to_string(r1));
-        reps[t[1]] = r2;
-        reps[r1] = r2;
       }
     }
   }
