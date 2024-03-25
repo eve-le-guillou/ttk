@@ -320,7 +320,10 @@ namespace ttk {
       const SimplexId *const saddlesOrder,
       const SimplexId *const extremaOrder,
       const SimplexId pairDim,
-      const std::vector<std::array<ttk::SimplexId, 2>> &svToR) const;
+      const std::vector<std::array<ttk::SimplexId, 2>> &svToR,
+      float &getRepTime,
+      float &postTreatmentTime,
+      float &saddleToPairedExtremaTime) const;
 
     /**
      * @brief Detect 1-saddles paired to a given 2-saddle
@@ -650,16 +653,20 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
   const triangulationType &triangulation) const {
 
   Timer tm{};
+  Timer t{};
 
   auto saddle1ToMinima = getSaddle1ToMinima(criticalEdges, triangulation);
 
   Timer tmseq{};
-
+  float getTripletsTime = t.getElapsedTime();
+  t.reStart();
   auto &firstRep{this->firstRepMin_};
   // std::iota(firstRep.begin(), firstRep.end(), 0);
   std::vector<tripletType> sadMinTriplets{};
   std::vector<std::array<ttk::SimplexId, 2>> svToR(
     paired1Saddles.size(), {-1, -1});
+  float svToRInit = t.getElapsedTime();
+  t.reStart();
   for(size_t i = 0; i < saddle1ToMinima.size(); ++i) {
     auto &mins = saddle1ToMinima[i];
     const auto s1 = criticalEdges[i];
@@ -674,15 +681,30 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
     svToR[s1][1] = mins[1];
     sadMinTriplets.emplace_back(tripletType{s1, mins[0], mins[1]});
   }
+  float getRepTime{0}, postTreatmentTime{0}, saddleToPairedExtremaTime{0};
+  float preTreatmentTime = t.getElapsedTime();
   tripletsToPersistencePairs(pairs, pairedMinima, paired1Saddles, firstRep,
                              sadMinTriplets, critEdgesOrder.data(), offsets, 0,
-                             svToR);
+                             svToR, getRepTime, postTreatmentTime,
+                             saddleToPairedExtremaTime);
 
   const auto nMinSadPairs = pairs.size();
 
   this->printMsg(
     "Computed " + std::to_string(nMinSadPairs) + " min-saddle pairs", 1.0,
     tm.getElapsedTime(), this->threadNumber_);
+  this->printMsg("triplets creation time for min-saddle took "
+                 + std::to_string(getTripletsTime) + "s");
+  this->printMsg("svToR init for min-saddle took " + std::to_string(svToRInit)
+                 + "s");
+  this->printMsg("pre treatment for min-saddle took "
+                 + std::to_string(preTreatmentTime) + "s");
+  this->printMsg("getRep time for min-saddle took " + std::to_string(getRepTime)
+                 + "s");
+  this->printMsg("saddleCreatTime for min-saddle took "
+                 + std::to_string(saddleToPairedExtremaTime) + "s");
+  this->printMsg("post treatment time for min-saddle took "
+                 + std::to_string(postTreatmentTime) + "s");
 
   this->printMsg("min-saddle pairs sequential part", 1.0,
                  tmseq.getElapsedTime(), 1, debug::LineMode::NEW,
@@ -700,6 +722,7 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
   const triangulationType &triangulation) const {
 
   Timer tm{};
+  Timer t{};
 
   const auto dim = this->dg_.getDimensionality();
 
@@ -731,13 +754,15 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
           triangulation);
 
   Timer tmseq{};
-
+  float getTripletsTime = t.getElapsedTime();
+  t.reStart();
   auto &firstRep{this->firstRepMax_};
   // std::iota(firstRep.begin(), firstRep.end(), 0);
   std::vector<tripletType> sadMaxTriplets{};
   std::vector<std::array<ttk::SimplexId, 2>> svToR(
     pairedSaddles.size(), {-1, -1});
-
+  float svToRInit = t.getElapsedTime();
+  t.reStart();
   for(size_t i = 0; i < saddle2ToMaxima.size(); ++i) {
     auto &maxs = saddle2ToMaxima[i];
     // remove duplicates
@@ -767,18 +792,31 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
       sadMaxTriplets.emplace_back(tripletType{s2, maxs[0], maxs[1]});
     }
   }
-
+  float getRepTime{0}, postTreatmentTime{0}, saddleToPairedExtremaTime{0};
   const auto nMinSadPairs = pairs.size();
+  float preTreatmentTime = t.getElapsedTime();
   tripletsToPersistencePairs(pairs, pairedMaxima, pairedSaddles, firstRep,
                              sadMaxTriplets, critSaddlesOrder.data(),
-                             critMaxsOrder.data(), dim - 1, svToR);
+                             critMaxsOrder.data(), dim - 1, svToR, getRepTime,
+                             postTreatmentTime, saddleToPairedExtremaTime);
 
   const auto nSadMaxPairs = pairs.size() - nMinSadPairs;
 
   this->printMsg(
     "Computed " + std::to_string(nSadMaxPairs) + " saddle-max pairs", 1.0,
     tm.getElapsedTime(), this->threadNumber_);
-
+  this->printMsg("triplets creation time for saddle-max took "
+                 + std::to_string(getTripletsTime) + "s");
+  this->printMsg("svToR init for saddle-max took " + std::to_string(svToRInit)
+                 + "s");
+  this->printMsg("pre treatment for saddle-max took "
+                 + std::to_string(preTreatmentTime) + "s");
+  this->printMsg("getRep time for  saddle-max took "
+                 + std::to_string(getRepTime) + "s");
+  this->printMsg("saddleCreatTime for  saddle-max took "
+                 + std::to_string(saddleToPairedExtremaTime) + "s");
+  this->printMsg("post treatment time for  saddle-max took "
+                 + std::to_string(postTreatmentTime) + "s");
   this->printMsg("saddle-max pairs sequential part", 1.0,
                  tmseq.getElapsedTime(), 1, debug::LineMode::NEW,
                  debug::Priority::VERBOSE);
