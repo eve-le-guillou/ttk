@@ -19,6 +19,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   const SimplexId *const extremaOrder,
   const SimplexId pairDim,
   const std::vector<std::array<ttk::SimplexId, 2>> &svToR,
+  std::vector<ttk::SimplexId> &saddleToPairedExtrema,
   float &getRepTime,
   float &postTreatmentTime,
   float &saddleToPairedExtremaTime) const {
@@ -72,7 +73,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   const bool increasing = (pairDim > 0);
   ttk::SimplexId saddleNumber = pairedSaddles.size();
   Timer tm{};
-  std::vector<ttk::SimplexId> saddleToPairedExtrema(saddleNumber, -1);
+  // std::vector<ttk::SimplexId> saddleToPairedExtrema(saddleNumber, -1);
   saddleToPairedExtremaTime = tm.getElapsedTime();
   // get representative of current extremum
   const auto getRep

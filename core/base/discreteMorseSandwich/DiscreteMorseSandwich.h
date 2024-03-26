@@ -321,6 +321,7 @@ namespace ttk {
       const SimplexId *const extremaOrder,
       const SimplexId pairDim,
       const std::vector<std::array<ttk::SimplexId, 2>> &svToR,
+      std::vector<ttk::SimplexId> &saddleToPairedExtrema,
       float &getRepTime,
       float &postTreatmentTime,
       float &saddleToPairedExtremaTime) const;
@@ -448,6 +449,16 @@ namespace ttk {
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp task
 #endif // TTK_ENABLE_OPENMP
+        this->saddleToPairedMin_.resize(
+          this->dg_.getNumberOfCells(1, triangulation), -1);
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task
+#endif // TTK_ENABLE_OPENMP
+        this->svToRMin_.resize(
+          this->dg_.getNumberOfCells(1, triangulation), {-1, -1});
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task
+#endif // TTK_ENABLE_OPENMP
         {
           this->firstRepMin_.resize(triangulation.getNumberOfVertices(),
                                     std::array<ttk::SimplexId, 2>{0, -1});
@@ -466,6 +477,16 @@ namespace ttk {
               this->firstRepMax_[i][0] = i;
             }
           }
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task
+#endif // TTK_ENABLE_OPENMP
+          this->saddleToPairedMax_.resize(
+            this->dg_.getNumberOfCells(2, triangulation), -1);
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task
+#endif // TTK_ENABLE_OPENMP
+          this->svToRMax_.resize(
+            this->dg_.getNumberOfCells(2, triangulation), {-1, -1});
         }
         if(dim > 2) {
 #ifdef TTK_ENABLE_OPENMP
@@ -520,6 +541,10 @@ namespace ttk {
       this->pairedCritCells_ = {};
       this->onBoundary_ = {};
       this->critCellsOrder_ = {};
+      this->saddleToPairedMin_ = {};
+      this->saddleToPairedMax_ = {};
+      this->svToRMin_ = {};
+      this->svToRMax_ = {};
       this->printMsg("Memory cleanup", 1.0, tm.getElapsedTime(), 1,
                      debug::LineMode::NEW, debug::Priority::DETAIL);
     }
@@ -528,9 +553,9 @@ namespace ttk {
 
     // factor memory allocations outside computation loops
     mutable std::vector<std::array<ttk::SimplexId, 2>> firstRepMin_{},
-      firstRepMax_{};
+      firstRepMax_{}, svToRMin_{}, svToRMax_{};
     mutable std::vector<ttk::SimplexId> edgeTrianglePartner_{}, s2Mapping_{},
-      s1Mapping_{};
+      s1Mapping_{}, saddleToPairedMin_{}, saddleToPairedMax_{};
     mutable std::vector<EdgeSimplex> critEdges_{};
     mutable std::array<std::vector<bool>, 4> pairedCritCells_{};
     mutable std::vector<bool> onBoundary_{};
@@ -661,12 +686,16 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
   float getTripletsTime = t.getElapsedTime();
   t.reStart();
   auto &firstRep{this->firstRepMin_};
+  auto &saddleToPairedExtrema{this->saddleToPairedMin_};
+  auto &svToR{this->svToRMin_};
   // std::iota(firstRep.begin(), firstRep.end(), 0);
   std::vector<tripletType> sadMinTriplets{};
-  std::vector<std::array<ttk::SimplexId, 2>> svToR(
-    paired1Saddles.size(), {-1, -1});
   float svToRInit = t.getElapsedTime();
   t.reStart();
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp declare reduction (merge : std::vector<tripletType> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+#pragma omp parallel for reduction(merge : sadMinTriplets) schedule(static)
+#endif
   for(size_t i = 0; i < saddle1ToMinima.size(); ++i) {
     auto &mins = saddle1ToMinima[i];
     const auto s1 = criticalEdges[i];
@@ -685,9 +714,8 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
   float preTreatmentTime = t.getElapsedTime();
   tripletsToPersistencePairs(pairs, pairedMinima, paired1Saddles, firstRep,
                              sadMinTriplets, critEdgesOrder.data(), offsets, 0,
-                             svToR, getRepTime, postTreatmentTime,
-                             saddleToPairedExtremaTime);
-
+                             svToR, saddleToPairedExtrema, getRepTime,
+                             postTreatmentTime, saddleToPairedExtremaTime);
   const auto nMinSadPairs = pairs.size();
 
   this->printMsg(
@@ -757,12 +785,16 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
   float getTripletsTime = t.getElapsedTime();
   t.reStart();
   auto &firstRep{this->firstRepMax_};
+  auto &saddleToPairedExtrema{this->saddleToPairedMax_};
+  auto &svToR{this->svToRMax_};
   // std::iota(firstRep.begin(), firstRep.end(), 0);
   std::vector<tripletType> sadMaxTriplets{};
-  std::vector<std::array<ttk::SimplexId, 2>> svToR(
-    pairedSaddles.size(), {-1, -1});
   float svToRInit = t.getElapsedTime();
   t.reStart();
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp declare reduction (merge : std::vector<tripletType> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+#pragma omp parallel for reduction(merge : sadMaxTriplets) schedule(static)
+#endif
   for(size_t i = 0; i < saddle2ToMaxima.size(); ++i) {
     auto &maxs = saddle2ToMaxima[i];
     // remove duplicates
@@ -797,7 +829,8 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
   float preTreatmentTime = t.getElapsedTime();
   tripletsToPersistencePairs(pairs, pairedMaxima, pairedSaddles, firstRep,
                              sadMaxTriplets, critSaddlesOrder.data(),
-                             critMaxsOrder.data(), dim - 1, svToR, getRepTime,
+                             critMaxsOrder.data(), dim - 1, svToR,
+                             saddleToPairedExtrema, getRepTime,
                              postTreatmentTime, saddleToPairedExtremaTime);
 
   const auto nSadMaxPairs = pairs.size() - nMinSadPairs;
