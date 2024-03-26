@@ -44,7 +44,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
       return extremaOrder[m0] < extremaOrder[m1];
   };
 
-  ttk::Timer getRepTimer{};
+  // ttk::Timer getRepTimer{};
 
   /*const auto cmpSadMin
     = [=](const tripletType &t0, const tripletType &t1) -> bool {
@@ -72,14 +72,14 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   // std::shuffle(std::begin(triplets), std::end(triplets), rng);
   const bool increasing = (pairDim > 0);
   ttk::SimplexId saddleNumber = pairedSaddles.size();
-  Timer tm{};
+  // Timer tm{};
   // std::vector<ttk::SimplexId> saddleToPairedExtrema(saddleNumber, -1);
-  saddleToPairedExtremaTime = tm.getElapsedTime();
+  // saddleToPairedExtremaTime = tm.getElapsedTime();
   // get representative of current extremum
   const auto getRep
-    = [this, &reps, &saddlesOrder, increasing, &getRepTimer, &getRepTime](
+    = [this, &reps, &saddlesOrder, increasing /*, &getRepTimer, &getRepTime*/](
         SimplexId v, SimplexId sv) -> std::array<ttk::SimplexId, 2> {
-    getRepTimer.reStart();
+    //    getRepTimer.reStart();
     auto rep = reps[v];
     ttk::SimplexId s = rep[1];
     while(rep[0] != v) {
@@ -95,7 +95,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     if(increasing && rep[0] == v && s != -1) {
       s = rep[1];
     }
-    getRepTime += getRepTimer.getElapsedTime();
+    //    getRepTime += getRepTimer.getElapsedTime();
     return std::array<ttk::SimplexId, 2>{v, s};
   };
 
@@ -187,7 +187,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     processTriplet(t);
   }
 
-  ttk::Timer postTimer{};
+//  ttk::Timer postTimer{};
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp declare reduction (merge : std::vector<PersistencePair> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge : pairs) schedule(static)
@@ -202,7 +202,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
     }
   }
 
-  postTreatmentTime = postTimer.getElapsedTime();
+  // postTreatmentTime = postTimer.getElapsedTime();
 }
 
 void ttk::DiscreteMorseSandwich::displayStats(
