@@ -13,7 +13,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   std::vector<PersistencePair> &pairs,
   std::vector<bool> &pairedExtrema,
   std::vector<bool> &pairedSaddles,
-  std::vector<std::array<SimplexId, 2>> &reps,
+  std::vector<Rep> &reps,
   std::vector<tripletType> &triplets,
   const SimplexId *const saddlesOrder,
   const SimplexId *const extremaOrder,
@@ -76,25 +76,25 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   // get representative of current extremum
   const auto getRep
     = [this, &reps, &saddlesOrder, increasing /*, &getRepTimer, &getRepTime*/](
-        SimplexId v, SimplexId sv) -> std::array<ttk::SimplexId, 2> {
+        SimplexId v, SimplexId sv) -> Rep {
     //    getRepTimer.reStart();
     auto rep = reps[v];
-    ttk::SimplexId s = rep[1];
-    while(rep[0] != v) {
-      s = rep[1];
+    ttk::SimplexId s = rep.saddleId_;
+    while(rep.extremaId_ != v) {
+      s = rep.saddleId_;
       if((s != -1) && (sv != s)
          && ((saddlesOrder[s] < saddlesOrder[sv]) == increasing)) {
         break;
       }
-      v = rep[0];
+      v = rep.extremaId_;
       rep = reps[v];
     }
     // In case of the shadow triplet
-    if(increasing && rep[0] == v && s != -1) {
-      s = rep[1];
+    if(increasing && rep.extremaId_ == v && s != -1) {
+      s = rep.saddleId_;
     }
     //    getRepTime += getRepTimer.getElapsedTime();
-    return std::array<ttk::SimplexId, 2>{v, s};
+    return Rep{v, s};
   };
 
   const auto addPair
@@ -118,15 +118,14 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
      &processTriplet, &svToR](tripletType t) -> int {
     const auto sv = t[0];
     auto rep1 = getRep(t[1], sv);
-    auto r1 = rep1[0];
-    auto s1 = rep1[1];
-    bool pairedR1 = pairedExtrema[r1];
+    bool pairedR1 = pairedExtrema[rep1.extremaId_];
     bool isR1Invalid
-      = ((s1 != -1) && (s1 != sv)
-         && ((saddlesOrder[s1] < saddlesOrder[sv]) == increasing));
+      = ((rep1.saddleId_ != -1) && (rep1.saddleId_ != sv)
+         && ((saddlesOrder[rep1.saddleId_] < saddlesOrder[sv]) == increasing));
     if(isR1Invalid)
       pairedR1 = false;
-    isR1Invalid = isR1Invalid && (saddleToPairedExtrema[s1] == r1);
+    isR1Invalid = isR1Invalid
+                  && (saddleToPairedExtrema[rep1.saddleId_] == rep1.extremaId_);
     if(t[2] < 0) {
       // deal with "shadow" triplets (a 2-saddle with only one
       // ascending 1-separatrix leading to an unique maximum)
@@ -136,44 +135,46 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
         // boundary component. a pair is created with the other
         // maximum
         if(isR1Invalid) {
-          removePair(s1);
+          removePair(rep1.saddleId_);
         }
-        addPair(sv, r1);
-        reps[r1][1] = sv;
-        reps[r1][0] = r1;
+        addPair(sv, rep1.extremaId_);
+        reps[rep1.extremaId_] = Rep{rep1.extremaId_, sv};
         if(isR1Invalid) {
-          return processTriplet(tripletType{s1, svToR[s1][0], svToR[s1][1]});
+          return processTriplet(tripletType{rep1.saddleId_,
+                                            svToR[rep1.saddleId_][0],
+                                            svToR[rep1.saddleId_][1]});
         }
       }
       return 0;
     }
     auto rep2 = getRep(t[2], sv);
-    auto r2 = rep2[0];
-    auto s2 = rep2[1];
-    bool pairedR2 = pairedExtrema[r2];
+    bool pairedR2 = pairedExtrema[rep2.extremaId_];
     bool isR2Invalid
-      = ((s2 != -1) && (s2 != sv)
-         && ((saddlesOrder[s2] < saddlesOrder[sv]) == increasing));
+      = ((rep2.saddleId_ != -1) && (rep2.saddleId_ != sv)
+         && ((saddlesOrder[rep2.saddleId_] < saddlesOrder[sv]) == increasing));
     if(isR2Invalid)
       pairedR2 = false;
-    isR2Invalid = isR2Invalid && (saddleToPairedExtrema[s2] == r2);
-    if(r1 != r2) {
-      if((((extremaOrder[r1] > extremaOrder[r2]) == increasing) || pairedR1)
+    isR2Invalid = isR2Invalid
+                  && (saddleToPairedExtrema[rep2.saddleId_] == rep2.extremaId_);
+    if(rep1.extremaId_ != rep2.extremaId_) {
+      if((((extremaOrder[rep1.extremaId_] > extremaOrder[rep2.extremaId_])
+           == increasing)
+          || pairedR1)
          && !pairedR2) {
-        std::swap(r1, r2);
+        std::swap(rep1, rep2);
         std::swap(pairedR1, pairedR2);
-        std::swap(s1, s2);
         std::swap(isR1Invalid, isR2Invalid);
       }
       if(!pairedR1) {
         if(isR1Invalid) {
-          removePair(s1);
+          removePair(rep1.saddleId_);
         }
-        addPair(sv, r1);
-        reps[r1][0] = r2;
-        reps[r1][1] = sv;
+        addPair(sv, rep1.extremaId_);
+        reps[rep1.extremaId_] = Rep{rep2.extremaId_, sv};
         if(isR1Invalid) {
-          return processTriplet(tripletType{s1, svToR[s1][0], svToR[s1][1]});
+          return processTriplet(tripletType{rep1.saddleId_,
+                                            svToR[rep1.saddleId_][0],
+                                            svToR[rep1.saddleId_][1]});
         }
       }
     }

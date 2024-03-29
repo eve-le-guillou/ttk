@@ -299,6 +299,10 @@ namespace ttk {
      */
     using tripletType = std::array<SimplexId, 3>;
 
+    struct Rep {
+      ttk::SimplexId extremaId_{0};
+      ttk::SimplexId saddleId_{-1};
+    };
     /**
      * @brief Compute persistence pairs from triplets
      *
@@ -315,7 +319,7 @@ namespace ttk {
       std::vector<PersistencePair> &pairs,
       std::vector<bool> &pairedExtrema,
       std::vector<bool> &pairedSaddles,
-      std::vector<std::array<ttk::SimplexId, 2>> &reps,
+      std::vector<Rep> &reps,
       std::vector<tripletType> &triplets,
       const SimplexId *const saddlesOrder,
       const SimplexId *const extremaOrder,
@@ -460,10 +464,9 @@ namespace ttk {
 #pragma omp task
 #endif // TTK_ENABLE_OPENMP
         {
-          this->firstRepMin_.resize(triangulation.getNumberOfVertices(),
-                                    std::array<ttk::SimplexId, 2>{0, -1});
+          this->firstRepMin_.resize(triangulation.getNumberOfVertices(), Rep{});
           for(int i = 0; i < triangulation.getNumberOfVertices(); i++) {
-            this->firstRepMin_[i][0] = i;
+            this->firstRepMin_[i].extremaId_ = i;
           }
         }
         if(dim > 1) {
@@ -471,10 +474,9 @@ namespace ttk {
 #pragma omp task
 #endif
           {
-            this->firstRepMax_.resize(triangulation.getNumberOfCells(),
-                                      std::array<ttk::SimplexId, 2>{0, -1});
+            this->firstRepMax_.resize(triangulation.getNumberOfCells(), Rep{});
             for(int i = 0; i < triangulation.getNumberOfCells(); i++) {
-              this->firstRepMax_[i][0] = i;
+              this->firstRepMax_[i].extremaId_ = i;
             }
           }
 #ifdef TTK_ENABLE_OPENMP
@@ -552,8 +554,8 @@ namespace ttk {
     dcg::DiscreteGradient dg_{};
 
     // factor memory allocations outside computation loops
-    mutable std::vector<std::array<ttk::SimplexId, 2>> firstRepMin_{},
-      firstRepMax_{}, svToRMin_{}, svToRMax_{};
+    mutable std::vector<std::array<ttk::SimplexId, 2>> svToRMin_{}, svToRMax_{};
+    mutable std::vector<Rep> firstRepMin_{}, firstRepMax_{};
     mutable std::vector<ttk::SimplexId> edgeTrianglePartner_{}, s2Mapping_{},
       s1Mapping_{}, saddleToPairedMin_{}, saddleToPairedMax_{};
     mutable std::vector<EdgeSimplex> critEdges_{};
