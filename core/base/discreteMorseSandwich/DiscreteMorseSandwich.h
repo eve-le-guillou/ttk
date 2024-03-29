@@ -700,7 +700,7 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
     auto &mins = saddle1ToMinima[i];
     const auto s1 = criticalEdges[i];
     // remove duplicates
-    TTK_PSORT(this->threadNumber_, mins.begin(), mins.end());
+    std::sort(mins.begin(), mins.end());
     const auto last = std::unique(mins.begin(), mins.end());
     mins.erase(last, mins.end());
     if(mins.size() != 2) {
@@ -798,16 +798,16 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
   for(size_t i = 0; i < saddle2ToMaxima.size(); ++i) {
     auto &maxs = saddle2ToMaxima[i];
     // remove duplicates
-    TTK_PSORT(this->threadNumber_, maxs.begin(), maxs.end(),
-              [](const SimplexId a, const SimplexId b) {
-                // positive values (actual maxima) before negative ones
-                // (boundary component id)
-                if(a * b >= 0) {
-                  return a < b;
-                } else {
-                  return a > b;
-                }
-              });
+    std::sort(
+      maxs.begin(), maxs.end(), [](const SimplexId a, const SimplexId b) {
+        // positive values (actual maxima) before negative ones
+        // (boundary component id)
+        if(a * b >= 0) {
+          return a < b;
+        } else {
+          return a > b;
+        }
+      });
     const auto last = std::unique(maxs.begin(), maxs.end());
     maxs.erase(last, maxs.end());
 

@@ -46,7 +46,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
 
   // ttk::Timer getRepTimer{};
 
-  /*const auto cmpSadMin
+  const auto cmpSadMin
     = [=](const tripletType &t0, const tripletType &t1) -> bool {
     const auto s0 = t0[0];
     const auto s1 = t1[0];
@@ -56,12 +56,11 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
       return saddlesOrder[s0] < saddlesOrder[s1];
     else
       return extremaOrder[m0] > extremaOrder[m1];
-  };*/
+  };
 
   // sort triplets
   if(pairDim == 0) {
-    /*TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(),
-    cmpSadMin);*/
+    TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(), cmpSadMin);
   } else {
     // saddle-saddle pairs from 1-saddles to 2-saddles
     TTK_PSORT(this->threadNumber_, triplets.begin(), triplets.end(), cmpSadMax);
@@ -71,7 +70,6 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   // auto rng = std::default_random_engine{0};
   // std::shuffle(std::begin(triplets), std::end(triplets), rng);
   const bool increasing = (pairDim > 0);
-  ttk::SimplexId saddleNumber = pairedSaddles.size();
   // Timer tm{};
   // std::vector<ttk::SimplexId> saddleToPairedExtrema(saddleNumber, -1);
   // saddleToPairedExtremaTime = tm.getElapsedTime();
@@ -186,6 +184,8 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   for(const auto &t : triplets) {
     processTriplet(t);
   }
+
+  ttk::SimplexId saddleNumber = pairedSaddles.size();
 
 //  ttk::Timer postTimer{};
 #ifdef TTK_ENABLE_OPENMP
