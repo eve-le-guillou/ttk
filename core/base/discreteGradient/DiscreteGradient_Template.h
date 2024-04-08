@@ -35,7 +35,10 @@ dataType DiscreteGradient::getPersistence(
 template <typename triangulationType>
 int DiscreteGradient::buildGradient(const triangulationType &triangulation,
                                     bool bypassCache) {
-
+#ifdef TTK_ENABLE_MPI_TIME
+  ttk::Timer t_mpi;
+  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
   auto &cacheHandler = *triangulation.getGradientCacheHandler();
   const auto findGradient
     = [this, &cacheHandler]() -> AbstractTriangulation::gradientType * {
@@ -75,11 +78,318 @@ int DiscreteGradient::buildGradient(const triangulationType &triangulation,
 
     this->printMsg(
       "Built discrete gradient", 1.0, tm.getElapsedTime(), this->threadNumber_);
+#ifdef TTK_ENABLE_MPI_TIME
+    double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+    if(ttk::MPIrank_ == 0) {
+      printMsg("Computation performed using " + std::to_string(ttk::MPIsize_)
+               + " MPI processes lasted :" + std::to_string(elapsedTime));
+    }
+#endif
+    if(ttk::isRunningWithMPI()) {
+#ifdef TTK_ENABLE_MPI_TIME
+      ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
+      this->exchangeGhosts(triangulation);
+#ifdef TTK_ENABLE_MPI_TIME
+      elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+      if(ttk::MPIrank_ == 0) {
+        printMsg("Ghosts exchange performed using "
+                 + std::to_string(ttk::MPIsize_)
+                 + " MPI processes lasted :" + std::to_string(elapsedTime));
+      }
+#endif
+    }
   } else {
     this->printMsg("Fetched cached discrete gradient");
   }
-
   return 0;
+}
+
+template <typename triangulationType>
+int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
+
+  struct gradientPair {
+    ttk::SimplexId gid1{-1};
+    ttk::SimplexId gid2{-1};
+    int pairType{0};
+  };
+
+  const auto neighborsToId = triangulation.getNeighborsToId();
+  const auto neighbors = triangulation.getNeighborRanks();
+  const int neighborsNumber = neighborsToId.size();
+  // Create the messages to send
+  std::vector<std::vector<gradientPair>> ghostToSend(
+    neighborsNumber, std::vector<gradientPair>());
+
+#ifdef TTK_ENABLE_OPENMP
+  std::vector<std::vector<std::vector<gradientPair>>> ghostToSendThread(
+    this->threadNumber_, std::vector<std::vector<gradientPair>>(
+                           neighborsNumber, std::vector<gradientPair>()));
+#pragma omp parallel num_threads(threadNumber_)
+  {
+    int threadNumber = omp_get_thread_num();
+    int r1, r2;
+    ttk::SimplexId gid1, gid2;
+    ttk::SimplexId pairedSimplex;
+    for(int i = 0; i < 6; i++) {
+      int gradientSize = (*gradient_)[i].size();
+#pragma omp for schedule(static)
+      for(int j = 0; j < gradientSize; j++) {
+        pairedSimplex = (*gradient_)[i][j];
+        // Check that the paired simplex is neither ghost nor critical
+        if(pairedSimplex != GHOST_GRADIENT) {
+          if(pairedSimplex != NULL_GRADIENT) {
+            if(i % 2 == 0) {
+              gid2 = getSimplexGlobalId(triangulation, pairedSimplex, i + 1);
+              r2 = getSimplexRank(triangulation, pairedSimplex, i + 1);
+            }
+          } else {
+            gid2 = NULL_GRADIENT;
+            r2 = -1;
+          }
+          if(pairedSimplex != NULL_GRADIENT && (i % 2 == 0)) {
+            r1 = getSimplexRank(triangulation, j, i);
+            gid1 = getSimplexGlobalId(triangulation, j, i);
+            if(r1 != ttk::MPIrank_) {
+              ghostToSendThread.at(threadNumber)[neighborsToId.find(r1)->second]
+                .emplace_back(gradientPair{gid1, gid2, i});
+            }
+            if(r2 != -1 && r2 != ttk::MPIrank_ && r2 != r1) {
+              ghostToSendThread.at(threadNumber)[neighborsToId.find(r2)->second]
+                .emplace_back(gradientPair{gid1, gid2, i});
+            }
+          }
+        }
+      }
+    }
+  }
+  // Concatenate the vector produced by each thread
+#pragma omp parallel for schedule(static, 1)
+  for(int j = 0; j < neighborsNumber; j++) {
+    for(int i = 0; i < this->threadNumber_; i++) {
+      ghostToSend.at(j).insert(ghostToSend.at(j).end(),
+                               ghostToSendThread.at(i).at(j).begin(),
+                               ghostToSendThread.at(i).at(j).end());
+    }
+  }
+  ghostToSendThread.clear();
+#else
+  for(int i = 0; i < 6; i++) {
+    int gradientSize = (*gradient_)[i].size();
+    for(int j = 0; j < gradientSize; j++) {
+      pairedSimplex = (*gradient_)[i][j];
+      // Check that the paired simplex is neither ghost nor critical
+      if(pairedSimplex != GHOST_GRADIENT) {
+        if(pairedSimplex != NULL_GRADIENT) {
+          if(i % 2 != 0) {
+            break;
+          }
+          gid2 = getSimplexGlobalId(triangulation, pairedSimplex, i + 1);
+          r2 = getSimplexRank(triangulation, pairedSimplex, i + 1);
+        } else {
+          gid2 = NULL_GRADIENT;
+          r2 = -1;
+        }
+        r1 = getSimplexRank(triangulation, j, i);
+        gid1 = getSimplexGlobalId(triangulation, j, i);
+        if(r1 != ttk::MPIrank_) {
+          ghostToSend[neighborsToId.find(r1)->second].emplace_back(
+            gradientPair{gid1, gid2, i});
+        }
+        if(r2 != -1 && r2 != ttk::MPIrank_ && r2 != r1) {
+          ghostToSend[neighborsToId.find(r2)->second].emplace_back(
+            gradientPair{gid1, gid2, i});
+        }
+      }
+    }
+  }
+#endif // TTK_ENABLE_OPENMP
+
+  // Send and receive the gradient. The use of MPI_Waitsome,
+  // Isend and Irecv enables the computation to overlap communications.
+  std::vector<MPI_Request> sendRequests(neighborsNumber);
+  std::vector<MPI_Request> recvRequests(neighborsNumber);
+  std::vector<MPI_Status> sendStatus(neighborsNumber);
+  std::vector<MPI_Status> recvStatus(neighborsNumber);
+  std::vector<ttk::SimplexId> sendMessageSize(neighborsNumber, 0);
+  std::vector<ttk::SimplexId> recvMessageSize(neighborsNumber, 0);
+  std::vector<int> recvCompleted(neighborsNumber, 0);
+  std::vector<int> sendCompleted(neighborsNumber, 0);
+  int sendPerformedCount = 0;
+  int recvPerformedCount = 0;
+  int sendPerformedCountTotal = 0;
+  int recvPerformedCountTotal = 0;
+  MPI_Datatype MPI_SimplexId = getMPIType(static_cast<ttk::SimplexId>(0));
+  for(int i = 0; i < neighborsNumber; i++) {
+    // Send size of data
+    sendMessageSize[i] = ghostToSend.at(i).size();
+    MPI_Isend(&sendMessageSize[i], 1, MPI_SimplexId, neighbors[i], 0,
+              ttk::MPIcomm_, &sendRequests[i]);
+    MPI_Irecv(&recvMessageSize[i], 1, MPI_SimplexId, neighbors[i], 0,
+              ttk::MPIcomm_, &recvRequests[i]);
+  }
+  std::vector<std::vector<gradientPair>> recvGradientPairs(
+    ttk::MPIsize_, std::vector<gradientPair>());
+
+  MPI_Datatype MPI_gradientPair;
+  MPI_Datatype types[] = {MPI_SimplexId, MPI_SimplexId, MPI_INTEGER};
+  int lengths[] = {1, 1, 1};
+  const long int mpi_offsets[]
+    = {offsetof(gradientPair, gid1), offsetof(gradientPair, gid2),
+       offsetof(gradientPair, pairType)};
+  MPI_Type_create_struct(3, lengths, mpi_offsets, types, &MPI_gradientPair);
+  MPI_Type_commit(&MPI_gradientPair);
+
+  std::vector<MPI_Request> sendRequestsData(neighborsNumber);
+  std::vector<MPI_Request> recvRequestsData(neighborsNumber);
+  std::vector<MPI_Status> recvStatusData(neighborsNumber);
+  int recvCount = 0;
+  int sendCount = 0;
+  int r, neighborId;
+  while((sendPerformedCountTotal < neighborsNumber
+         || recvPerformedCountTotal < neighborsNumber)) {
+    if(sendPerformedCountTotal < neighborsNumber) {
+      MPI_Waitsome(neighborsNumber, sendRequests.data(), &sendPerformedCount,
+                   sendCompleted.data(), sendStatus.data());
+      if(sendPerformedCount > 0) {
+        for(int i = 0; i < sendPerformedCount; i++) {
+          r = sendCompleted[i];
+          if(ttk::MPIrank_ <= sendCompleted[i]) {
+            r++;
+          }
+          neighborId = neighborsToId.find(r)->second;
+          if((sendMessageSize[neighborId] > 0)) {
+            MPI_Isend(ghostToSend.at(neighborId).data(),
+                      sendMessageSize[neighborId], MPI_gradientPair, r, 1,
+                      ttk::MPIcomm_, &sendRequestsData[sendCount]);
+            sendCount++;
+          }
+        }
+        sendPerformedCountTotal += sendPerformedCount;
+      }
+    }
+    if(recvPerformedCountTotal < neighborsNumber) {
+      MPI_Waitsome(neighborsNumber, recvRequests.data(), &recvPerformedCount,
+                   recvCompleted.data(), recvStatus.data());
+      if(recvPerformedCount > 0) {
+        for(int i = 0; i < recvPerformedCount; i++) {
+          r = recvStatus[i].MPI_SOURCE;
+          neighborId = neighborsToId.find(r)->second;
+          if((recvMessageSize[neighborId] > 0)) {
+            recvGradientPairs.at(neighborId)
+              .resize(recvMessageSize[neighborId]);
+            MPI_Irecv(recvGradientPairs.at(neighborId).data(),
+                      recvMessageSize[neighborId], MPI_gradientPair, r, 1,
+                      ttk::MPIcomm_, &recvRequestsData[recvCount]);
+            recvCount++;
+          }
+        }
+        recvPerformedCountTotal += recvPerformedCount;
+      }
+    }
+  }
+  recvPerformedCountTotal = 0;
+  while(recvPerformedCountTotal < recvCount) {
+    MPI_Waitsome(recvCount, recvRequestsData.data(), &recvPerformedCount,
+                 recvCompleted.data(), recvStatusData.data());
+    if(recvPerformedCount > 0) {
+      for(int i = 0; i < recvPerformedCount; i++) {
+        r = recvStatusData[i].MPI_SOURCE;
+        neighborId = neighborsToId.find(r)->second;
+#pragma omp parallel for schedule(static)
+        for(int j = 0; j < recvMessageSize[neighborId]; j++) {
+          // Reception of data
+          struct gradientPair pair = recvGradientPairs.at(neighborId).at(j);
+          ttk::SimplexId lid1
+            = getSimplexLocalId(triangulation, pair.gid1, pair.pairType);
+          ttk::SimplexId lid2
+            = getSimplexLocalId(triangulation, pair.gid2, pair.pairType + 1);
+          (*gradient_)[pair.pairType][lid1] = lid2;
+          if(lid2 != -1) {
+            (*gradient_)[pair.pairType + 1][lid2] = lid1;
+          }
+        }
+      }
+      recvPerformedCountTotal += recvPerformedCount;
+    }
+  }
+  MPI_Waitall(sendCount, sendRequestsData.data(), MPI_STATUSES_IGNORE);
+  return 0;
+}
+
+template <typename triangulationType>
+ttk::SimplexId
+  DiscreteGradient::getSimplexLocalId(const triangulationType &triangulation,
+                                      const ttk::SimplexId &gid,
+                                      const int gradientType) {
+  if(gid == -1) {
+    return -1;
+  }
+  switch(gradientType) {
+    case 0:
+      return triangulation.getVertexLocalId(gid);
+    case 1:
+      return triangulation.getEdgeLocalId(gid);
+    case 2:
+      return triangulation.getEdgeLocalId(gid);
+    case 3:
+      return triangulation.getTriangleLocalId(gid);
+    case 4:
+      return triangulation.getTriangleLocalId(gid);
+    case 5:
+      return triangulation.getCellLocalId(gid);
+  }
+  return -1;
+}
+
+template <typename triangulationType>
+ttk::SimplexId
+  DiscreteGradient::getSimplexGlobalId(const triangulationType &triangulation,
+                                       const ttk::SimplexId &lid,
+                                       const int gradientType) {
+  if(lid == -1) {
+    return -1;
+  }
+  switch(gradientType) {
+    case 0:
+      return triangulation.getVertexGlobalId(lid);
+    case 1:
+      return triangulation.getEdgeGlobalId(lid);
+    case 2:
+      return triangulation.getEdgeGlobalId(lid);
+    case 3:
+      return triangulation.getTriangleGlobalId(lid);
+    case 4:
+      return triangulation.getTriangleGlobalId(lid);
+    case 5:
+      return triangulation.getCellGlobalId(lid);
+  }
+  return -1;
+}
+
+template <typename triangulationType>
+int DiscreteGradient::getSimplexRank(const triangulationType &triangulation,
+                                     const ttk::SimplexId &lid,
+                                     const int gradientType) {
+  if(lid == -1) {
+    printMsg("Local id of -1, send back process id of -1");
+    return -1;
+  }
+  switch(gradientType) {
+    case 0:
+      return triangulation.getVertexRank(lid);
+    case 1:
+      return triangulation.getEdgeRank(lid);
+    case 2:
+      return triangulation.getEdgeRank(lid);
+    case 3:
+      return triangulation.getTriangleRank(lid);
+    case 4:
+      return triangulation.getTriangleRank(lid);
+    case 5:
+      return triangulation.getCellRank(lid);
+  }
+  return -1;
 }
 
 template <typename triangulationType>

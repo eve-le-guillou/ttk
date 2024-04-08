@@ -2847,6 +2847,54 @@ namespace ttk {
       return this->getVertexRankInternal(lvid);
     }
 
+    virtual inline int getEdgeRank(const SimplexId lvid) const {
+
+      if(!ttk::isRunningWithMPI()) {
+        return 0;
+      }
+#ifndef TTK_ENABLE_KAMIKAZE
+      if(this->getDimensionality() != 1 && this->getDimensionality() != 2
+         && this->getDimensionality() != 3) {
+        this->printErr("Only 1D, 2D and 3D datasets are supported");
+        return -1;
+      }
+      if(!this->hasPreconditionedDistributedEdges_) {
+        this->printErr("EdgeRankId query without pre-process!");
+        this->printErr(
+          "Please call preconditionDistributedEdges() in a pre-process.");
+        return -1;
+      }
+      if(lvid < 0 || lvid >= this->getNumberOfEdges()) {
+        return -1;
+      }
+#endif // TTK_ENABLE_KAMIKAZE
+      return this->getEdgeRankInternal(lvid);
+    }
+
+    virtual inline int getTriangleRank(const SimplexId lvid) const {
+
+      if(!ttk::isRunningWithMPI()) {
+        return 0;
+      }
+#ifndef TTK_ENABLE_KAMIKAZE
+      if(this->getDimensionality() != 1 && this->getDimensionality() != 2
+         && this->getDimensionality() != 3) {
+        this->printErr("Only 1D, 2D and 3D datasets are supported");
+        return -1;
+      }
+      if(!this->hasPreconditionedDistributedTriangles_) {
+        this->printErr("TriangleRankId query without pre-process!");
+        this->printErr(
+          "Please call preconditionDistributedTriangles() in a pre-process.");
+        return -1;
+      }
+      if(lvid < 0 || lvid >= this->getNumberOfTriangles()) {
+        return -1;
+      }
+#endif // TTK_ENABLE_KAMIKAZE
+      return this->getTriangleRankInternal(lvid);
+    }
+
     virtual inline int getCellRank(const SimplexId lcid) const {
 #ifndef TTK_ENABLE_KAMIKAZE
       if(this->getDimensionality() != 1 && this->getDimensionality() != 2
@@ -3038,6 +3086,16 @@ namespace ttk {
 
     virtual inline int
       getVertexRankInternal(const SimplexId ttkNotUsed(lvid)) const {
+      return -1;
+    }
+
+    virtual inline int
+      getEdgeRankInternal(const SimplexId ttkNotUsed(lvid)) const {
+      return -1;
+    }
+
+    virtual inline int
+      getTriangleRankInternal(const SimplexId ttkNotUsed(lvid)) const {
       return -1;
     }
 

@@ -103,6 +103,23 @@ triangulation.
       int buildGradient(const triangulationType &triangulation,
                         bool bypassCache = false);
 
+      template <typename triangulationType>
+      int exchangeGhosts(const triangulationType &triangulation);
+
+      template <typename triangulationType>
+      ttk::SimplexId getSimplexLocalId(const triangulationType &triangulation,
+                                       const ttk::SimplexId &gid,
+                                       const int gradientType);
+
+      template <typename triangulationType>
+      ttk::SimplexId getSimplexGlobalId(const triangulationType &triangulation,
+                                        const ttk::SimplexId &lid,
+                                        const int gradientType);
+
+      template <typename triangulationType>
+      int getSimplexRank(const triangulationType &triangulation,
+                         const ttk::SimplexId &lid,
+                         const int gradientType);
       /**
        * Set the input scalar function.
        *
