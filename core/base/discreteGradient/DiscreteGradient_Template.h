@@ -116,7 +116,7 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
 
   const auto neighborsToId = triangulation.getNeighborsToId();
   const auto neighbors = triangulation.getNeighborRanks();
-  const int neighborsNumber = neighborsToId.size();
+  const int neighborsNumber = neighbors.size();
   // Create the messages to send
   std::vector<std::vector<gradientPair>> ghostToSend(
     neighborsNumber, std::vector<gradientPair>());
@@ -125,13 +125,13 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
   std::vector<std::vector<std::vector<gradientPair>>> ghostToSendThread(
     this->threadNumber_, std::vector<std::vector<gradientPair>>(
                            neighborsNumber, std::vector<gradientPair>()));
+  for(int i = 0; i < 6; i++) {
 #pragma omp parallel num_threads(threadNumber_)
-  {
-    int threadNumber = omp_get_thread_num();
-    int r1, r2;
-    ttk::SimplexId gid1, gid2;
-    ttk::SimplexId pairedSimplex;
-    for(int i = 0; i < 6; i++) {
+    {
+      int threadNumber = omp_get_thread_num();
+      int r1, r2;
+      ttk::SimplexId gid1, gid2;
+      ttk::SimplexId pairedSimplex;
       int gradientSize = (*gradient_)[i].size();
 #pragma omp for schedule(static)
       for(int j = 0; j < gradientSize; j++) {
@@ -139,24 +139,29 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
         // Check that the paired simplex is neither ghost nor critical
         if(pairedSimplex != GHOST_GRADIENT) {
           if(pairedSimplex != NULL_GRADIENT) {
-            if(i % 2 == 0) {
-              gid2 = getSimplexGlobalId(triangulation, pairedSimplex, i + 1);
-              r2 = getSimplexRank(triangulation, pairedSimplex, i + 1);
-            }
+            r2 = getSimplexRank(triangulation, pairedSimplex, i + 1);
           } else {
-            gid2 = NULL_GRADIENT;
             r2 = -1;
           }
-          if(pairedSimplex != NULL_GRADIENT && (i % 2 == 0)) {
+          if(pairedSimplex == NULL_GRADIENT || (i % 2 == 0)) {
             r1 = getSimplexRank(triangulation, j, i);
-            gid1 = getSimplexGlobalId(triangulation, j, i);
-            if(r1 != ttk::MPIrank_) {
-              ghostToSendThread.at(threadNumber)[neighborsToId.find(r1)->second]
-                .emplace_back(gradientPair{gid1, gid2, i});
-            }
-            if(r2 != -1 && r2 != ttk::MPIrank_ && r2 != r1) {
-              ghostToSendThread.at(threadNumber)[neighborsToId.find(r2)->second]
-                .emplace_back(gradientPair{gid1, gid2, i});
+            if(r1 != ttk::MPIrank_ || (r2 != ttk::MPIrank_ && r2 != -1)) {
+              gid1 = getSimplexGlobalId(triangulation, j, i);
+              if(pairedSimplex != NULL_GRADIENT) {
+                gid2 = getSimplexGlobalId(triangulation, pairedSimplex, i + 1);
+              } else {
+                gid2 = NULL_GRADIENT;
+              }
+              if(r1 != ttk::MPIrank_) {
+                ghostToSendThread
+                  .at(threadNumber)[neighborsToId.find(r1)->second]
+                  .emplace_back(gradientPair{gid1, gid2, i});
+              }
+              if(r2 != -1 && r2 != ttk::MPIrank_ && r2 != r1) {
+                ghostToSendThread
+                  .at(threadNumber)[neighborsToId.find(r2)->second]
+                  .emplace_back(gradientPair{gid1, gid2, i});
+              }
             }
           }
         }
@@ -204,7 +209,6 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
     }
   }
 #endif // TTK_ENABLE_OPENMP
-
   // Send and receive the gradient. The use of MPI_Waitsome,
   // Isend and Irecv enables the computation to overlap communications.
   std::vector<MPI_Request> sendRequests(neighborsNumber);
@@ -229,7 +233,7 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
               ttk::MPIcomm_, &recvRequests[i]);
   }
   std::vector<std::vector<gradientPair>> recvGradientPairs(
-    ttk::MPIsize_, std::vector<gradientPair>());
+    neighborsNumber, std::vector<gradientPair>());
 
   MPI_Datatype MPI_gradientPair;
   MPI_Datatype types[] = {MPI_SimplexId, MPI_SimplexId, MPI_INTEGER};
@@ -254,14 +258,10 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
       if(sendPerformedCount > 0) {
         for(int i = 0; i < sendPerformedCount; i++) {
           r = sendCompleted[i];
-          if(ttk::MPIrank_ <= sendCompleted[i]) {
-            r++;
-          }
-          neighborId = neighborsToId.find(r)->second;
-          if((sendMessageSize[neighborId] > 0)) {
-            MPI_Isend(ghostToSend.at(neighborId).data(),
-                      sendMessageSize[neighborId], MPI_gradientPair, r, 1,
-                      ttk::MPIcomm_, &sendRequestsData[sendCount]);
+          if((sendMessageSize.at(r) > 0)) {
+            MPI_Isend(ghostToSend.at(r).data(), sendMessageSize.at(r),
+                      MPI_gradientPair, neighbors.at(r), 1, ttk::MPIcomm_,
+                      &sendRequestsData[sendCount]);
             sendCount++;
           }
         }
