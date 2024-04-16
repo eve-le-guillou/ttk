@@ -106,6 +106,20 @@ triangulation.
       template <typename triangulationType>
       int exchangeGhosts(const triangulationType &triangulation);
 
+      struct gradientPair {
+        ttk::SimplexId gid1{-1};
+        ttk::SimplexId gid2{-1};
+        int pairType{0};
+      };
+
+      template <typename triangulationType>
+      int addPairToSend(ttk::SimplexId s,
+                        ttk::SimplexId pairedSimplex,
+                        const triangulationType &triangulation,
+                        int pairDim,
+                        std::vector<std::vector<gradientPair>> &ghostToSend,
+                        const std::map<int, int> &neighborsToId);
+
       template <typename triangulationType>
       ttk::SimplexId getSimplexLocalId(const triangulationType &triangulation,
                                        const ttk::SimplexId &gid,
