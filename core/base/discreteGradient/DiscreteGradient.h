@@ -118,7 +118,8 @@ triangulation.
                         const triangulationType &triangulation,
                         int pairDim,
                         std::vector<std::vector<gradientPair>> &ghostToSend,
-                        const std::map<int, int> &neighborsToId);
+                        const std::map<int, int> &neighborsToId,
+                        int r1 = -2);
 
       template <typename triangulationType>
       ttk::SimplexId getSimplexLocalId(const triangulationType &triangulation,

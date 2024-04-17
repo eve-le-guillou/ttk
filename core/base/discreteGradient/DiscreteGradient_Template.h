@@ -113,15 +113,19 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
   // Create the messages to send
   std::vector<std::vector<gradientPair>> ghostToSend(
     neighborsNumber, std::vector<gradientPair>());
-
+  std::array<std::vector<char>, 2> hasBeenChecked{std::vector<char>()};
+  hasBeenChecked[0].resize(triangulation.getNumberOfEdges(), 0);
+  hasBeenChecked[1].resize(triangulation.getNumberOfTriangles(), 0);
   std::vector<std::vector<std::vector<gradientPair>>> ghostToSendThread(
     this->threadNumber_, std::vector<std::vector<gradientPair>>(
                            neighborsNumber, std::vector<gradientPair>()));
-#pragma omp parallel num_threads(threadNumber_)
-    {
-      int threadNumber = omp_get_thread_num();
-      ttk::SimplexId pairedSimplex;
-      int pairDim = 0;
+#pragma omp parallel num_threads(threadNumber_) shared(hasBeenChecked)
+  {
+    int threadNumber = omp_get_thread_num();
+    ttk::SimplexId pairedSimplex;
+    int pairDim = 0;
+    int r1{-1};
+    char test;
 #pragma omp for
       for(ttk::SimplexId i = 0; i < this->numberOfVertices_; i++) {
         int vRank = triangulation.getVertexRank(i);
@@ -146,12 +150,20 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
             starNumber = triangulation.getVertexEdgeNumber(i);
             for(int j = 0; j < starNumber; j++) {
               triangulation.getVertexEdge(i, j, starId);
-              pairedSimplex = (*gradient_)[pairDim][starId];
-              addPairToSend(starId, pairedSimplex, triangulation, pairDim,
-                            ghostToSendThread.at(threadNumber), neighborsToId);
-              pairedSimplex = (*gradient_)[pairDim + 1][starId];
-              addPairToSend(starId, pairedSimplex, triangulation, pairDim + 1,
-                            ghostToSendThread.at(threadNumber), neighborsToId);
+#pragma omp atomic read
+              test = hasBeenChecked[0][starId];
+              if(!test) {
+                pairedSimplex = (*gradient_)[pairDim][starId];
+                r1 = addPairToSend(starId, pairedSimplex, triangulation,
+                                   pairDim, ghostToSendThread.at(threadNumber),
+                                   neighborsToId);
+                pairedSimplex = (*gradient_)[pairDim + 1][starId];
+                addPairToSend(starId, pairedSimplex, triangulation, pairDim + 1,
+                              ghostToSendThread.at(threadNumber), neighborsToId,
+                              r1);
+#pragma omp atomic write
+                hasBeenChecked[0][starId] = 1;
+              }
             }
             if(dimensionality_ == 3) {
               // For triangles
@@ -159,14 +171,20 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
               starNumber = triangulation.getVertexTriangleNumber(i);
               for(int j = 0; j < starNumber; j++) {
                 triangulation.getVertexTriangle(i, j, starId);
-                pairedSimplex = (*gradient_)[pairDim][starId];
-                addPairToSend(starId, pairedSimplex, triangulation, pairDim,
-                              ghostToSendThread.at(threadNumber),
-                              neighborsToId);
-                pairedSimplex = (*gradient_)[pairDim + 1][starId];
-                addPairToSend(starId, pairedSimplex, triangulation, pairDim + 1,
-                              ghostToSendThread.at(threadNumber),
-                              neighborsToId);
+#pragma omp atomic read
+                test = hasBeenChecked[1][starId];
+                if(!test) {
+                  pairedSimplex = (*gradient_)[pairDim][starId];
+                  addPairToSend(starId, pairedSimplex, triangulation, pairDim,
+                                ghostToSendThread.at(threadNumber),
+                                neighborsToId);
+                  pairedSimplex = (*gradient_)[pairDim + 1][starId];
+                  addPairToSend(starId, pairedSimplex, triangulation,
+                                pairDim + 1, ghostToSendThread.at(threadNumber),
+                                neighborsToId, r1);
+#pragma omp atomic write
+                  hasBeenChecked[1][starId] = 1;
+                }
               }
             }
           }
@@ -299,8 +317,9 @@ int DiscreteGradient::addPairToSend(
   int pairDim,
   std::vector<std::vector<ttk::dcg::DiscreteGradient::gradientPair>>
     &ghostToSend,
-  const std::map<int, int> &neighborsToId) {
-  int r1{-1}, r2{-1};
+  const std::map<int, int> &neighborsToId,
+  int r1) {
+  int r2{-1};
   ttk::SimplexId gid1{-1}, gid2{-1};
   if(pairedSimplex != GHOST_GRADIENT) {
     if(pairedSimplex != NULL_GRADIENT) {
@@ -309,7 +328,9 @@ int DiscreteGradient::addPairToSend(
       r2 = -1;
     }
     if(pairedSimplex == NULL_GRADIENT || (pairDim % 2 == 0)) {
-      r1 = getSimplexRank(triangulation, s, pairDim);
+      if(r1 == -2) {
+        r1 = getSimplexRank(triangulation, s, pairDim);
+      }
       if(r1 != ttk::MPIrank_ || (r2 != ttk::MPIrank_ && r2 != -1)) {
         gid1 = getSimplexGlobalId(triangulation, s, pairDim);
         if(pairedSimplex != NULL_GRADIENT) {
@@ -328,7 +349,7 @@ int DiscreteGradient::addPairToSend(
       }
     }
   }
-  return 0;
+  return r1;
 }
 
 template <typename triangulationType>
