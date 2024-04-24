@@ -719,11 +719,6 @@ namespace ttk {
       return this->vertexGidToLid_;
     }
 
-    inline void setBoundingBox(const double *const bBox) {
-      this->boundingBox_
-        = {bBox[0], bBox[1], bBox[2], bBox[3], bBox[4], bBox[5]};
-    }
-
   protected:
     template <typename Func0, typename Func1, typename Func2>
     int exchangeDistributedInternal(const Func0 &getGlobalSimplexId,
@@ -786,8 +781,6 @@ namespace ttk {
     std::unordered_map<SimplexId, SimplexId> edgeGidToLid_{};
     std::vector<SimplexId> triangleLidToGid_{};
     std::unordered_map<SimplexId, SimplexId> triangleGidToLid_{};
-
-    std::array<double, 6> boundingBox_{};
 
     std::vector<int> vertexRankArray_{};
     std::vector<int> cellRankArray_{};
