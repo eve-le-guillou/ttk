@@ -188,7 +188,7 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
         addPairToSend(i, pairedSimplex, triangulation, pairDim,
                       ghostToSendThread.at(threadNumber), neighborsToId);
         if(pairedSimplex > -1) {
-          //#pragma omp atomic write
+#pragma omp atomic write seq_cst
           hasBeenChecked[0][pairedSimplex] = 1;
         }
         // For cells
@@ -200,11 +200,6 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
           pairedSimplex = (*gradient_)[pairDim][starId];
           addPairToSend(starId, pairedSimplex, triangulation, pairDim,
                         ghostToSendThread.at(threadNumber), neighborsToId);
-          /*if (pairedSimplex > -1){
-//#pragma omp atomic write
-            hasBeenChecked[1][pairedSimplex] = 1;
-            // TODO: make it work for 2D
-          }*/
         }
         if(dimensionality_ >= 2) {
           // For edges
@@ -225,10 +220,6 @@ int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
                             r1);
 #pragma omp atomic write seq_cst
               hasBeenChecked[0][starId] = 1;
-              /*if (pairedSimplex > -1){
-//#pragma omp atomic write
-                hasBeenChecked[1][pairedSimplex] = 1;
-              }*/
             }
           }
           if(dimensionality_ == 3) {
