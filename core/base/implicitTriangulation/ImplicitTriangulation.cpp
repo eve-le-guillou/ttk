@@ -3003,11 +3003,7 @@ void ttk::ImplicitTriangulation::createMetaGrid(const double *const bounds) {
   std::array<double, 6> tempBounds = {
     bounds[0], bounds[2], bounds[4], bounds[1], bounds[3], bounds[5],
   };
-  std::string s = "  proc: " + std::to_string(ttk::MPIrank_) + "; ";
-  s += std::to_string(bounds[0]) + ", " + std::to_string(bounds[1]) + ", "
-       + std::to_string(bounds[2]) + ", " + std::to_string(bounds[3]) + ", "
-       + std::to_string(bounds[4]) + ", " + std::to_string(bounds[5]);
-  printErr("VTK Bounds: " + s);
+
   std::array<double, 6> tempGlobalBounds{};
 
   // Compute and send to all processes the lower bounds of the data set
@@ -3164,21 +3160,6 @@ bool ImplicitTriangulation::isTriangleOnGlobalBoundaryInternal(
 
 int ttk::ImplicitTriangulation::getCellRankInternal(
   const SimplexId lcid) const {
-  ttk::SimplexId lid = 0;
-  if(ttk::MPIrank_ == 0) {
-    lid = 48;
-  }
-  if(ttk::MPIrank_ == 1) {
-    lid = 42;
-  }
-  if(ttk::MPIrank_ == 2) {
-    lid = 30;
-  }
-  if(ttk::MPIrank_ == 3) {
-    lid = 24;
-  }
-  if(lcid == lid && ttk::MPIrank_ == 3)
-    printErr("In getCellRank");
   const int nTetraPerCube{this->dimensionality_ == 3 ? 6 : 2};
   const auto locCubeId{lcid / nTetraPerCube};
 
@@ -3200,12 +3181,9 @@ int ttk::ImplicitTriangulation::getCellRankInternal(
     const auto &bbox{this->neighborCellBBoxes_[neigh]};
     if(p[0] >= bbox[0] && p[0] <= bbox[1] && p[1] >= bbox[2] && p[1] <= bbox[3]
        && p[2] >= bbox[4] && p[2] <= bbox[5]) {
-      // printMsg("Rank of cell found");
       return neigh;
     }
   }
-  printErr("Rank of cell not found: " + std::to_string(p[0]) + ", "
-           + std::to_string(p[1]) + ", " + std::to_string(p[2]));
   return -1;
 }
 
