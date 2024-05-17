@@ -77,44 +77,44 @@ int ttk::RegularGridTriangulation::getVertexRankInternal(
 int ttk::RegularGridTriangulation::getEdgeRankInternal(
   const SimplexId lvid) const {
 
-  ttk::SimplexId minId, cellMinId;
+  ttk::SimplexId minId;
+  int cellMinRank;
   this->TTK_TRIANGULATION_INTERNAL(getEdgeStar)(lvid, 0, minId);
   const auto nStar{this->TTK_TRIANGULATION_INTERNAL(getEdgeStarNumber)(lvid)};
-  cellMinId = this->getCellGlobalIdInternal(minId);
+  cellMinRank = this->getCellRankInternal(minId);
   for(SimplexId i = 1; i < nStar; ++i) {
     SimplexId sid{-1};
     this->TTK_TRIANGULATION_INTERNAL(getEdgeStar)(lvid, i, sid);
     // rule: an edge is owned by the cell in its star with the
-    // lowest global id
-    SimplexId cellId = this->getCellGlobalIdInternal(sid);
-    if(cellId < cellMinId) {
-      minId = sid;
-      cellMinId = cellId;
+    // lowest rank id
+    int cellRank = this->getCellRankInternal(sid);
+    if(cellRank < cellMinRank) {
+      cellMinRank = cellRank;
     }
   }
-  return this->getCellRankInternal(minId);
+  return cellMinRank;
 }
 
 int ttk::RegularGridTriangulation::getTriangleRankInternal(
   const SimplexId lvid) const {
 
-  ttk::SimplexId minId, cellMinId;
+  ttk::SimplexId minId;
+  int cellMinRank;
   this->TTK_TRIANGULATION_INTERNAL(getTriangleStar)(lvid, 0, minId);
   const auto nStar{
     this->TTK_TRIANGULATION_INTERNAL(getTriangleStarNumber)(lvid)};
-  cellMinId = this->getCellGlobalIdInternal(minId);
+  cellMinRank = this->getCellRankInternal(minId);
   for(SimplexId i = 1; i < nStar; ++i) {
     SimplexId sid{-1};
     this->TTK_TRIANGULATION_INTERNAL(getTriangleStar)(lvid, i, sid);
-    // rule: an edge is owned by the cell in its star with the
-    // lowest global id
-    SimplexId cellId = this->getCellGlobalIdInternal(sid);
-    if(cellId < cellMinId) {
-      minId = sid;
-      cellMinId = cellId;
+    // rule: a triangle is owned by the cell in its star with the
+    // lowest rank id
+    int cellRank = this->getCellRankInternal(sid);
+    if(cellRank < cellMinRank) {
+      cellMinRank = cellRank;
     }
   }
-  return this->getCellRankInternal(minId);
+  return cellMinRank;
 }
 
 ttk::SimplexId ttk::RegularGridTriangulation::getVertexGlobalIdInternal(

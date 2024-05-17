@@ -2958,7 +2958,7 @@ int ttk::ImplicitTriangulation::preconditionDistributedCells() {
   double globalBounds[6]{
     origin[0], origin[0] + (this->metaGrid_->dimensions_[0] - 1) * spacing[0],
     origin[1], origin[1] + (this->metaGrid_->dimensions_[1] - 1) * spacing[1],
-    origin[2], origin[2] + (this->metaGrid_->dimensions_[1] - 1) * spacing[2]};
+    origin[2], origin[2] + (this->metaGrid_->dimensions_[2] - 1) * spacing[2]};
   auto &Bbox{this->neighborCellBBoxes_[ttk::MPIrank_]};
   for(int i = 0; i < 3; i++) {
     if(std::abs(globalBounds[2 * i] - boundingBox_[2 * i]) > spacing[i] / 2) {
