@@ -85,409 +85,27 @@ int DiscreteGradient::buildGradient(const triangulationType &triangulation,
                + " MPI processes lasted :" + std::to_string(elapsedTime));
     }
 #endif
-    if(ttk::isRunningWithMPI()) {
-#ifdef TTK_ENABLE_MPI_TIME
-      ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
-      this->exchangeGhosts(triangulation);
-#ifdef TTK_ENABLE_MPI_TIME
-      elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-      if(ttk::MPIrank_ == 0) {
-        printMsg("Ghosts exchange performed using "
-                 + std::to_string(ttk::MPIsize_)
-                 + " MPI processes lasted :" + std::to_string(elapsedTime));
-      }
-#endif
-    }
   } else {
     this->printMsg("Fetched cached discrete gradient");
   }
-
-  std::ofstream myfile;
-  printMsg("Start writing file");
-  myfile.open("/home/eveleguillou/experiment/DiscreteGradient/Correctness/"
-              + std::to_string(ttk::MPIsize_) + "_proc_discreteGradient_"
-              + std::to_string(ttk::MPIrank_) + ".csv");
-  myfile << "PairType,Gid,PairedGid\n";
-  for(int i = 0; i < 6; i++) {
-    ttk::SimplexId gradientSize = (*gradient_)[i].size();
-    for(ttk::SimplexId j = 0; j < gradientSize; j++) {
-      int secondPairDim;
-      if(i % 2 == 1) {
-        secondPairDim = i - 1;
-      } else {
-        secondPairDim = i + 1;
-      }
-      ttk::SimplexId pairedSimplex = (*gradient_)[i][j];
-      int r1 = getSimplexRank(triangulation, j, i);
-      int r2{-1};
-      if(pairedSimplex != -1 && pairedSimplex != -2) {
-        r2 = getSimplexRank(triangulation, pairedSimplex, secondPairDim);
-      }
-      if(isRunningWithMPI()) {
-        if(r1 == ttk::MPIrank_) {
-          if(r2 == ttk::MPIrank_) {
-            myfile << std::to_string(i) + ","
-                        + std::to_string(
-                          getSimplexGlobalId(triangulation, j, i))
-                        + ","
-                        + std::to_string(getSimplexGlobalId(
-                          triangulation, pairedSimplex, secondPairDim))
-                        + "\n";
-          }
-          if(r2 == -1) {
-            myfile << std::to_string(i) + ","
-                        + std::to_string(
-                          getSimplexGlobalId(triangulation, j, i))
-                        + "," + std::to_string(pairedSimplex) + "\n";
-          }
-        }
-      } else {
-        myfile << std::to_string(i) + "," + std::to_string(j) + ","
-                    + std::to_string(pairedSimplex) + "\n";
-      }
-    }
-  }
-  myfile.close();
-  printMsg("Finish writing file");
   return 0;
-}
-
-template <typename triangulationType>
-int DiscreteGradient::exchangeGhosts(const triangulationType &triangulation) {
-  const auto neighborsToId = triangulation.getNeighborsToId();
-  const auto neighbors = triangulation.getNeighborRanks();
-  const int neighborsNumber = neighbors.size();
-  // Create the messages to send
-  std::vector<std::vector<gradientPair>> ghostToSend(
-    neighborsNumber, std::vector<gradientPair>());
-  std::array<std::vector<char>, 2> hasBeenChecked{std::vector<char>()};
-  // TODO: make it work for 2D
-  hasBeenChecked[0].resize(triangulation.getNumberOfEdges(), 0);
-  hasBeenChecked[1].resize(triangulation.getNumberOfTriangles(), 0);
-  std::vector<std::vector<std::vector<gradientPair>>> ghostToSendThread(
-    this->threadNumber_, std::vector<std::vector<gradientPair>>(
-                           neighborsNumber, std::vector<gradientPair>()));
-
-  auto dim = triangulation.getGridDimensions();
-  ttk::SimplexId taskSize
-    = std::max(static_cast<ttk::SimplexId>(dim[0] / threadNumber_), 1);
-#pragma omp parallel num_threads(threadNumber_) shared(hasBeenChecked)
-  {
-    int threadNumber = omp_get_thread_num();
-    ttk::SimplexId pairedSimplex;
-    int pairDim = 0;
-    int r1{-1};
-    char test;
-#pragma omp for schedule(dynamic, taskSize)
-    for(ttk::SimplexId i = 0; i < this->numberOfVertices_; i++) {
-      int vRank = triangulation.getVertexRank(i);
-      if(vRank != ttk::MPIrank_) {
-        // For the vertex
-        pairedSimplex = (*gradient_)[pairDim][i];
-        addPairToSend(i, pairedSimplex, triangulation, pairDim,
-                      ghostToSendThread.at(threadNumber), neighborsToId);
-        if(pairedSimplex > -1) {
-#pragma omp atomic write seq_cst
-          hasBeenChecked[0][pairedSimplex] = 1;
-        }
-        // For cells
-        int starNumber = triangulation.getVertexStarNumber(i);
-        ttk::SimplexId starId;
-        pairDim = 2 * (this->dimensionality_ - 1) + 1;
-        for(int j = 0; j < starNumber; j++) {
-          triangulation.getVertexStar(i, j, starId);
-          pairedSimplex = (*gradient_)[pairDim][starId];
-          addPairToSend(starId, pairedSimplex, triangulation, pairDim,
-                        ghostToSendThread.at(threadNumber), neighborsToId);
-        }
-        if(dimensionality_ >= 2) {
-          // For edges
-          pairDim = 1;
-          starNumber = triangulation.getVertexEdgeNumber(i);
-          for(int j = 0; j < starNumber; j++) {
-            triangulation.getVertexEdge(i, j, starId);
-#pragma omp atomic read seq_cst
-            test = hasBeenChecked[0][starId];
-            if(!test) {
-              pairedSimplex = (*gradient_)[pairDim][starId];
-              r1 = addPairToSend(starId, pairedSimplex, triangulation, pairDim,
-                                 ghostToSendThread.at(threadNumber),
-                                 neighborsToId);
-              pairedSimplex = (*gradient_)[pairDim + 1][starId];
-              addPairToSend(starId, pairedSimplex, triangulation, pairDim + 1,
-                            ghostToSendThread.at(threadNumber), neighborsToId,
-                            r1);
-#pragma omp atomic write seq_cst
-              hasBeenChecked[0][starId] = 1;
-            }
-          }
-          if(dimensionality_ == 3) {
-            // For triangles
-            pairDim = 3;
-            starNumber = triangulation.getVertexTriangleNumber(i);
-            for(int j = 0; j < starNumber; j++) {
-              triangulation.getVertexTriangle(i, j, starId);
-#pragma omp atomic read seq_cst
-              test = hasBeenChecked[1][starId];
-              if(!test) {
-                pairedSimplex = (*gradient_)[pairDim][starId];
-                r1 = addPairToSend(starId, pairedSimplex, triangulation,
-                                   pairDim, ghostToSendThread.at(threadNumber),
-                                   neighborsToId);
-                pairedSimplex = (*gradient_)[pairDim + 1][starId];
-                addPairToSend(starId, pairedSimplex, triangulation, pairDim + 1,
-                              ghostToSendThread.at(threadNumber), neighborsToId,
-                              r1);
-#pragma omp atomic write seq_cst
-                hasBeenChecked[1][starId] = 1;
-              }
-            }
-          }
-        }
-      }
-      }
-  }
-    // Concatenate the vector produced by each thread
-#pragma omp parallel for schedule(static, 1)
-  for(int j = 0; j < neighborsNumber; j++) {
-    for(int i = 0; i < this->threadNumber_; i++) {
-      ghostToSend.at(j).insert(ghostToSend.at(j).end(),
-                               ghostToSendThread.at(i).at(j).begin(),
-                               ghostToSendThread.at(i).at(j).end());
-    }
-  }
-  ghostToSendThread.clear();
-  // Send and receive the gradient. The use of MPI_Waitsome,
-  // Isend and Irecv enables the computation to overlap communications.
-  std::vector<MPI_Request> sendRequests(neighborsNumber);
-  std::vector<MPI_Request> recvRequests(neighborsNumber);
-  std::vector<MPI_Status> sendStatus(neighborsNumber);
-  std::vector<MPI_Status> recvStatus(neighborsNumber);
-  std::vector<ttk::SimplexId> sendMessageSize(neighborsNumber, 0);
-  std::vector<ttk::SimplexId> recvMessageSize(neighborsNumber, 0);
-  std::vector<int> recvCompleted(neighborsNumber, 0);
-  std::vector<int> sendCompleted(neighborsNumber, 0);
-  int sendPerformedCount = 0;
-  int recvPerformedCount = 0;
-  int sendPerformedCountTotal = 0;
-  int recvPerformedCountTotal = 0;
-  MPI_Datatype MPI_SimplexId = getMPIType(static_cast<ttk::SimplexId>(0));
-  for(int i = 0; i < neighborsNumber; i++) {
-    // Send size of data
-    sendMessageSize[i] = ghostToSend.at(i).size();
-    MPI_Isend(&sendMessageSize[i], 1, MPI_SimplexId, neighbors[i], 0,
-              ttk::MPIcomm_, &sendRequests[i]);
-    MPI_Irecv(&recvMessageSize[i], 1, MPI_SimplexId, neighbors[i], 0,
-              ttk::MPIcomm_, &recvRequests[i]);
-  }
-  std::vector<std::vector<gradientPair>> recvGradientPairs(
-    neighborsNumber, std::vector<gradientPair>());
-
-  MPI_Datatype MPI_gradientPair;
-  MPI_Datatype types[] = {MPI_SimplexId, MPI_SimplexId, MPI_INTEGER};
-  int lengths[] = {1, 1, 1};
-  const long int mpi_offsets[]
-    = {offsetof(gradientPair, gid1), offsetof(gradientPair, gid2),
-       offsetof(gradientPair, pairType)};
-  MPI_Type_create_struct(3, lengths, mpi_offsets, types, &MPI_gradientPair);
-  MPI_Type_commit(&MPI_gradientPair);
-
-  std::vector<MPI_Request> sendRequestsData(neighborsNumber);
-  std::vector<MPI_Request> recvRequestsData(neighborsNumber);
-  std::vector<MPI_Status> recvStatusData(neighborsNumber);
-  int recvCount = 0;
-  int sendCount = 0;
-  int r, neighborId;
-  while((sendPerformedCountTotal < neighborsNumber
-         || recvPerformedCountTotal < neighborsNumber)) {
-    if(sendPerformedCountTotal < neighborsNumber) {
-      MPI_Waitsome(neighborsNumber, sendRequests.data(), &sendPerformedCount,
-                   sendCompleted.data(), sendStatus.data());
-      if(sendPerformedCount > 0) {
-        for(int i = 0; i < sendPerformedCount; i++) {
-          r = sendCompleted[i];
-          if((sendMessageSize.at(r) > 0)) {
-            MPI_Isend(ghostToSend.at(r).data(), sendMessageSize.at(r),
-                      MPI_gradientPair, neighbors.at(r), 1, ttk::MPIcomm_,
-                      &sendRequestsData[sendCount]);
-            sendCount++;
-          }
-        }
-        sendPerformedCountTotal += sendPerformedCount;
-      }
-    }
-    if(recvPerformedCountTotal < neighborsNumber) {
-      MPI_Waitsome(neighborsNumber, recvRequests.data(), &recvPerformedCount,
-                   recvCompleted.data(), recvStatus.data());
-      if(recvPerformedCount > 0) {
-        for(int i = 0; i < recvPerformedCount; i++) {
-          r = recvStatus[i].MPI_SOURCE;
-          neighborId = neighborsToId.find(r)->second;
-          if((recvMessageSize[neighborId] > 0)) {
-            recvGradientPairs.at(neighborId)
-              .resize(recvMessageSize[neighborId]);
-            MPI_Irecv(recvGradientPairs.at(neighborId).data(),
-                      recvMessageSize[neighborId], MPI_gradientPair, r, 1,
-                      ttk::MPIcomm_, &recvRequestsData[recvCount]);
-            recvCount++;
-          }
-        }
-        recvPerformedCountTotal += recvPerformedCount;
-      }
-    }
-  }
-  recvPerformedCountTotal = 0;
-  while(recvPerformedCountTotal < recvCount) {
-    MPI_Waitsome(recvCount, recvRequestsData.data(), &recvPerformedCount,
-                 recvCompleted.data(), recvStatusData.data());
-    if(recvPerformedCount > 0) {
-      for(int i = 0; i < recvPerformedCount; i++) {
-        r = recvStatusData[i].MPI_SOURCE;
-        neighborId = neighborsToId.find(r)->second;
-#pragma omp parallel for schedule(static)
-        for(int j = 0; j < recvMessageSize[neighborId]; j++) {
-          // Reception of data
-          struct gradientPair pair = recvGradientPairs.at(neighborId).at(j);
-          ttk::SimplexId lid1
-            = getSimplexLocalId(triangulation, pair.gid1, pair.pairType);
-          ttk::SimplexId lid2
-            = getSimplexLocalId(triangulation, pair.gid2, pair.pairType + 1);
-          (*gradient_)[pair.pairType][lid1] = lid2;
-          if(lid2 != -1) {
-            (*gradient_)[pair.pairType + 1][lid2] = lid1;
-          }
-        }
-      }
-      recvPerformedCountTotal += recvPerformedCount;
-    }
-  }
-  MPI_Waitall(sendCount, sendRequestsData.data(), MPI_STATUSES_IGNORE);
-  return 0;
-}
-
-template <typename triangulationType>
-int DiscreteGradient::addPairToSend(
-  ttk::SimplexId s,
-  ttk::SimplexId pairedSimplex,
-  const triangulationType &triangulation,
-  int pairDim,
-  std::vector<std::vector<ttk::dcg::DiscreteGradient::gradientPair>>
-    &ghostToSend,
-  const std::map<int, int> &neighborsToId,
-  int r1) {
-  int r2{-1}, secondPairDim;
-  ttk::SimplexId gid1{-1}, gid2{-1};
-  if(pairedSimplex != GHOST_GRADIENT) {
-    if(pairDim % 2 == 1) {
-      secondPairDim = pairDim - 1;
-    } else {
-      secondPairDim = pairDim + 1;
-    }
-    if(pairedSimplex != NULL_GRADIENT) {
-      r2 = getSimplexRank(triangulation, pairedSimplex, secondPairDim);
-    } else {
-      r2 = -1;
-    }
-    if(r1 == -2) {
-      r1 = getSimplexRank(triangulation, s, pairDim);
-    }
-    if(r1 != ttk::MPIrank_ || (r2 != ttk::MPIrank_ && r2 != -1)) {
-      gid1 = getSimplexGlobalId(triangulation, s, pairDim);
-      if(pairedSimplex != NULL_GRADIENT) {
-        gid2 = getSimplexGlobalId(triangulation, pairedSimplex, secondPairDim);
-      } else {
-        gid2 = NULL_GRADIENT;
-      }
-      struct gradientPair pair {
-        gid1, gid2, pairDim
-      };
-      if(pairedSimplex != NULL_GRADIENT && pairDim > secondPairDim) {
-        pair.gid1 = gid2;
-        pair.gid2 = gid1;
-        pair.pairType = secondPairDim;
-      }
-      if(r1 != ttk::MPIrank_) {
-        ghostToSend[neighborsToId.find(r1)->second].emplace_back(pair);
-      }
-      if(r2 != -1 && r2 != ttk::MPIrank_ && r2 != r1) {
-        ghostToSend[neighborsToId.find(r2)->second].emplace_back(pair);
-      }
-    }
-  }
-  return r1;
-}
-
-template <typename triangulationType>
-ttk::SimplexId
-  DiscreteGradient::getSimplexLocalId(const triangulationType &triangulation,
-                                      const ttk::SimplexId &gid,
-                                      const int gradientType) {
-  if(gid == -1) {
-    return -1;
-  }
-  switch(gradientType) {
-    case 0:
-      return triangulation.getVertexLocalId(gid);
-    case 1:
-      return triangulation.getEdgeLocalId(gid);
-    case 2:
-      return triangulation.getEdgeLocalId(gid);
-    case 3:
-      return triangulation.getTriangleLocalId(gid);
-    case 4:
-      return triangulation.getTriangleLocalId(gid);
-    case 5:
-      return triangulation.getCellLocalId(gid);
-  }
-  return -1;
-}
-
-template <typename triangulationType>
-ttk::SimplexId
-  DiscreteGradient::getSimplexGlobalId(const triangulationType &triangulation,
-                                       const ttk::SimplexId &lid,
-                                       const int gradientType) {
-  if(lid == -1) {
-    return -1;
-  }
-  switch(gradientType) {
-    case 0:
-      return triangulation.getVertexGlobalId(lid);
-    case 1:
-      return triangulation.getEdgeGlobalId(lid);
-    case 2:
-      return triangulation.getEdgeGlobalId(lid);
-    case 3:
-      return triangulation.getTriangleGlobalId(lid);
-    case 4:
-      return triangulation.getTriangleGlobalId(lid);
-    case 5:
-      return triangulation.getCellGlobalId(lid);
-  }
-  return -1;
 }
 
 template <typename triangulationType>
 int DiscreteGradient::getSimplexRank(const triangulationType &triangulation,
                                      const ttk::SimplexId &lid,
-                                     const int gradientType) {
+                                     const int dim) const {
   if(lid == -1) {
-    printMsg("Local id of -1, send back process id of -1");
     return -1;
   }
-  switch(gradientType) {
+  switch(dim) {
     case 0:
       return triangulation.getVertexRank(lid);
     case 1:
       return triangulation.getEdgeRank(lid);
     case 2:
-      return triangulation.getEdgeRank(lid);
+      return triangulation.getTriangleRank(lid);
     case 3:
-      return triangulation.getTriangleRank(lid);
-    case 4:
-      return triangulation.getTriangleRank(lid);
-    case 5:
       return triangulation.getCellRank(lid);
   }
   return -1;
@@ -593,7 +211,10 @@ int DiscreteGradient::getCriticalPoints(
       const auto tid = 0;
 #endif // TTK_ENABLE_OPENMP
       if(this->isCellCritical(i, j)) {
-        critCellsPerThread[tid].emplace_back(j);
+        // Only non-ghost critical simplices are taken into consideration
+        if(getSimplexRank(triangulation, j, i) == ttk::MPIrank_) {
+          critCellsPerThread[tid].emplace_back(j);
+        }
       }
     }
 
@@ -898,6 +519,12 @@ int DiscreteGradient::processLowerStars(
   // store lower star structure
   lowerStarType Lx;
 
+  // In case the vertex is a ghost, the gradient is computed but may result in a
+  // false pairing if the ghost vertex belongs to the second layer of ghosts. To
+  // only produce correct pairing, one can add the following test: If the vertex
+  // is a ghost and all of its neighbor vertices are also ghosts, then the
+  // computation should not be done.
+
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp parallel for num_threads(threadNumber_) \
   firstprivate(Lx, pqZero, pqOne)
@@ -941,88 +568,72 @@ int DiscreteGradient::processLowerStars(
     };
 
     lowerStar(Lx, x, offsets, triangulation);
-    // In case the vertex is a ghost, the gradient of the
-    // simplices of its star is set to GHOST_GRADIENT
-#ifdef TTK_ENABLE_MPI
-    if(ttk::isRunningWithMPI()
-       && triangulation.getVertexRank(x) != ttk::MPIrank_) {
-      int sizeDim = Lx.size();
-      for(int i = 0; i < sizeDim; i++) {
-        int nCells = Lx[i].size();
-        for(int j = 0; j < nCells; j++) {
-          setCellToGhost(Lx[i][j].dim_, Lx[i][j].id_);
+
+    // Lx[1] empty => x is a local minimum
+    if(!Lx[1].empty()) {
+      // get delta: 1-cell (edge) with minimal G value (steeper gradient)
+      size_t minId = 0;
+      for(size_t i = 1; i < Lx[1].size(); ++i) {
+        const auto &a = Lx[1][minId].lowVerts_[0];
+        const auto &b = Lx[1][i].lowVerts_[0];
+        if(a > b) {
+          // edge[i] < edge[0]
+          minId = i;
         }
       }
-    } else
-#endif // TTK_ENABLE_MPI
 
-    {
-      // Lx[1] empty => x is a local minimum
-      if(!Lx[1].empty()) {
-        // get delta: 1-cell (edge) with minimal G value (steeper gradient)
-        size_t minId = 0;
-        for(size_t i = 1; i < Lx[1].size(); ++i) {
-          const auto &a = Lx[1][minId].lowVerts_[0];
-          const auto &b = Lx[1][i].lowVerts_[0];
-          if(a > b) {
-            // edge[i] < edge[0]
-            minId = i;
+      auto &c_delta = Lx[1][minId];
+
+      // store x (0-cell) -> delta (1-cell) V-path
+      pairCells(Lx[0][0], c_delta, triangulation);
+
+      // push every 1-cell in Lx that is not delta into pqZero
+      for(auto &alpha : Lx[1]) {
+        if(alpha.id_ != c_delta.id_) {
+          pqZero.push(alpha);
+        }
+      }
+
+      // push into pqOne every coface of delta in Lx (2-cells only,
+      // 3-cells have not any facet paired yet) such that
+      // numUnpairedFaces == 1
+      insertCofacets(c_delta, Lx);
+
+      while(!pqOne.empty() || !pqZero.empty()) {
+        while(!pqOne.empty()) {
+          auto &c_alpha = pqOne.top().get();
+          pqOne.pop();
+          auto unpairedFaces = numUnpairedFaces(c_alpha, Lx);
+          if(unpairedFaces.first == 0) {
+            pqZero.push(c_alpha);
+          } else {
+            auto &c_pair_alpha = Lx[c_alpha.dim_ - 1][unpairedFaces.second];
+
+            // store (pair_alpha) -> (alpha) V-path
+            pairCells(c_pair_alpha, c_alpha, triangulation);
+
+            // add cofaces of c_alpha and c_pair_alpha to pqOne
+            insertCofacets(c_alpha, Lx);
+            insertCofacets(c_pair_alpha, Lx);
           }
         }
 
-        auto &c_delta = Lx[1][minId];
-
-        // store x (0-cell) -> delta (1-cell) V-path
-        pairCells(Lx[0][0], c_delta, triangulation);
-
-        // push every 1-cell in Lx that is not delta into pqZero
-        for(auto &alpha : Lx[1]) {
-          if(alpha.id_ != c_delta.id_) {
-            pqZero.push(alpha);
-          }
+        // skip pair_alpha from pqZero:
+        // cells in pqZero are not critical if already paired
+        while(!pqZero.empty() && pqZero.top().get().paired_) {
+          pqZero.pop();
         }
 
-        // push into pqOne every coface of delta in Lx (2-cells only,
-        // 3-cells have not any facet paired yet) such that
-        // numUnpairedFaces == 1
-        insertCofacets(c_delta, Lx);
+        if(!pqZero.empty()) {
+          auto &c_gamma = pqZero.top().get();
+          pqZero.pop();
 
-        while(!pqOne.empty() || !pqZero.empty()) {
-          while(!pqOne.empty()) {
-            auto &c_alpha = pqOne.top().get();
-            pqOne.pop();
-            auto unpairedFaces = numUnpairedFaces(c_alpha, Lx);
-            if(unpairedFaces.first == 0) {
-              pqZero.push(c_alpha);
-            } else {
-              auto &c_pair_alpha = Lx[c_alpha.dim_ - 1][unpairedFaces.second];
+          // gamma is a critical cell
+          // mark gamma as paired
+          c_gamma.paired_ = true;
 
-              // store (pair_alpha) -> (alpha) V-path
-              pairCells(c_pair_alpha, c_alpha, triangulation);
-
-              // add cofaces of c_alpha and c_pair_alpha to pqOne
-              insertCofacets(c_alpha, Lx);
-              insertCofacets(c_pair_alpha, Lx);
-            }
-          }
-
-          // skip pair_alpha from pqZero:
-          // cells in pqZero are not critical if already paired
-          while(!pqZero.empty() && pqZero.top().get().paired_) {
-            pqZero.pop();
-          }
-
-          if(!pqZero.empty()) {
-            auto &c_gamma = pqZero.top().get();
-            pqZero.pop();
-
-            // gamma is a critical cell
-            // mark gamma as paired
-            c_gamma.paired_ = true;
-
-            // add cofacets of c_gamma to pqOne
-            insertCofacets(c_gamma, Lx);
-          }
+          // add cofacets of c_gamma to pqOne
+          insertCofacets(c_gamma, Lx);
         }
       }
     }

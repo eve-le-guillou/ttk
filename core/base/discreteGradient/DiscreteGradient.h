@@ -104,37 +104,14 @@ triangulation.
                         bool bypassCache = false);
 
       template <typename triangulationType>
-      int exchangeGhosts(const triangulationType &triangulation);
-
-      struct gradientPair {
-        ttk::SimplexId gid1{-1};
-        ttk::SimplexId gid2{-1};
-        int pairType{0};
-      };
-
-      template <typename triangulationType>
-      int addPairToSend(ttk::SimplexId s,
-                        ttk::SimplexId pairedSimplex,
-                        const triangulationType &triangulation,
-                        int pairDim,
-                        std::vector<std::vector<gradientPair>> &ghostToSend,
-                        const std::map<int, int> &neighborsToId,
-                        int r1 = -2);
-
-      template <typename triangulationType>
-      ttk::SimplexId getSimplexLocalId(const triangulationType &triangulation,
-                                       const ttk::SimplexId &gid,
-                                       const int gradientType);
-
-      template <typename triangulationType>
-      ttk::SimplexId getSimplexGlobalId(const triangulationType &triangulation,
-                                        const ttk::SimplexId &lid,
-                                        const int gradientType);
-
-      template <typename triangulationType>
       int getSimplexRank(const triangulationType &triangulation,
                          const ttk::SimplexId &lid,
-                         const int gradientType);
+                         const int dim) const;
+
+      template <typename triangulationType>
+      int getSimplexRankWithGradientType(const triangulationType &triangulation,
+                                         const ttk::SimplexId &lid,
+                                         const int gradientType);
       /**
        * Set the input scalar function.
        *
