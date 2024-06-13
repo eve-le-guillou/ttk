@@ -483,12 +483,12 @@ namespace ttk {
 #pragma omp task
 #endif // TTK_ENABLE_OPENMP
           this->saddleToPairedMax_.resize(
-            this->dg_.getNumberOfCells(2, triangulation), -1);
+            this->dg_.getNumberOfCells(dim - 1, triangulation), -1);
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp task
 #endif // TTK_ENABLE_OPENMP
           this->svToRMax_.resize(
-            this->dg_.getNumberOfCells(2, triangulation), {-1, -1});
+            this->dg_.getNumberOfCells(dim - 1, triangulation), {-1, -1});
         }
         if(dim > 2) {
 #ifdef TTK_ENABLE_OPENMP
