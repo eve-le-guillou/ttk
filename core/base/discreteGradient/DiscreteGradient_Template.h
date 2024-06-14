@@ -95,8 +95,8 @@ template <typename triangulationType>
 int DiscreteGradient::getSimplexRank(const triangulationType &triangulation,
                                      const ttk::SimplexId &lid,
                                      const int dim) const {
-  if(lid == -1) {
-    return -1;
+  if(!isRunningWithMPI()) {
+    return ttk::MPIrank_;
   }
   switch(dim) {
     case 0:
