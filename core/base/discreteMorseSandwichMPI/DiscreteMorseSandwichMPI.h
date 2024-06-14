@@ -27,6 +27,7 @@
 #include <array>
 #include <csignal>
 #include <numeric>
+#include <random>
 #include <string>
 #include <unordered_map>
 
@@ -528,7 +529,7 @@ namespace ttk {
 #pragma omp task
 #endif // TTK_ENABLE_OPENMP
           this->saddleToPairedMax_.resize(
-            this->dg_.getNumberOfCells(2, triangulation), -1);
+            this->dg_.getNumberOfCells(dim - 1, triangulation), -1);
           /*#ifdef TTK_ENABLE_OPENMP
           #pragma omp task
           #endif // TTK_ENABLE_OPENMP
@@ -729,7 +730,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     // minima - saddle pairs
     Timer tm{};
     // Timer t{};
-    printMsg("In getMinSaddlePairs");
     auto saddle1ToMinima = getSaddle1ToMinima(criticalEdges, triangulation);
     Timer tmseq{};
 
@@ -767,24 +767,27 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       for(int j = 0; j < 2; j++) {
         ttk::SimplexId gid = triangulation.getVertexGlobalId(mins[j]);
         ttk::SimplexId lid{-1};
-#pragma omp critical // TODO: better way?
-        {
-          auto it = globalToLocalExtrema.find(gid);
-          if(it == globalToLocalExtrema.end()) {
-            lid = extremas.size();
-            extremaNode n{
-              .gid_ = gid,
-              .lid_ = lid,
-              .order_ = offsets[mins[j]],
-              /*.scalar_ = extremaScalars[mins[i]],*/ .rep = Rep{lid, -1},
-              .rank_ = static_cast<char>(ttk::MPIrank_)};
-            extremas.emplace_back(n);
-            globalToLocalExtrema[gid] = lid;
+        //#pragma omp critical // TODO: better way?
+        //        {
+        auto it = globalToLocalExtrema.find(gid);
+        if(it == globalToLocalExtrema.end()) {
+          lid = extremas.size();
+          extremaNode n{
+            .gid_ = gid,
+            .lid_ = lid,
+            .order_ = offsets[mins[j]],
+            /*.scalar_ = extremaScalars[mins[i]],*/ .rep = Rep{lid, -1},
+            .rank_ = static_cast<char>(ttk::MPIrank_)};
+          extremas.emplace_back(n);
+          globalToLocalExtrema[gid] = lid;
           } else {
             lid = it->second;
           }
-        }
-        e.t_[j] = lid;
+          //        }
+          if(e.gid_ == 1204)
+            printMsg("In preparation, node: " + std::to_string(lid) + ", "
+                     + std::to_string(extremas[lid].gid_));
+          e.t_[j] = lid;
       }
       saddles.emplace_back(e);
     }
@@ -821,6 +824,8 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     //ttk::SimplexId> : omp_out.insert(omp_out.end(), omp_in.begin(),
     //omp_in.end())) #pragma omp parallel for reduction(merge :
     //globalToLocalSaddle) schedule(static)
+    auto rng = std::default_random_engine{0};
+    std::shuffle(std::begin(saddles), std::end(saddles), rng);
     for(int i = 0; i < saddle1ToMinimaNumber; i++) {
       auto &s{saddles[i]};
       s.lid_ = i;
@@ -1001,6 +1006,8 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
         if((it != globalToLocalSaddle.end())
            && (saddleToPairedMin_[it->second] != -1)) {
           pairedSaddle = true;
+          // printMsg("Paired saddle: "+std::to_string(gid)+" to
+          // "+std::to_string(saddleToPairedMin_[it->second]));
         }
       }
       if(!pairedSaddle) {
@@ -1060,13 +1067,16 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
       return false;
     };
     // TRI des arcs
-    TTK_PSORT(this->threadNumber_, saddles.begin(), saddles.end(), cmpSadMax);
+    // TTK_PSORT(this->threadNumber_, saddles.begin(), saddles.end(),
+    // cmpSadMax);
     ttk::SimplexId saddle2ToMaximaNumber
       = static_cast<ttk::SimplexId>(saddle2ToMaxima.size());
     //#pragma omp declare reduction (merge : std::unordered_map<ttk::SimplexId,
     //ttk::SimplexId> : omp_out.insert(omp_out.end(), omp_in.begin(),
     //omp_in.end())) #pragma omp parallel for reduction(merge :
     //globalToLocalSaddle) schedule(static)
+    auto rng = std::default_random_engine{0};
+    std::shuffle(std::begin(saddles), std::end(saddles), rng);
     for(int i = 0; i < saddle2ToMaximaNumber; i++) {
       auto &s{saddles[i]};
       s.lid_ = i;
@@ -1301,7 +1311,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   for(const auto s1 : critical1Saddles) {
     auto it = globalToLocalSaddle1_.find(triangulation.getEdgeGlobalId(s1));
     if((it == globalToLocalSaddle1_.end())
-       || (saddleToPairedMin_[it->second] != -1)) {
+       || (saddleToPairedMin_[it->second] == -1)) {
       saddles1.emplace_back(s1);
     }
   }
@@ -1315,7 +1325,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   for(const auto s2 : critical2Saddles) {
     auto it = globalToLocalSaddle2_.find(triangulation.getTriangleGlobalId(s2));
     if((it == globalToLocalSaddle2_.end())
-       || (saddleToPairedMax_[it->second] != -1)) {
+       || (saddleToPairedMax_[it->second] == -1)) {
       saddles2.emplace_back(s2);
     }
   }

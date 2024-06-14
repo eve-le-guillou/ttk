@@ -81,38 +81,43 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
     = [this, increasing, &extremas, &saddles /*, &getRepTimer, &getRepTime*/](
         extremaNode &extr, saddleEdge &sv) -> extremaNode & {
     //    getRepTimer.reStart();
-    auto &rep = extremas[extr.rep_.extremaId_];
+    auto currentNode = extr;
+    auto rep = extremas[extr.rep_.extremaId_];
     // printMsg("In getRep for "+std::to_string(extr.gid_)+" and
     // "+std::to_string(rep.gid_));
     saddleEdge s = saddleEdge{};
-    if(extr.rep_.saddleId_ != -1) {
-      s = saddles[extr.rep_.saddleId_];
+    if(currentNode.rep_.saddleId_ != -1) {
+      s = saddles[currentNode.rep_.saddleId_];
     }
-    while(rep != extr) {
-      // printMsg("In while of getRep for "+std::to_string(extr.gid_)+" and
-      // "+std::to_string(rep.gid_));
+    while(rep != currentNode) {
       // Test if ghost
-      if(extr.rank_ != ttk::MPIrank_) {
-        return rep;
+      if(currentNode.rank_ != ttk::MPIrank_) {
+        return extremas[rep.lid_];
       }
-      if(extr.rep_.saddleId_ != -1) {
-        s = saddles[extr.rep_.saddleId_];
-        if((s < sv) == increasing) {
+      if(currentNode.rep_.saddleId_ != -1) {
+        s = saddles[currentNode.rep_.saddleId_];
+        if((s.gid_ != sv.gid_) && ((s < sv) == increasing)) {
           break;
         }
       }
-      extr = rep;
-      rep = extremas[extr.rep_.extremaId_];
+      currentNode = rep;
+      /*if (sv.gid_ == 506){
+        printMsg("Correct in getRep: "+std::to_string(extremas[17].gid_)+",
+      "+std::to_string(extremas[31].gid_));
+      }*/
+      rep = extremas[currentNode.rep_.extremaId_];
     }
     // In case of the shadow triplet TODO: ensure it is ok
     /*if(increasing && rep.saddleId_ != -1 && (extr == rep)) {
       s = saddles[extr.rep_.saddleId_];
     }*/
-    return extr;
+    return extremas[currentNode.lid_];
   };
 
   const auto addPair = [this, &saddleToPairedExtrema, &extremaToPairedSaddle](
                          const saddleEdge &sad, const extremaNode &extr) {
+    printMsg("AddPair: " + std::to_string(sad.gid_) + ", "
+             + std::to_string(extr.gid_));
     saddleToPairedExtrema[sad.lid_] = extr.lid_;
     extremaToPairedSaddle[extr.lid_] = sad.lid_;
   };
@@ -120,6 +125,8 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   const auto removePair
     = [this, &saddleToPairedExtrema, &extremaToPairedSaddle](
         const saddleEdge &sad, const extremaNode &extr) {
+        printErr("removePair: " + std::to_string(sad.gid_) + ", "
+                 + std::to_string(extr.gid_));
         saddleToPairedExtrema[sad.lid_] = -1;
         extremaToPairedSaddle[extr.lid_] = -1;
       };
@@ -141,12 +148,15 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
     = [this, &increasing, &saddleToPairedExtrema, &extremaToPairedSaddle,
        &getRep, &addPair, &removePair, &processTriplet, &saddles,
        &extremas](saddleEdge sv) -> int {
+    // printMsg("Start of processTriplet: "+std::to_string(extremas[17].gid_)+",
+    // "+std::to_string(extremas[31].gid_)+", for "+std::to_string(sv.gid_));
     // rep1 is either last correct in local or a ghost
     auto &rep1 = getRep(extremas[sv.t_[0]], sv);
     bool pairedR1 = extremaToPairedSaddle[rep1.lid_] != -1;
     // TODO: comparison
     bool isR1Invalid = ((rep1.rep_.saddleId_ != -1)
                         && ((saddles[rep1.rep_.saddleId_] < sv) == increasing));
+    ttk::SimplexId oldSaddle{-1};
     if(isR1Invalid)
       pairedR1 = false;
     // TODO: still necessary?
@@ -164,6 +174,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
         // maximum
         if(isR1Invalid) {
           removePair(saddles[rep1.rep_.saddleId_], rep1);
+          oldSaddle = rep1.rep_.saddleId_;
         }
         addPair(sv, rep1);
         // If extrema is has local id, then is present in local TODO: CAREFUL:
@@ -179,38 +190,50 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
            && rep1.rank_ == ttk::MPIrank_) { // TODO: Check if belongs to other
                                              // process, if so triggers message
           // TODO: if from another process
-          printMsg("Recompute: not supposed to happen");
-          return processTriplet(saddles[rep1.rep_.saddleId_]);
+          printMsg("Recompute for " + std::to_string(saddles[oldSaddle].gid_));
+          return processTriplet(saddles[oldSaddle]);
         }
       }
       return 0;
     }
     auto &rep2 = getRep(extremas[sv.t_[1]], sv);
     bool pairedR2 = extremaToPairedSaddle[rep2.lid_] != -1;
-    bool isR2Invalid = ((rep1.rep_.saddleId_ != -1)
-                        && ((saddles[rep1.rep_.saddleId_] < sv) == increasing));
+    bool isR2Invalid = ((rep2.rep_.saddleId_ != -1)
+                        && ((saddles[rep2.rep_.saddleId_] < sv) == increasing));
     if(isR2Invalid)
       pairedR2 = false;
     /*isR2Invalid = isR2Invalid
                   && (saddleToPairedExtrema[rep2.saddleId_] ==
        rep2.extremaId_);*/
     if(rep1.gid_ != rep2.gid_) {
-      if((((rep1 < rep2) == increasing) || pairedR1) && !pairedR2) {
-        std::swap(rep1, rep2);
-        std::swap(pairedR1, pairedR2);
-        std::swap(isR1Invalid, isR2Invalid);
-      }
-      if(!pairedR1) {
-        if(isR1Invalid) {
-          removePair(saddles[rep1.rep_.saddleId_], rep1);
+      if((((rep2 < rep1) == increasing) || pairedR1) && !pairedR2) {
+        if(isR2Invalid) {
+          removePair(saddles[rep2.rep_.saddleId_], rep2);
+          oldSaddle = rep2.rep_.saddleId_;
         }
-        addPair(sv, rep1);
-        rep1.rep_.extremaId_ = rep2.lid_;
-        rep1.rep_.saddleId_ = sv.lid_;
-        if(isR1Invalid) {
+        addPair(sv, rep2);
+        rep2.rep_.extremaId_ = rep1.lid_;
+        rep2.rep_.saddleId_ = sv.lid_;
+        if(isR2Invalid) {
           // TODO: if from another process
-          printMsg("Recompute: not supposed to happen");
-          return processTriplet(saddles[rep1.rep_.saddleId_]);
+          printMsg("Recompute for " + std::to_string(saddles[oldSaddle].gid_));
+          return processTriplet(saddles[oldSaddle]);
+        }
+      } else {
+        if(!pairedR1) {
+          if(isR1Invalid) {
+            removePair(saddles[rep1.rep_.saddleId_], rep1);
+            oldSaddle = rep1.rep_.saddleId_;
+          }
+          addPair(sv, rep1);
+          rep1.rep_.extremaId_ = rep2.lid_;
+          rep1.rep_.saddleId_ = sv.lid_;
+          if(isR1Invalid) {
+            // TODO: if from another process
+            printMsg("Recompute for "
+                     + std::to_string(saddles[oldSaddle].gid_));
+            return processTriplet(saddles[oldSaddle]);
+          }
         }
       }
     }
