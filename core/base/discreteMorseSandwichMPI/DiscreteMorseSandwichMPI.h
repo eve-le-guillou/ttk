@@ -743,12 +743,13 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     globalToLocalExtrema.reserve(2 * saddle1ToMinima.size());
     float reserveTime = t.getElapsedTime();
     t.reStart();
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp declare reduction (merge : std::vector<saddleEdge> :omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
-#pragma omp parallel for reduction(merge                       \
-                                   : saddles) schedule(static) \
-  shared(extremas, globalToLocalExtrema)
-#endif
+    /*#ifdef TTK_ENABLE_OPENMP
+    #pragma omp declare reduction (merge : std::vector<saddleEdge>
+    :omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+    #pragma omp parallel for reduction(merge                       \
+                                       : saddles) schedule(static) \
+      shared(extremas, globalToLocalExtrema)
+    #endif*/
     for(size_t i = 0; i < saddle1ToMinima.size(); ++i) {
       auto &mins = saddle1ToMinima[i];
       const auto s1 = criticalEdges[i];
@@ -767,23 +768,23 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       for(int j = 0; j < 2; j++) {
         ttk::SimplexId gid = triangulation.getVertexGlobalId(mins[j]);
         ttk::SimplexId lid{-1};
-#pragma omp critical // TODO: better way?
-        {
-          auto it = globalToLocalExtrema.find(gid);
-          if(it == globalToLocalExtrema.end()) {
-            lid = extremas.size();
-            extremaNode n{
-              .gid_ = gid,
-              .lid_ = lid,
-              .order_ = offsets[mins[j]],
-              /*.scalar_ = extremaScalars[mins[i]],*/ .rep_ = Rep{lid, -1},
-              .rank_ = static_cast<char>(ttk::MPIrank_)};
-            extremas.emplace_back(n);
-            globalToLocalExtrema[gid] = lid;
+        //#pragma omp critical // TODO: better way?
+        //        {
+        auto it = globalToLocalExtrema.find(gid);
+        if(it == globalToLocalExtrema.end()) {
+          lid = extremas.size();
+          extremaNode n{
+            .gid_ = gid,
+            .lid_ = lid,
+            .order_ = offsets[mins[j]],
+            /*.scalar_ = extremaScalars[mins[i]],*/ .rep_ = Rep{lid, -1},
+            .rank_ = static_cast<char>(ttk::MPIrank_)};
+          extremas.emplace_back(n);
+          globalToLocalExtrema[gid] = lid;
           } else {
             lid = it->second;
           }
-        }
+          //}
           e.t_[j] = lid;
       }
       saddles.emplace_back(e);
@@ -824,10 +825,8 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     // std::shuffle(std::begin(saddles), std::end(saddles), rng);
 
     // insert doesn't exist for maps in C++14 (only starting C++17)
-    //#pragma omp declare reduction (merge :
-    //std::unordered_map<ttk::SimplexId,ttk::SimplexId> :
-    //omp_out.insert(omp_out.end(), omp_in.begin(),omp_in.end())) #pragma omp
-    //parallel for reduction(merge :globalToLocalSaddle) schedule(static)
+#pragma omp declare reduction (merge :std::unordered_map<ttk::SimplexId,ttk::SimplexId>:omp_out.insert(omp_in.begin(),omp_in.end()))
+#pragma omp parallel for reduction(merge : globalToLocalSaddle) schedule(static)
     for(int i = 0; i < saddle1ToMinimaNumber; i++) {
       auto &s{saddles[i]};
       s.lid_ = i;
