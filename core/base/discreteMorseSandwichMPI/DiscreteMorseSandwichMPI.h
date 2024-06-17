@@ -1304,35 +1304,46 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
 
   // 1- and 2-saddles yet to be paired
   std::vector<SimplexId> saddles1{}, saddles2{};
+  std::vector<std::vector<SimplexId>> saddlesThread(
+    this->threadNumber_, std::vector<ttk::SimplexId>());
 
   // filter out already paired 1-saddles (edge id)
-  //#ifdef TTK_ENABLE_OPENMP
-  //#pragma omp declare reduction (merge : std::vector<ttk::SimplexId>
-  //:omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) #pragma omp
-  //parallel for reduction(merge : saddles1) shared(globalToLocalSaddle1_)
-  //schedule(static) num_threads(this->threadNumber_) #endif
-  for(const auto s1 : critical1Saddles) {
-    auto it = globalToLocalSaddle1_.find(triangulation.getEdgeGlobalId(s1));
-    if((it == globalToLocalSaddle1_.end())
-       || (saddleToPairedMin_[it->second] == -1)) {
-      saddles1.emplace_back(s1);
+
+#pragma omp parallel num_threads(threadNumber_)
+  {
+    int threadNumber = omp_get_thread_num();
+#pragma omp for schedule(static)
+    for(const auto s1 : critical1Saddles) {
+      auto it = globalToLocalSaddle1_.find(triangulation.getEdgeGlobalId(s1));
+      if((it == globalToLocalSaddle1_.end())
+         || (saddleToPairedMin_[it->second] == -1)) {
+        saddlesThread[threadNumber].emplace_back(s1);
+      }
     }
   }
-
+  for(int i = 0; i < threadNumber_; i++) {
+    saddles1.insert(
+      saddles1.end(), saddlesThread[i].begin(), saddlesThread[i].end());
+    saddlesThread[i].clear();
+  }
   // filter out already paired 2-saddles (triangle id)
-  //#ifdef TTK_ENABLE_OPENMP
-  //#pragma omp declare reduction (merge : std::vector<ttk::SimplexId>
-  //:omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) #pragma omp
-  //parallel for reduction(merge : saddles2) shared(globalToLocalSaddle2_)
-  //schedule(static) num_threads(this->threadNumber_) #endif
-  for(const auto s2 : critical2Saddles) {
-    auto it = globalToLocalSaddle2_.find(triangulation.getTriangleGlobalId(s2));
-    if((it == globalToLocalSaddle2_.end())
-       || (saddleToPairedMax_[it->second] == -1)) {
-      saddles2.emplace_back(s2);
+#pragma omp parallel num_threads(threadNumber_)
+  {
+    int threadNumber = omp_get_thread_num();
+#pragma omp for schedule(static)
+    for(const auto s2 : critical2Saddles) {
+      auto it = globalToLocalSaddle2_.find(triangulation.getEdgeGlobalId(s2));
+      if((it == globalToLocalSaddle2_.end())
+         || (saddleToPairedMax_[it->second] == -1)) {
+        saddlesThread[threadNumber].emplace_back(s2);
+      }
     }
   }
-
+  for(int i = 0; i < threadNumber_; i++) {
+    saddles2.insert(
+      saddles2.end(), saddlesThread[i].begin(), saddlesThread[i].end());
+  }
+  saddlesThread.clear();
   if(this->Compute2SaddlesChildren) {
     this->s2Children_.resize(saddles2.size());
   }
