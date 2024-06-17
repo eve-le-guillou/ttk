@@ -66,13 +66,6 @@ namespace ttk {
       Rep rep_;
       char rank_{static_cast<char>(ttk::MPIrank_)};
 
-      extremaNode(ttk::SimplexId gid,
-                  ttk::SimplexId lid,
-                  ttk::SimplexId order,
-                  Rep r,
-                  char rank)
-        : gid_{gid}, lid_{lid}, order_{order}, rep_{r}, rank_{rank} {};
-
       bool operator==(const extremaNode &t1) {
         return this->gid_ == t1.gid_;
       }
@@ -777,7 +770,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
               .gid_ = gid,
               .lid_ = lid,
               .order_ = offsets[mins[j]],
-              /*.scalar_ = extremaScalars[mins[i]],*/ .rep = Rep{lid, -1},
+              /*.scalar_ = extremaScalars[mins[i]],*/ .rep_ = Rep{lid, -1},
               .rank_ = static_cast<char>(ttk::MPIrank_)};
             extremas.emplace_back(n);
             globalToLocalExtrema[gid] = lid;
@@ -1031,7 +1024,7 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
                 extremaNode n{.gid_ = gid,
                               .lid_ = lid,
                               .order_ = critMaxsOrder[maxs[j]],
-                              .rep = Rep{lid, -1},
+                              .rep_ = Rep{lid, -1},
                               .rank_ = static_cast<char>(ttk::MPIrank_)};
                 extremas.emplace_back(n);
                 globalToLocalExtrema[gid] = lid;
