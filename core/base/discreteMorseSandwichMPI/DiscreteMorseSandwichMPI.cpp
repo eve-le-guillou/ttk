@@ -51,8 +51,10 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   std::vector<extremaNode> &extremas,
   std::vector<saddleEdge> &saddles,
   std::vector<ttk::SimplexId> &saddleToPairedExtrema,
-  std::vector<ttk::SimplexId> &extremaToPairedSaddle
-  /*std::vector<std::vector<ttk::SimplexId>> ghostPresence*/) const {
+  std::vector<ttk::SimplexId> &extremaToPairedSaddle,
+  /*std::vector<std::vector<ttk::SimplexId>> ghostPresence*/
+  float &getRepTime,
+  float &postTreatmentTime) const {
   /*template<typename datatype>
     struct messageType {
       ttk::SimplexId m1;
@@ -66,7 +68,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
       char procS;
       char HAS_BEEN_MODE{0};
     }*/
-  // ttk::Timer getRepTimer{};
+  ttk::Timer getRepTimer{};
   // std::vector<std::vector<messageType>> sendBuffer(ttk::MPIrank_,
   // std::vector<messageType>());
 
@@ -78,9 +80,9 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   // saddleToPairedExtremaTime = tm.getElapsedTime();
   // get representative of current extremum
   const auto getRep
-    = [this, increasing, &extremas, &saddles /*, &getRepTimer, &getRepTime*/](
+    = [this, increasing, &extremas, &saddles, &getRepTimer, &getRepTime](
         extremaNode *extr, saddleEdge *sv) -> extremaNode & {
-    //    getRepTimer.reStart();
+    getRepTimer.reStart();
     auto currentNode = extr;
     auto rep = &extremas[extr->rep_.extremaId_];
     saddleEdge *s;
@@ -98,6 +100,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
       currentNode = rep;
       rep = &extremas[currentNode->rep_.extremaId_];
     }
+    getRepTime += getRepTimer.getElapsedTime();
     return extremas[currentNode->lid_];
   };
 
@@ -214,7 +217,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
 
   ttk::SimplexId saddleNumber = saddleToPairedExtrema.size();
 
-//  ttk::Timer postTimer{};
+  ttk::Timer postTimer{};
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp declare reduction (merge : std::vector<PersistencePair> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge : pairs) schedule(static)
@@ -230,7 +233,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
       }
     }
   }
-  // postTreatmentTime = postTimer.getElapsedTime();
+  postTreatmentTime = postTimer.getElapsedTime();
 }
 
 void ttk::DiscreteMorseSandwichMPI::displayStats(

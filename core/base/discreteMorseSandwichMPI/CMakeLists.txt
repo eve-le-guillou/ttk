@@ -6,4 +6,3 @@ ttk_add_base_library(discreteMorseSandwichMPI
   DEPENDS
     discreteGradient
 )
-target_compile_options(discreteMorseSandwichMPI PUBLIC -O0 -g)

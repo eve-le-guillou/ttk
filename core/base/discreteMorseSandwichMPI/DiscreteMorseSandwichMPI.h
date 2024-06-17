@@ -384,8 +384,10 @@ namespace ttk {
       std::vector<extremaNode> &extremas,
       std::vector<saddleEdge> &saddles,
       std::vector<ttk::SimplexId> &saddleToPairedExtrema,
-      std::vector<ttk::SimplexId> &extremaToPairedSaddle
-      /*std::vector<std::vector<ttk::SimplexId>> ghostPresence*/) const;
+      std::vector<ttk::SimplexId> &extremaToPairedSaddle,
+      /*std::vector<std::vector<ttk::SimplexId>> ghostPresence*/
+      float &getRepTime,
+      float &getPostTreatmentTime) const;
 
     /**
      * @brief Detect 1-saddles paired to a given 2-saddle
@@ -721,9 +723,11 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
   const triangulationType &triangulation) const {
   if(this->ComputeMinSad) {
     // minima - saddle pairs
+    Timer t{};
     Timer tm{};
-    // Timer t{};
     auto saddle1ToMinima = getSaddle1ToMinima(criticalEdges, triangulation);
+    float getTripletsTime = t.getElapsedTime();
+    t.reStart();
     Timer tmseq{};
 
     auto &saddleToPairedExtrema{this->saddleToPairedMin_};
@@ -737,6 +741,8 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     globalToLocalSaddle.reserve(saddle1ToMinima.size());
     std::unordered_map<ttk::SimplexId, ttk::SimplexId> globalToLocalExtrema{};
     globalToLocalExtrema.reserve(2 * saddle1ToMinima.size());
+    float reserveTime = t.getElapsedTime();
+    t.reStart();
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp declare reduction (merge : std::vector<saddleEdge> :omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge                       \
@@ -782,7 +788,8 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       }
       saddles.emplace_back(e);
     }
-
+    float preTreatmentTime = t.getElapsedTime();
+    t.reStart();
     const auto cmpSadMin
       = [=, &extremas](const saddleEdge &s0, const saddleEdge &s1) -> bool {
       if(&s0 != &s1) {
@@ -806,14 +813,15 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       return false;
     };
     // TRI des arcs
-    // TTK_PSORT(this->threadNumber_, saddles.begin(), saddles.end(),
-    // cmpSadMin);
+    TTK_PSORT(this->threadNumber_, saddles.begin(), saddles.end(), cmpSadMin);
+    float sortingTime = t.getElapsedTime();
+    t.reStart();
     // Mise en place des lid des arcs
     ttk::SimplexId saddle1ToMinimaNumber
       = static_cast<ttk::SimplexId>(saddle1ToMinima.size());
 
-    auto rng = std::default_random_engine{0};
-    std::shuffle(std::begin(saddles), std::end(saddles), rng);
+    // auto rng = std::default_random_engine{0};
+    // std::shuffle(std::begin(saddles), std::end(saddles), rng);
 
     // insert doesn't exist for maps in C++14 (only starting C++17)
     //#pragma omp declare reduction (merge :
@@ -825,32 +833,36 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       s.lid_ = i;
       globalToLocalSaddle[s.gid_] = i;
     }
-
+    float dictTime = t.getElapsedTime();
+    t.reStart();
     extremaToPairedSaddle.resize(globalToLocalExtrema.size(), -1);
-    // float getRepTime{0}, postTreatmentTime{0}, saddleToPairedExtremaTime{0};
-    // float preTreatmentTime = t.getElapsedTime();
-    tripletsToPersistencePairs(pairs, 0, extremas, saddles,
-                               saddleToPairedExtrema,
-                               extremaToPairedSaddle /*, ghostPresence*/);
-
+    float resizeTime = t.getElapsedTime();
+    t.reStart();
+    float getRepTime{0}, postTreatmentTime{0};
+    tripletsToPersistencePairs(
+      pairs, 0, extremas, saddles, saddleToPairedExtrema,
+      extremaToPairedSaddle /*, ghostPresence*/, getRepTime, postTreatmentTime);
     const auto nMinSadPairs = pairs.size();
 
     this->printMsg(
       "Computed " + std::to_string(nMinSadPairs) + " min-saddle pairs", 1.0,
       tm.getElapsedTime(), this->threadNumber_);
-    /*this->printMsg("triplets creation time for min-saddle took "
-                  + std::to_string(getTripletsTime) + "s");
-    this->printMsg("svToR init for min-saddle took " + std::to_string(svToRInit)
-                  + "s");
+    this->printMsg("triplets creation time for min-saddle took "
+                   + std::to_string(getTripletsTime) + "s");
+    this->printMsg("reserve for min-saddle took " + std::to_string(reserveTime)
+                   + "s");
     this->printMsg("pre treatment for min-saddle took "
                   + std::to_string(preTreatmentTime) + "s");
-    this->printMsg("getRep time for min-saddle took " +
-    std::to_string(getRepTime)
-                  + "s");
-    this->printMsg("saddleCreatTime for min-saddle took "
-                  + std::to_string(saddleToPairedExtremaTime) + "s");
+    this->printMsg("sorting for min-saddle took " + std::to_string(sortingTime)
+                   + "s");
+    this->printMsg("dict for min-saddle took " + std::to_string(dictTime)
+                   + "s");
+    this->printMsg("resize for min-saddle took " + std::to_string(resizeTime)
+                   + "s");
+    this->printMsg("getRep time for min-saddle took "
+                   + std::to_string(getRepTime) + "s");
     this->printMsg("post treatment time for min-saddle took "
-                  + std::to_string(postTreatmentTime) + "s");*/
+                   + std::to_string(postTreatmentTime) + "s");
 
     this->printMsg("min-saddle pairs sequential part", 1.0,
                    tmseq.getElapsedTime(), 1, debug::LineMode::NEW,
@@ -1062,16 +1074,15 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
       return false;
     };
     // TRI des arcs
-    // TTK_PSORT(this->threadNumber_, saddles.begin(), saddles.end(),
-    // cmpSadMax);
+    TTK_PSORT(this->threadNumber_, saddles.begin(), saddles.end(), cmpSadMax);
     ttk::SimplexId saddle2ToMaximaNumber
       = static_cast<ttk::SimplexId>(saddle2ToMaxima.size());
     //#pragma omp declare reduction (merge : std::unordered_map<ttk::SimplexId,
-    //ttk::SimplexId> : omp_out.insert(omp_out.end(), omp_in.begin(),
-    //omp_in.end())) #pragma omp parallel for reduction(merge :
-    //globalToLocalSaddle) schedule(static)
-    auto rng = std::default_random_engine{0};
-    std::shuffle(std::begin(saddles), std::end(saddles), rng);
+    // ttk::SimplexId> : omp_out.insert(omp_out.end(), omp_in.begin(),
+    // omp_in.end())) #pragma omp parallel for reduction(merge :
+    // globalToLocalSaddle) schedule(static)
+    // auto rng = std::default_random_engine{0};
+    // std::shuffle(std::begin(saddles), std::end(saddles), rng);
     for(int i = 0; i < saddle2ToMaximaNumber; i++) {
       auto &s{saddles[i]};
       s.lid_ = i;
@@ -1079,11 +1090,12 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
     }
 
     extremaToPairedSaddle.resize(globalToLocalExtrema.size(), -1);
-    // float getRepTime{0}, postTreatmentTime{0}, saddleToPairedExtremaTime{0};
+    float getRepTime{0}, postTreatmentTime{0}, saddleToPairedExtremaTime{0};
     const auto nMinSadPairs = pairs.size();
     // float preTreatmentTime = t.getElapsedTime();
     tripletsToPersistencePairs(pairs, dim - 1, extremas, saddles,
-                               saddleToPairedExtrema, extremaToPairedSaddle);
+                               saddleToPairedExtrema, extremaToPairedSaddle,
+                               getRepTime, postTreatmentTime);
     const auto nSadMaxPairs = pairs.size() - nMinSadPairs;
 
     this->printMsg(
@@ -1295,10 +1307,10 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
 
   // filter out already paired 1-saddles (edge id)
   //#ifdef TTK_ENABLE_OPENMP
-  //#pragma omp declare reduction (merge : std::vector<ttk::SimplexId> :
-  //omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) #pragma omp
-  //parallel for reduction(merge : saddles1) schedule(static)
-  //num_threads(this->threadNumber_) #endif
+  //#pragma omp declare reduction (merge : std::vector<ttk::SimplexId>
+  //:omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) #pragma omp
+  //parallel for reduction(merge : saddles1) shared(globalToLocalSaddle1_)
+  //schedule(static) num_threads(this->threadNumber_) #endif
   for(const auto s1 : critical1Saddles) {
     auto it = globalToLocalSaddle1_.find(triangulation.getEdgeGlobalId(s1));
     if((it == globalToLocalSaddle1_.end())
@@ -1309,10 +1321,10 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
 
   // filter out already paired 2-saddles (triangle id)
   //#ifdef TTK_ENABLE_OPENMP
-  //#pragma omp declare reduction (merge : std::vector<ttk::SimplexId> :
-  //omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) #pragma omp
-  //parallel for reduction(merge : saddles2) schedule(static)
-  //num_threads(this->threadNumber_) #endif
+  //#pragma omp declare reduction (merge : std::vector<ttk::SimplexId>
+  //:omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) #pragma omp
+  //parallel for reduction(merge : saddles2) shared(globalToLocalSaddle2_)
+  //schedule(static) num_threads(this->threadNumber_) #endif
   for(const auto s2 : critical2Saddles) {
     auto it = globalToLocalSaddle2_.find(triangulation.getTriangleGlobalId(s2));
     if((it == globalToLocalSaddle2_.end())
