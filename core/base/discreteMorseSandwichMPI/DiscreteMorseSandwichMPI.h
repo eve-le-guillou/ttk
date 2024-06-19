@@ -742,6 +742,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     std::unordered_map<ttk::SimplexId, ttk::SimplexId> globalToLocalExtrema{};
     globalToLocalExtrema.reserve(2 * saddle1ToMinima.size());
     float reserveTime = t.getElapsedTime();
+    ttk::SimplexId saddle1ToMinimaNumber = saddle1ToMinima.size();
     t.reStart();
     /*#ifdef TTK_ENABLE_OPENMP
     #pragma omp declare reduction (merge : std::vector<saddleEdge>
@@ -818,15 +819,14 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     float sortingTime = t.getElapsedTime();
     t.reStart();
     // Mise en place des lid des arcs
-    ttk::SimplexId saddle1ToMinimaNumber
-      = static_cast<ttk::SimplexId>(saddle1ToMinima.size());
 
     // auto rng = std::default_random_engine{0};
     // std::shuffle(std::begin(saddles), std::end(saddles), rng);
 
-    // insert doesn't exist for maps in C++14 (only starting C++17)
 #pragma omp declare reduction (merge :std::unordered_map<ttk::SimplexId,ttk::SimplexId>:omp_out.insert(omp_in.begin(),omp_in.end()))
-#pragma omp parallel for reduction(merge : globalToLocalSaddle) schedule(static)
+#pragma omp parallel for reduction(merge                                   \
+                                   : globalToLocalSaddle) schedule(static) \
+  num_threads(this->threadNumber_)
     for(int i = 0; i < saddle1ToMinimaNumber; i++) {
       auto &s{saddles[i]};
       s.lid_ = i;
@@ -871,8 +871,9 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
 #pragma omp parallel for reduction(+:nConnComp) shared(pairs) num_threads(this->threadNumber_)
     for(const auto min : criticalExtremas) {
       ttk::SimplexId gid = triangulation.getVertexGlobalId(min);
-      ttk::SimplexId lid = globalToLocalExtrema.find(gid)->second;
-      if(extremaToPairedSaddle[lid] == -1) {
+      auto it = globalToLocalExtrema.find(gid);
+      if(it == globalToLocalExtrema.end()
+         || extremaToPairedSaddle[it->second] == -1) {
 #pragma omp critical
         {
           pairs.emplace_back(gid, -1, 0);
