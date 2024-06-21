@@ -509,22 +509,22 @@ namespace ttk {
 #pragma omp parallel master num_threads(threadNumber_)
 #endif
       {
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif // TTK_ENABLE_OPENMP
-        this->saddleToPairedMin_.resize(
-          this->dg_.getNumberOfCells(1, triangulation), -1);
+        //#ifdef TTK_ENABLE_OPENMP
+        //#pragma omp task
+        //#endif // TTK_ENABLE_OPENMP
+        // this->saddleToPairedMin_.resize(
+        //  this->dg_.getNumberOfCells(1, triangulation), -1);
         /*#ifdef TTK_ENABLE_OPENMP
         #pragma omp task
         #endif // TTK_ENABLE_OPENMP
                 this->minToPairedSaddle_.resize(
                   this->dg_.getNumberOfCells(0, triangulation), -1);*/
         if(dim > 1) {
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif // TTK_ENABLE_OPENMP
-          this->saddleToPairedMax_.resize(
-            this->dg_.getNumberOfCells(dim - 1, triangulation), -1);
+          //#ifdef TTK_ENABLE_OPENMP
+          //#pragma omp task
+          //#endif // TTK_ENABLE_OPENMP
+          // this->saddleToPairedMax_.resize(
+          //  this->dg_.getNumberOfCells(dim - 1, triangulation), -1);
           /*#ifdef TTK_ENABLE_OPENMP
           #pragma omp task
           #endif // TTK_ENABLE_OPENMP
@@ -835,6 +835,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     float dictTime = t.getElapsedTime();
     t.reStart();
     extremaToPairedSaddle.resize(globalToLocalExtrema.size(), -1);
+    saddleToPairedExtrema.resize(saddle1ToMinima.size(), -1);
     float resizeTime = t.getElapsedTime();
     t.reStart();
     float getRepTime{0}, postTreatmentTime{0};
@@ -1090,6 +1091,7 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
     }
 
     extremaToPairedSaddle.resize(globalToLocalExtrema.size(), -1);
+    saddleToPairedExtrema.resize(saddle2ToMaxima.size(), -1);
     float getRepTime{0}, postTreatmentTime{0}, saddleToPairedExtremaTime{0};
     const auto nMinSadPairs = pairs.size();
     // float preTreatmentTime = t.getElapsedTime();
