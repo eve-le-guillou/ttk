@@ -735,7 +735,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     auto &globalToLocalSaddle{this->globalToLocalSaddle1_};
     std::vector<saddleEdge> saddles{};
     std::vector<extremaNode> extremas{};
-    // TODO: useful?
     saddles.reserve(saddle1ToMinima.size());
     extremas.reserve(2 * saddle1ToMinima.size());
     globalToLocalSaddle.reserve(saddle1ToMinima.size());
@@ -823,10 +822,12 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     // auto rng = std::default_random_engine{0};
     // std::shuffle(std::begin(saddles), std::end(saddles), rng);
 
-#pragma omp declare reduction (merge :std::unordered_map<ttk::SimplexId,ttk::SimplexId>:omp_out.insert(omp_in.begin(),omp_in.end()))
-#pragma omp parallel for reduction(merge                                   \
-                                   : globalToLocalSaddle) schedule(static) \
-  num_threads(this->threadNumber_)
+    //#pragma omp declare reduction (merge
+    //:std::unordered_map<ttk::SimplexId,ttk::SimplexId>:omp_out.insert(omp_in.begin(),omp_in.end()))
+    //#pragma omp parallel for reduction(merge \
+//                                   : globalToLocalSaddle) schedule(static)
+    //                                   \
+// num_threads(this->threadNumber_)
     for(int i = 0; i < saddle1ToMinimaNumber; i++) {
       auto &s{saddles[i]};
       s.lid_ = i;
@@ -904,7 +905,7 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
   const triangulationType &triangulation,
   const bool ignoreBoundary,
   const SimplexId *const offsets) {
-
+  Timer t{};
   const auto dim = this->dg_.getDimensionality();
   auto &globalToLocalSaddle{dim == 3 ? this->globalToLocalSaddle2_
                                      : this->globalToLocalSaddle1_};
@@ -977,13 +978,15 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
       globalToLocalSaddle.reserve(globalToLocalSaddle.size()
                                   + saddle2ToMaxima.size());
     }
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp declare reduction (merge : std::vector<saddleEdge> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
-#pragma omp parallel for reduction(merge                       \
-                                   : saddles) schedule(static) \
-  shared(extremas, globalToLocalExtrema)
-#endif
-    for(size_t i = 0; i < saddle2ToMaxima.size(); ++i) {
+    /*#ifdef TTK_ENABLE_OPENMP
+    #pragma omp declare reduction (merge : std::vector<saddleEdge> :
+    omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+    #pragma omp parallel for reduction(merge                       \
+                                       : saddles) schedule(static) \
+      shared(extremas, globalToLocalExtrema)
+    #endif*/
+    t.reStart();
+    for(size_t i = saddle2ToMaxima.size() - 1; i >= 0; --i) {
       auto &maxs = saddle2ToMaxima[i];
       // remove duplicates
       std::sort(
@@ -1009,7 +1012,7 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
       bool pairedSaddle = false;
       ttk::SimplexId gid{-1};
       if(dim != 3) {
-        gid = getSaddleGlobalId(s2); // TODO: choose right function
+        gid = getSaddleGlobalId(s2);
         auto it = globalToLocalSaddle.find(gid);
         if((it != globalToLocalSaddle.end())
            && (saddleToPairedMin_[it->second] != -1)) {
@@ -1027,31 +1030,31 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
                      .rank_ = static_cast<char>(ttk::MPIrank_)};
         for(int j = 0; j < 2; j++) {
           if(maxs[j] != -1) {
-            gid = getMaxGlobalId(maxs[j]); // TODO: chose right one
+            gid = getMaxGlobalId(maxs[j]);
             ttk::SimplexId lid{-1};
-#pragma omp critical // TODO: better way?
-            {
-              auto it = globalToLocalExtrema.find(gid);
-              if(it == globalToLocalExtrema.end()) {
-                lid = extremas.size();
-                extremaNode n{.gid_ = gid,
-                              .lid_ = lid,
-                              .order_ = critMaxsOrder[maxs[j]],
-                              .rep_ = Rep{lid, -1},
-                              .rank_ = static_cast<char>(ttk::MPIrank_)};
-                extremas.emplace_back(n);
-                globalToLocalExtrema[gid] = lid;
+            //#pragma omp critical // TODO: better way?
+            //            {
+            auto it = globalToLocalExtrema.find(gid);
+            if(it == globalToLocalExtrema.end()) {
+              lid = extremas.size();
+              extremaNode n{.gid_ = gid,
+                            .lid_ = lid,
+                            .order_ = critMaxsOrder[maxs[j]],
+                            .rep_ = Rep{lid, -1},
+                            .rank_ = static_cast<char>(ttk::MPIrank_)};
+              extremas.emplace_back(n);
+              globalToLocalExtrema[gid] = lid;
               } else {
                 lid = it->second;
               }
-            }
-            e.t_[j] = lid;
+              //}
+              e.t_[j] = lid;
           }
         }
         saddles.emplace_back(e);
       }
     }
-
+    float preTreatmentTime = t.getElapsedTime();
     const auto cmpSadMax
       = [this, &extremas](const saddleEdge &s0, const saddleEdge &s1) -> bool {
       if(&s0 != &s1) {
@@ -1075,7 +1078,9 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
       return false;
     };
     // TRI des arcs
+    t.reStart();
     TTK_PSORT(this->threadNumber_, saddles.begin(), saddles.end(), cmpSadMax);
+    float sortingTime = t.getElapsedTime();
     ttk::SimplexId saddle2ToMaximaNumber
       = static_cast<ttk::SimplexId>(saddle2ToMaxima.size());
     //#pragma omp declare reduction (merge : std::unordered_map<ttk::SimplexId,
@@ -1103,6 +1108,10 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
     this->printMsg(
       "Computed " + std::to_string(nSadMaxPairs) + " saddle-max pairs", 1.0,
       tm.getElapsedTime(), this->threadNumber_);
+    this->printMsg("pre treatment for max-saddle took "
+                   + std::to_string(preTreatmentTime) + "s");
+    this->printMsg("sorting for max-saddle took " + std::to_string(sortingTime)
+                   + "s");
     /*this->printMsg("triplets creation time for saddle-max took "
                   + std::to_string(getTripletsTime) + "s");
     this->printMsg("svToR init for saddle-max took " + std::to_string(svToRInit)
