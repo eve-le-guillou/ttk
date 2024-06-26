@@ -781,20 +781,18 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
                    .rank_ = static_cast<char>(ttk::MPIrank_)};
       for(int j = 0; j < 2; j++) {
         ttk::SimplexId gid = triangulation.getVertexGlobalId(mins[j]);
-        ttk::SimplexId lid{-1};
-        auto it = globalToLocalExtrema.find(gid);
-        if(it == globalToLocalExtrema.end()) {
-          lid = extremas.size();
+        ttk::SimplexId lid{extremas.size()};
+        auto pair = globalToLocalExtrema.try_emplace(gid, lid);
+        if(pair.second) {
           extremaNode n{.gid_ = gid,
                         .lid_ = lid,
                         .order_ = offsets[mins[j]],
                         /*.vOrder_ = scalars[mins[i]],*/ .rep_ = Rep{lid, -1},
                         .rank_ = static_cast<char>(ttk::MPIrank_)};
           extremas.emplace_back(n);
-          globalToLocalExtrema[gid] = lid;
-          } else {
-            lid = it->second;
-          }
+        } else {
+          lid = (*pair.first).second;
+        }
           e.t_[j] = lid;
       }
       saddles.emplace_back(e);
@@ -1019,10 +1017,9 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
         for(int j = 0; j < 2; j++) {
           if(maxs[j] != -1) {
             gid = getMaxGlobalId(maxs[j]);
-            ttk::SimplexId lid{-1};
-            auto it = globalToLocalExtrema.find(gid);
-            if(it == globalToLocalExtrema.end()) {
-              lid = extremas.size();
+            ttk::SimplexId lid{extremas.size()};
+            auto pair = globalToLocalExtrema.try_emplace(gid, lid);
+            if(pair.second) {
               struct verticesOrder vOrd2 {};
               fillExtremaNodeOrder(maxs[j], vOrd2);
               extremaNode n{.gid_ = gid,
@@ -1032,10 +1029,10 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
                             .rank_ = static_cast<char>(ttk::MPIrank_),
                             .vOrder_ = vOrd2};
               extremas.emplace_back(n);
-              globalToLocalExtrema[gid] = lid;
-              } else {
-                lid = it->second;
-              }
+            } else {
+              lid = (*pair.first).second;
+              ;
+            }
               e.t_[j] = lid;
           }
         }
