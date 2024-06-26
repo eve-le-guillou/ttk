@@ -820,6 +820,8 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     // auto rng = std::default_random_engine{0};
     // std::shuffle(std::begin(saddles), std::end(saddles), rng);
 
+#pragma omp declare reduction (merge :std::unordered_map<ttk::SimplexId,ttk::SimplexId>:omp_out.merge(omp_in))
+#pragma omp parallel for reduction(merge : globalToLocalSaddle) schedule(static)
     for(int i = 0; i < saddle1ToMinimaNumber; i++) {
       auto &s{saddles[i]};
       s.lid_ = i;
@@ -1070,6 +1072,8 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
     TTK_PSORT(this->threadNumber_, saddles.begin(), saddles.end(), cmpSadMax);
     // auto rng = std::default_random_engine{0};
     // std::shuffle(std::begin(saddles), std::end(saddles), rng);
+#pragma omp declare reduction (merge :std::unordered_map<ttk::SimplexId,ttk::SimplexId>:omp_out.merge(omp_in))
+#pragma omp parallel for reduction(merge : globalToLocalSaddle) schedule(static)
     for(int i = 0; i < saddle2ToMaximaNumber; i++) {
       auto &s{saddles[i]};
       s.lid_ = i;
