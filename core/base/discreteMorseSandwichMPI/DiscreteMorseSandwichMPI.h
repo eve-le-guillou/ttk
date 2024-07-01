@@ -180,12 +180,6 @@ namespace ttk {
       }
     };
 
-    struct vertEdgeMessageType : messageType<1, 2> {};
-
-    struct edgeTriangleMessageType : messageType<3, 2> {};
-
-    struct triangleTetraMessageType : messageType<4, 3> {};
-
     template <int extrSize, int sadSize>
     void createMPIType(MPI_Datatype &MPI_MessageType) const {
       ttk::SimplexId id = 0;
@@ -230,11 +224,11 @@ namespace ttk {
                   Rep rep,
                   char rank,
                   ttk::SimplexId *vOrder)
-        : gid_{gid}, order_{order}, rank_{rank}, lid_{lid} {
+        : gid_{gid}, lid_{lid}, order_{order}, rank_{rank}, lid_{lid} {
         for(ttk::SimplexId i = 0; i < size; i++) {
           vOrder_[i] = vOrder[i];
         }
-        rep_ = Rep{-1, -1};
+        rep_ = rep;
       };
 
       extremaNode(ttk::SimplexId gid,
@@ -242,11 +236,11 @@ namespace ttk {
                   ttk::SimplexId order,
                   Rep rep,
                   char rank)
-        : gid_{gid}, order_{order}, rank_{rank} {
+        : gid_{gid}, lid_{lid}, order_{order}, rank_{rank} {
         for(ttk::SimplexId i = 0; i < size; i++) {
           vOrder_[i] = 0;
         }
-        rep_ = Rep{-1, -1};
+        rep_ = rep;
       };
 
       bool operator==(const extremaNode<size> &t1) {
