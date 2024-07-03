@@ -101,6 +101,38 @@ namespace ttk {
       std::sort(vertsOrder, vertsOrder + 4, std::less<ttk::SimplexId>());
     };
 
+    struct vpathToSend {
+      ttk::SimplexId saddleId_;
+      ttk::SimplexId extremaId_;
+      char saddleRank_;
+    };
+
+    template <int sizeExtr>
+    struct vpathFinished {
+      ttk::SimplexId saddleId_;
+      ttk::SimplexId extremaId_;
+      ttk::SimplexId vOrder_[sizeExtr];
+      char ghostPresenceSize_;
+      char extremaRank_;
+
+      bool operator==(const vpathFinished<sizeExtr> &vp) {
+        return this->saddleId_ == vp.saddleId_
+               && this->extremaId_ == vp.extremaId_;
+      }
+    };
+
+    void createVpathMPIType(MPI_Datatype &MPI_MessageType) const {
+      ttk::SimplexId id = 0;
+      MPI_Datatype MPI_SimplexId = getMPIType(id);
+      MPI_Datatype types[] = {MPI_SimplexId, MPI_SimplexId, MPI_CHAR};
+      int lengths[] = {1, 1, 1};
+      const long int mpi_offsets[]
+        = {offsetof(vpathToSend, saddleId_), offsetof(vpathToSend, extremaId_),
+           offsetof(vpathToSend, saddleRank_)};
+      MPI_Type_create_struct(3, lengths, mpi_offsets, types, &MPI_MessageType);
+      MPI_Type_commit(&MPI_MessageType);
+    };
+
     template <int sizeExtr, int sizeSad>
     struct messageType {
       ttk::SimplexId sOrder_[sizeSad];
@@ -181,14 +213,14 @@ namespace ttk {
     };
 
     template <int extrSize, int sadSize>
-    void createMPIType(MPI_Datatype &MPI_MessageType) const {
+    void createMPIMessageType(MPI_Datatype &MPI_MessageType) const {
       ttk::SimplexId id = 0;
       MPI_Datatype MPI_SimplexId = getMPIType(id);
       MPI_Datatype types[]
         = {MPI_SimplexId, MPI_SimplexId, MPI_SimplexId, MPI_SimplexId,
            MPI_SimplexId, MPI_SimplexId, MPI_CHAR,      MPI_CHAR,
            MPI_CHAR,      MPI_CHAR};
-      int lengths[] = {sadSize, extrSize, extrSize, 1, 1, 1, 1, 1};
+      int lengths[] = {sadSize, extrSize, extrSize, 1, 1, 1, 1, 1, 1, 1};
       using simplexMessageType = messageType<extrSize, sadSize>;
       const long int mpi_offsets[]
         = {offsetof(simplexMessageType, sOrder_),
@@ -201,8 +233,11 @@ namespace ttk {
            offsetof(simplexMessageType, t2Rank_),
            offsetof(simplexMessageType, sRank_),
            offsetof(simplexMessageType, hasBeenModified_)};
+      // kill(getpid(), SIGINT);
       MPI_Type_create_struct(10, lengths, mpi_offsets, types, &MPI_MessageType);
+      // printMsg("create_struct done");
       MPI_Type_commit(&MPI_MessageType);
+      // printMsg("commit done");
     };
 
     template <int size>
@@ -224,7 +259,7 @@ namespace ttk {
                   Rep rep,
                   char rank,
                   ttk::SimplexId *vOrder)
-        : gid_{gid}, lid_{lid}, order_{order}, rank_{rank}, lid_{lid} {
+        : gid_{gid}, order_{order}, rank_{rank}, lid_{lid} {
         for(ttk::SimplexId i = 0; i < size; i++) {
           vOrder_[i] = vOrder[i];
         }
@@ -427,9 +462,13 @@ namespace ttk {
      * @return a vector of minima per 1-saddle
      */
     template <typename triangulationType>
-    std::vector<std::vector<SimplexId>>
-      getSaddle1ToMinima(const std::vector<SimplexId> &criticalEdges,
-                         const triangulationType &triangulation) const;
+    int getSaddle1ToMinima(const std::vector<SimplexId> &criticalEdges,
+                           const triangulationType &triangulation,
+                           const SimplexId *const offsets,
+                           std::vector<std::vector<extremaNode<1>>> &res,
+                           std::vector<std::vector<char>> &ghostPresence,
+                           std::unordered_map<ttk::SimplexId, std::vector<char>>
+                             &localGhostPresenceMap) const;
 
     /**
      * @brief Follow the ascending 1-separatrices to compute the saddles ->
@@ -821,7 +860,7 @@ namespace ttk {
         }
       }
       this->printMsg("Memory allocations", 1.0, tm.getElapsedTime(), 1,
-                     debug::LineMode::NEW, debug::Priority::DETAIL);
+                     debug::LineMode::NEW);
     }
 
     void clear() {
@@ -839,8 +878,8 @@ namespace ttk {
       this->maxToPairedSaddle_ = {};
       this->globalToLocalSaddle1_ = {};
       this->globalToLocalSaddle2_ = {};
-      this->printMsg("Memory cleanup", 1.0, tm.getElapsedTime(), 1,
-                     debug::LineMode::NEW, debug::Priority::DETAIL);
+      this->printMsg(
+        "Memory cleanup", 1.0, tm.getElapsedTime(), 1, debug::LineMode::NEW);
     }
 
     dcg::DiscreteGradient dg_{};
@@ -866,46 +905,413 @@ namespace ttk {
 } // namespace ttk
 
 template <typename triangulationType>
-std::vector<std::vector<SimplexId>>
-  ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
-    const std::vector<SimplexId> &criticalEdges,
-    const triangulationType &triangulation) const {
+int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
+  const std::vector<SimplexId> &criticalEdges,
+  const triangulationType &triangulation,
+  const SimplexId *const offsets,
+  std::vector<std::vector<extremaNode<1>>> &res,
+  std::vector<std::vector<char>> &ghostPresence,
+  std::unordered_map<ttk::SimplexId, std::vector<char>> &localGhostPresenceMap)
+  const {
 
   Timer tm{};
-
-  std::vector<std::vector<SimplexId>> res(criticalEdges.size());
-
-  // follow vpaths from 1-saddles to minima
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp parallel for num_threads(threadNumber_)
-#endif
-  for(size_t i = 0; i < criticalEdges.size(); ++i) {
-    auto &mins = res[i];
-
-    const auto followVPath = [this, &mins, &triangulation](const SimplexId v) {
-      std::vector<Cell> vpath{};
-      this->dg_.getDescendingPath(Cell{0, v}, vpath, triangulation);
-      const Cell &lastCell = vpath.back();
-      if(lastCell.dim_ == 0 && this->dg_.isCellCritical(lastCell)) {
-        mins.emplace_back(lastCell.id_);
+  const std::vector<int> neighbors = triangulation.getNeighborRanks();
+  const std::map<int, int> neighborsToId = triangulation.getNeighborsToId();
+  int neighborNumber = neighbors.size();
+  res.resize(criticalEdges.size(), std::vector<extremaNode<1>>());
+  std::vector<std::vector<std::vector<vpathToSend>>> sendBufferThread(
+    threadNumber_);
+  std::vector<std::vector<std::vector<vpathFinished<1>>>>
+    sendFinishedVPathBufferThread(threadNumber_);
+  // TODO: PUT IN ALLOC?
+  ghostPresence.resize(
+    triangulation.getNumberOfVertices(), std::vector<char>());
+  std::vector<Lock> extremaLocks(triangulation.getNumberOfVertices());
+  std::vector<Lock> saddleLocks(criticalEdges.size());
+  for(int i = 0; i < this->threadNumber_; i++) {
+    sendBufferThread.at(i).resize(neighborNumber);
+    sendFinishedVPathBufferThread.at(i).resize(ttk::MPIsize_);
+  }
+  ttk::SimplexId localElementNumber = 2 * criticalEdges.size();
+  printMsg("In getSaddle1ToMinima, localElementNumber: "
+           + std::to_string(localElementNumber));
+  ttk::SimplexId totalElement{0};
+  const auto followVPath = [this, &triangulation, &neighborsToId,
+                            &localElementNumber, &extremaLocks, &res,
+                            &saddleLocks, &ghostPresence, &sendBufferThread,
+                            &sendFinishedVPathBufferThread,
+                            offsets](const SimplexId v, ttk::SimplexId saddleId,
+                                     char saddleRank, int threadNumber) {
+    std::vector<Cell> vpath{};
+    this->dg_.getDescendingPath(Cell{0, v}, vpath, triangulation);
+    const Cell &lastCell = vpath.back();
+    if(lastCell.dim_ == 0) {
+      ttk::SimplexId extremaId = triangulation.getVertexGlobalId(lastCell.id_);
+      int rank = triangulation.getVertexRank(lastCell.id_);
+      if(rank != ttk::MPIrank_) {
+        sendBufferThread.at(threadNumber)
+          .at(neighborsToId.find(rank)->second)
+          .emplace_back(vpathToSend{.saddleId_ = saddleId,
+                                    .extremaId_ = extremaId,
+                                    .saddleRank_ = saddleRank});
+      } else {
+#pragma omp atomic update
+        localElementNumber--;
+        if(this->dg_.isCellCritical(lastCell)) {
+          extremaLocks.at(lastCell.id_).lock();
+          auto &ghost{ghostPresence.at(lastCell.id_)};
+          auto it = find(ghost.begin(), ghost.end(), saddleRank);
+          if(it == ghost.end()) {
+            ghost.push_back(saddleRank);
+          }
+          extremaLocks.at(lastCell.id_).unlock();
+          if(saddleRank == ttk::MPIrank_) {
+            extremaNode<1> n(extremaId, -1, offsets[lastCell.id_], Rep{-1, -1},
+                             static_cast<char>(ttk::MPIrank_));
+            // We store it in the current rank
+            // TODO: only locks for second one?
+            if(res.size() < saddleId) {
+              printErr("HERE IS YOUR PB: " + std::to_string(saddleId));
+            }
+            saddleLocks[saddleId].lock();
+            res[saddleId].emplace_back(n);
+            saddleLocks[saddleId].unlock();
+          } else {
+            // We store it to send it back to whoever will own the extrema
+            sendFinishedVPathBufferThread.at(threadNumber)
+              .at(saddleRank)
+              .emplace_back(vpathFinished<1>{
+                .saddleId_ = saddleId,
+                .extremaId_ = extremaId,
+                .vOrder_ = {offsets[lastCell.id_]},
+                .ghostPresenceSize_ = 0,
+                .extremaRank_ = static_cast<char>(ttk::MPIrank_)});
+          }
+        }
       }
-    };
+    } else {
+#pragma omp atomic update
+      localElementNumber--;
+    }
+  };
+  ttk::Memory m{};
+  printMsg("Memory use: " + std::to_string(m.getTotalUsage()));
+  // follow vpaths from 1-saddles to minima
+#pragma omp parallel shared(extremaLocks, localElementNumber) \
+  num_threads(threadNumber_)
+  {
+    int threadNumber = omp_get_thread_num();
+#pragma omp for schedule(static)
+    for(size_t i = 0; i < criticalEdges.size(); ++i) {
+      // critical edge vertices
+      SimplexId v0{}, v1{};
+      triangulation.getEdgeVertex(criticalEdges[i], 0, v0);
+      triangulation.getEdgeVertex(criticalEdges[i], 1, v1);
 
-    // critical edge vertices
-    SimplexId v0{}, v1{};
-    triangulation.getEdgeVertex(criticalEdges[i], 0, v0);
-    triangulation.getEdgeVertex(criticalEdges[i], 1, v1);
+      // follow vpath from each vertex of the critical edge
+      followVPath(v0, i, ttk::MPIrank_, threadNumber);
+      followVPath(v1, i, ttk::MPIrank_, threadNumber);
+    }
+  }
+  printMsg("Start first comm phase");
+  // Send receive elements
+  MPI_Datatype MPI_SimplexId = getMPIType(static_cast<ttk::SimplexId>(0));
+  MPI_Datatype MPI_MessageType;
+  this->createVpathMPIType(MPI_MessageType);
+  MPI_Allreduce(&localElementNumber, &totalElement, 1, MPI_SimplexId, MPI_SUM,
+                ttk::MPIcomm_);
+  std::vector<std::vector<vpathToSend>> sendBuffer(neighborNumber);
+  std::vector<std::vector<vpathToSend>> recvBuffer(neighborNumber);
+  bool keepWorking = (totalElement != 0);
+  while(keepWorking) {
+    printMsg("keepWorking: " + std::to_string(totalElement)
+             + ", localElement: " + std::to_string(localElementNumber));
+#pragma omp parallel for schedule(static, 1)
+    for(int j = 0; j < neighborNumber; j++) {
+      sendBuffer.at(j).clear();
+      for(int i = 0; i < this->threadNumber_; i++) {
+        sendBuffer.at(j).insert(sendBuffer.at(j).end(),
+                                sendBufferThread.at(i).at(j).begin(),
+                                sendBufferThread.at(i).at(j).end());
+        // TODO: check if ok with memory
+        sendBufferThread.at(i).at(j).clear();
+      }
+    }
+    // TODO: put that in function?
+    std::vector<MPI_Request> sendRequests(neighborNumber);
+    std::vector<MPI_Request> recvRequests(neighborNumber);
+    std::vector<MPI_Status> sendStatus(neighborNumber);
+    std::vector<MPI_Status> recvStatus(neighborNumber);
+    std::vector<ttk::SimplexId> sendMessageSize(neighborNumber, 0);
+    std::vector<ttk::SimplexId> recvMessageSize(neighborNumber, 0);
+    std::vector<int> recvCompleted(neighborNumber, 0);
+    std::vector<int> sendCompleted(neighborNumber, 0);
+    int sendPerformedCount = 0;
+    int recvPerformedCount = 0;
+    int sendPerformedCountTotal = 0;
+    int recvPerformedCountTotal = 0;
+    for(int i = 0; i < neighborNumber; i++) {
+      // Send size of sendbuffer
+      sendMessageSize[i] = sendBuffer.at(i).size();
+      MPI_Isend(&sendMessageSize[i], 1, MPI_SimplexId, neighbors[i], 0,
+                ttk::MPIcomm_, &sendRequests[i]);
+      MPI_Irecv(&recvMessageSize[i], 1, MPI_SimplexId, neighbors[i], 0,
+                ttk::MPIcomm_, &recvRequests[i]);
+    }
+    std::vector<MPI_Request> sendRequestsData(neighborNumber);
+    std::vector<MPI_Request> recvRequestsData(neighborNumber);
+    std::vector<MPI_Status> recvStatusData(neighborNumber);
+    int recvCount = 0;
+    int sendCount = 0;
+    int r;
+    while((sendPerformedCountTotal < neighborNumber
+           || recvPerformedCountTotal < neighborNumber)) {
+      if(sendPerformedCountTotal < neighborNumber) {
+        MPI_Waitsome(neighborNumber, sendRequests.data(), &sendPerformedCount,
+                     sendCompleted.data(), sendStatus.data());
+        if(sendPerformedCount > 0) {
+          for(int i = 0; i < sendPerformedCount; i++) {
+            int rankId = sendCompleted[i];
+            r = neighbors[i];
+            if((sendMessageSize[rankId] > 0)) {
+              MPI_Isend(sendBuffer.at(rankId).data(), sendMessageSize[rankId],
+                        MPI_MessageType, r, 1, ttk::MPIcomm_,
+                        &sendRequestsData[sendCount]);
+              sendCount++;
+            }
+          }
+          sendPerformedCountTotal += sendPerformedCount;
+        }
+      }
+      if(recvPerformedCountTotal < neighborNumber) {
+        MPI_Waitsome(neighborNumber, recvRequests.data(), &recvPerformedCount,
+                     recvCompleted.data(), recvStatus.data());
+        if(recvPerformedCount > 0) {
+          for(int i = 0; i < recvPerformedCount; i++) {
+            r = recvStatus[i].MPI_SOURCE;
+            int rankId = neighborsToId.find(r)->second;
+            if((recvMessageSize[rankId] > 0)) {
+              recvBuffer.at(rankId).resize(recvMessageSize[rankId]);
+              MPI_Irecv(recvBuffer.at(rankId).data(), recvMessageSize[rankId],
+                        MPI_MessageType, r, 1, ttk::MPIcomm_,
+                        &recvRequestsData[recvCount]);
 
-    // follow vpath from each vertex of the critical edge
-    followVPath(v0);
-    followVPath(v1);
+              recvCount++;
+            }
+          }
+          recvPerformedCountTotal += recvPerformedCount;
+        }
+      }
+    }
+    recvPerformedCountTotal = 0;
+    while(recvPerformedCountTotal < recvCount) {
+      printMsg("Before waitsome, with :"
+               + std::to_string(recvPerformedCountTotal)
+               + ", recvCount: " + std::to_string(recvCount));
+      MPI_Waitsome(recvCount, recvRequestsData.data(), &recvPerformedCount,
+                   recvCompleted.data(), recvStatusData.data());
+      if(recvPerformedCount > 0) {
+        for(int i = 0; i < recvPerformedCount; i++) {
+          r = recvStatusData[i].MPI_SOURCE;
+          int rankId = neighborsToId.find(r)->second;
+          printMsg("Receive messageSize "
+                   + std::to_string(recvMessageSize[rankId]) + " from "
+                   + std::to_string(r) + ", with id " + std::to_string(rankId));
+#pragma omp parallel
+          {
+            int threadNumber = omp_get_thread_num();
+#pragma omp for schedule(static)
+            for(int j = 0; j < recvMessageSize[rankId]; j++) {
+              struct vpathToSend element = recvBuffer.at(rankId).at(j);
+              ttk::SimplexId v
+                = triangulation.getVertexLocalId(element.extremaId_);
+              if(v == -1) {
+                printErr("Here is your problem");
+              }
+              followVPath(
+                v, element.saddleId_, element.saddleRank_, threadNumber);
+            }
+          }
+        }
+        recvPerformedCountTotal += recvPerformedCount;
+      }
+    }
+    printMsg("In waitall");
+    MPI_Waitall(sendCount, sendRequestsData.data(), MPI_STATUSES_IGNORE);
+    // Stop condition computation
+    printMsg("In allReduce");
+    MPI_Allreduce(&localElementNumber, &totalElement, 1, MPI_SimplexId, MPI_SUM,
+                  ttk::MPIcomm_);
+    keepWorking = (totalElement != 0);
+  }
+  printMsg("Start ghostPresence computation");
+  // Create ghostPresence and send finished VPath back
+  std::vector<std::vector<char>> ghostPresenceToSend(ttk::MPIsize_);
+  std::vector<std::vector<vpathFinished<1>>> finishedVPathToSend(ttk::MPIsize_);
+  std::vector<std::vector<std::vector<char>>> ghostPresenceToSendThread(
+    threadNumber_);
+  std::vector<std::vector<std::vector<vpathFinished<1>>>>
+    finishedVPathToSendThread(threadNumber_);
+  std::vector<std::vector<std::vector<ttk::SimplexId>>> ghostPerThread(
+    threadNumber_);
+  std::vector<std::vector<ttk::SimplexId>> ghostCounterThread(threadNumber_);
+  for(int i = 0; i < threadNumber_; i++) {
+    ghostPresenceToSendThread.at(i).resize(ttk::MPIsize_);
+    finishedVPathToSendThread.at(i).resize(ttk::MPIsize_);
+    ghostPerThread.at(i).resize(ttk::MPIsize_);
+    ghostCounterThread.at(i).resize(ttk::MPIsize_, 0);
   }
 
-  this->printMsg("Computed the descending 1-separatrices", 1.0,
-                 tm.getElapsedTime(), this->threadNumber_, debug::LineMode::NEW,
-                 debug::Priority::DETAIL);
+#pragma omp parallel num_threads(threadNumber_) firstprivate(ghostPerThread)
+  {
+    int threadNumber = omp_get_thread_num();
+#pragma omp for schedule(static, 1)
+    for(int j = 0; j < threadNumber; j++) {
+      for(int i = 0; i < ttk::MPIsize_; i++) {
+        for(int k = 0; k < sendFinishedVPathBufferThread.at(j).at(i).size();
+            k++) {
+          // Find owner by applying the following rule:
+          // if the current rank is in ghostPresence, then the current rank is
+          // the owner if not, it is the rank with the lowest rank id that is
+          // the owner
+          auto vp = sendFinishedVPathBufferThread.at(j).at(i).at(k);
+          ttk::SimplexId lid = triangulation.getVertexLocalId(vp.extremaId_);
+          auto &ghost{ghostPresence[lid]};
+          auto it = std::find(
+            ghost.begin(), ghost.end(), static_cast<char>(ttk::MPIrank_));
+          if(it != ghost.end()) {
+            // The rank of the extrema is the current rank
+            // We store to send the finished vpath
+            vp.extremaRank_ = ttk::MPIrank_;
+            vp.ghostPresenceSize_ = 0;
+          } else {
+            // The rank of the extrema is NOT the current rank
+            // We find the smallest rank
+            auto minRank = std::min_element(ghost.begin(), ghost.end());
+            vp.extremaRank_ = (*minRank);
+            ghostCounterThread.at(threadNumber).at(i) += ghost.size();
+            vp.ghostPresenceSize_ = ghostCounterThread.at(threadNumber).at(i);
+            // Send the ghostPresence to that rank
+            ghostPresenceToSendThread.at(threadNumber)
+              .at(i)
+              .insert(ghostPresenceToSendThread.at(threadNumber).at(i).end(),
+                      ghost.begin(), ghost.end());
+          }
+          finishedVPathToSendThread.at(threadNumber).at(i).emplace_back(vp);
+        }
+      }
+    }
+  }
+  // Merge the vectors
+#pragma omp parallel for schedule(static, 1)
+  for(int j = 0; j < ttk::MPIsize_; j++) {
+    ttk::SimplexId ghostCounter{0};
+    for(int i = 0; i < this->threadNumber_; i++) {
+      std::transform(finishedVPathToSendThread.at(i).at(j).begin(),
+                     finishedVPathToSendThread.at(i).at(j).end(),
+                     finishedVPathToSendThread.at(i).at(j).begin(),
+                     [this, &ghostCounter](vpathFinished<1> &vp) {
+                       if(vp.ghostPresenceSize_ != 0) {
+                         vp.ghostPresenceSize_ += ghostCounter;
+                       }
+                       return vp;
+                     });
+      ghostPresenceToSend.at(j).insert(
+        ghostPresenceToSend.at(j).end(),
+        ghostPresenceToSendThread.at(i).at(j).begin(),
+        ghostPresenceToSendThread.at(i).at(j).end());
+      finishedVPathToSend.at(j).insert(
+        finishedVPathToSend.at(j).end(),
+        finishedVPathToSendThread.at(i).at(j).begin(),
+        finishedVPathToSendThread.at(i).at(j).end());
+      ghostCounter += ghostPerThread.at(i).at(j).size();
+    }
+  }
+  printMsg("Start ghostPresence comm");
+  // Send/Recv them
+  std::vector<ttk::SimplexId> recvMessageSize(2 * ttk::MPIsize_, 0);
+  std::vector<ttk::SimplexId> sendMessageSize(2 * ttk::MPIsize_, 0);
+  std::vector<MPI_Request> requests(4 * ttk::MPIsize_, MPI_REQUEST_NULL);
+  std::vector<std::vector<vpathFinished<1>>> recvVPathFinished(ttk::MPIsize_);
+  std::vector<std::vector<char>> recvGhostPresence(ttk::MPIsize_);
 
-  return res;
+  for(int i = 0; i < ttk::MPIsize_; i++) {
+    if(i != ttk::MPIrank_) {
+      sendMessageSize[2 * i] = finishedVPathToSend[i].size();
+      sendMessageSize[2 * i + 1] = ghostPresenceToSend[i].size();
+      MPI_Isend(sendMessageSize.data() + 2 * i, 2, MPI_SimplexId, i, 0,
+                ttk::MPIcomm_, &requests[2 * i]);
+      MPI_Irecv(recvMessageSize.data() + 2 * i, 2, MPI_SimplexId, i, 0,
+                ttk::MPIcomm_, &requests[2 * i + 1]);
+    }
+  }
+  MPI_Waitall(2 * ttk::MPIsize_, requests.data(), MPI_STATUSES_IGNORE);
+  // Exchange of the data
+  for(int i = 0; i < ttk::MPIsize_; i++) {
+    recvVPathFinished[i].resize(recvMessageSize[2 * i]);
+    recvGhostPresence[i].resize(recvMessageSize[2 * i + 1]);
+    if(recvMessageSize[2 * i] > 0) {
+      MPI_Irecv(recvVPathFinished[i].data(), recvMessageSize[2 * i],
+                MPI_MessageType, i, 1, ttk::MPIcomm_, &requests[4 * i]);
+    }
+    if(sendMessageSize[2 * i] > 0) {
+      MPI_Isend(finishedVPathToSend[i].data(), sendMessageSize[2 * i],
+                MPI_MessageType, i, 1, ttk::MPIcomm_, &requests[4 * i + 1]);
+    }
+    if(recvMessageSize[2 * i + 1] > 0) {
+      MPI_Irecv(recvGhostPresence[i].data(), recvMessageSize[2 * i + 1],
+                MPI_CHAR, i, 2, ttk::MPIcomm_, &requests[4 * i + 2]);
+    }
+    if(sendMessageSize[2 * i + 1] > 0) {
+      MPI_Isend(ghostPresenceToSend[i].data(), sendMessageSize[2 * i + 1],
+                MPI_CHAR, i, 2, ttk::MPIcomm_, &requests[4 * i + 3]);
+    }
+  }
+  MPI_Waitall(4 * ttk::MPIrank_, requests.data(), MPI_STATUSES_IGNORE);
+  printMsg("Receive ghostPresence");
+  for(int i = 0; i < ttk::MPIrank_; i++) {
+#pragma omp parallel for schedule(static)
+    for(int j = 0; j < recvMessageSize[2 * i]; j++) {
+      // Receive element: create VPath and add it to the list
+      auto &vp{recvVPathFinished.at(i).at(j)};
+      ttk::SimplexId beginGhost
+        = (j == 0) ? 0 : recvVPathFinished.at(i).at(j - 1).ghostPresenceSize_;
+      extremaNode<1> n(
+        vp.extremaId_, -1, vp.vOrder_[0], Rep{-1, -1}, vp.extremaRank_);
+      // We store it in the current rank
+      saddleLocks[vp.saddleId_].lock();
+      res[vp.saddleId_].emplace_back(n);
+      saddleLocks[vp.saddleId_].unlock();
+      if(vp.ghostPresenceSize_ != 0) {
+        // Add the received ghostPresence to the local ghostPresence
+        // If there is only one process, then the extrema won't be on the
+        // boundary of the new graph, there is no need to record it
+        if(vp.ghostPresenceSize_ - beginGhost > 1) {
+          std::vector<char> ghost{};
+          ghost.insert(ghost.end(),
+                       recvGhostPresence.at(i).begin() + beginGhost,
+                       recvGhostPresence.at(i).begin()
+                         + static_cast<ttk::SimplexId>(vp.ghostPresenceSize_));
+          ttk::SimplexId lid = triangulation.getVertexLocalId(vp.extremaId_);
+          // If the extrema is not locally present in the triangulation,
+          // Add the entry to the map
+          if(lid == -1) {
+#pragma omp critical
+            { localGhostPresenceMap[vp.extremaId_] = ghost; }
+          } else {
+            extremaLocks[lid].lock();
+            ghostPresence.at(lid) = ghost;
+            extremaLocks[lid].unlock();
+          }
+        }
+      }
+    }
+  }
+  this->printMsg("Computed the descending 1-separatrices", 1.0,
+                 tm.getElapsedTime(), this->threadNumber_,
+                 debug::LineMode::NEW);
+
+  return 0;
 }
 
 template <typename triangulationType, typename GFS, typename GFSN, typename OB>
@@ -957,8 +1363,8 @@ std::vector<std::vector<SimplexId>>
   }
 
   this->printMsg("Computed the ascending 1-separatrices", 1.0,
-                 tm.getElapsedTime(), this->threadNumber_, debug::LineMode::NEW,
-                 debug::Priority::DETAIL);
+                 tm.getElapsedTime(), this->threadNumber_,
+                 debug::LineMode::NEW);
 
   return res;
 }
@@ -975,20 +1381,29 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
   if(this->ComputeMinSad) {
     // minima - saddle pairs
     Timer tm{};
-    auto saddle1ToMinima = getSaddle1ToMinima(criticalEdges, triangulation);
+    std::vector<std::vector<extremaNode<1>>> saddle1ToMinima;
+    std::unordered_map<ttk::SimplexId, std::vector<char>> localGhostPresenceMap;
+    std::vector<std::vector<char>> localGhostPresenceVector;
+    this->getSaddle1ToMinima(criticalEdges, triangulation, offsets,
+                             saddle1ToMinima, localGhostPresenceVector,
+                             localGhostPresenceMap);
     Timer tmseq{};
-
+    printMsg("Start preMin");
     auto &saddleToPairedExtrema{this->saddleToPairedMin_};
     auto &extremaToPairedSaddle{this->minToPairedSaddle_};
     auto &globalToLocalSaddle{this->globalToLocalSaddle1_};
     std::vector<saddleEdge<2>> saddles{};
     std::vector<extremaNode<1>> extremas{};
+    std::vector<std::vector<char>> ghostPresence{};
     saddles.reserve(saddle1ToMinima.size());
     extremas.reserve(2 * saddle1ToMinima.size());
     globalToLocalSaddle.reserve(saddle1ToMinima.size());
     std::unordered_map<ttk::SimplexId, ttk::SimplexId> globalToLocalExtrema{};
     globalToLocalExtrema.reserve(2 * saddle1ToMinima.size());
+    ghostPresence.reserve(2 * saddle1ToMinima.size());
     ttk::SimplexId saddle1ToMinimaNumber = saddle1ToMinima.size();
+    std::vector<char> ghosts{};
+    // Add ghostPresence
     for(size_t i = 0; i < saddle1ToMinima.size(); ++i) {
       auto &mins = saddle1ToMinima[i];
       const auto s1 = criticalEdges[i];
@@ -999,21 +1414,32 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       if(mins.size() != 2) {
         continue;
       }
-      // TODO: scalars!
       ttk::SimplexId vOrd[2];
       fillEdgeOrder(s1, offsets, triangulation, vOrd);
       saddleEdge e
         = saddleEdge<2>(triangulation.getEdgeGlobalId(s1), critEdgesOrder[s1],
                         vOrd, static_cast<char>(ttk::MPIrank_));
       for(int j = 0; j < 2; j++) {
-        ttk::SimplexId gid = triangulation.getVertexGlobalId(mins[j]);
+        // ttk::SimplexId gid = triangulation.getVertexGlobalId(mins[j]);
         ttk::SimplexId lid{static_cast<ttk::SimplexId>(extremas.size())};
-        auto pair = globalToLocalExtrema.try_emplace(gid, lid);
+        auto pair = globalToLocalExtrema.try_emplace(mins[j].gid_, lid);
         if(pair.second) {
-          extremaNode n
-            = extremaNode<1>(gid, lid, offsets[mins[j]], Rep{lid, -1},
-                             static_cast<char>(ttk::MPIrank_));
-          extremas.emplace_back(n);
+          mins[j].lid_ = lid;
+          mins[j].rep_.extremaId_ = lid;
+          extremas.emplace_back(mins[j]);
+          ttk::SimplexId triangLid
+            = triangulation.getVertexLocalId(mins[j].gid_);
+          if(triangLid == -1) {
+            auto it = localGhostPresenceMap.find(mins[j].gid_);
+            if(it != localGhostPresenceMap.end()) {
+              ghosts = localGhostPresenceMap[mins[j].gid_];
+            } else {
+              ghosts.resize(0);
+            }
+          } else {
+            ghosts = localGhostPresenceVector[triangLid];
+          }
+          ghostPresence.emplace_back(ghosts);
         } else {
           lid = (*pair.first).second;
         }
@@ -1021,6 +1447,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       }
       saddles.emplace_back(e);
     }
+    printMsg("finished preMin");
     const auto cmpSadMin = [=, &extremas](const saddleEdge<2> &s0,
                                           const saddleEdge<2> &s1) -> bool {
       if(&s0 != &s1) {
@@ -1035,13 +1462,14 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       }
       return extremas[s0.t_[0]].order_ > extremas[s1.t_[0]].order_;
     };
+
     // TRI des arcs
     TTK_PSORT(this->threadNumber_, saddles.begin(), saddles.end(), cmpSadMin);
     // Mise en place des lid des arcs
 
     // auto rng = std::default_random_engine{0};
     // std::shuffle(std::begin(saddles), std::end(saddles), rng);
-
+    printMsg("Start map");
 #pragma omp declare reduction (merge :std::unordered_map<ttk::SimplexId,ttk::SimplexId>:omp_out.merge(omp_in))
 #pragma omp parallel for reduction(merge : globalToLocalSaddle) schedule(static)
     for(int i = 0; i < saddle1ToMinimaNumber; i++) {
@@ -1049,25 +1477,27 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       s.lid_ = i;
       globalToLocalSaddle[s.gid_] = i;
     }
+    printMsg("Finished map");
+    MPI_Barrier(ttk::MPIcomm_);
     extremaToPairedSaddle.resize(globalToLocalExtrema.size(), -1);
     saddleToPairedExtrema.resize(saddle1ToMinima.size(), -1);
-    std::vector<std::vector<char>> ghostPresence(
-      extremas.size(), std::vector<char>());
+
     MPI_Datatype MPI_MessageType;
-    createMPIType<1, 2>(MPI_MessageType);
+    printMsg("Start messageType");
+    createMPIMessageType<1, 2>(MPI_MessageType);
+    printMsg("Start tripletsToPersistence pairs");
     tripletsToPersistencePairs<1, 2>(
       pairs, 0, extremas, saddles, saddleToPairedExtrema, extremaToPairedSaddle,
       globalToLocalSaddle, globalToLocalExtrema, ghostPresence,
       MPI_MessageType);
     const auto nMinSadPairs = pairs.size();
 
+    this->printMsg("min-saddle pairs sequential part", 1.0,
+                   tmseq.getElapsedTime(), 1, debug::LineMode::NEW);
+
     this->printMsg(
       "Computed " + std::to_string(nMinSadPairs) + " min-saddle pairs", 1.0,
       tm.getElapsedTime(), this->threadNumber_);
-
-    this->printMsg("min-saddle pairs sequential part", 1.0,
-                   tmseq.getElapsedTime(), 1, debug::LineMode::NEW,
-                   debug::Priority::VERBOSE);
 
     // non-paired minima
 #pragma omp parallel for reduction(+:nConnComp) shared(pairs) num_threads(this->threadNumber_)
@@ -1085,14 +1515,28 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     }
   } else {
     // still extract the global pair
-    const auto globMin{
+    const auto localMin{
       *std::min_element(criticalExtremas.begin(), criticalExtremas.end(),
                         [offsets](const SimplexId a, const SimplexId b) {
                           return offsets[a] < offsets[b];
                         })};
-    // TODO: in distributed, MPI_MIN reduce
-    pairs.emplace_back(triangulation.getVertexGlobalId(globMin), -1, 0);
-    nConnComp++;
+    ttk::SimplexId totalNumberOfVertices{-1};
+    ttk::SimplexId localNumberOfVertices = triangulation.getNumberOfVertices();
+    MPI_Datatype MPI_SimplexId = getMPIType(totalNumberOfVertices);
+
+    MPI_Allreduce(&localNumberOfVertices, &totalNumberOfVertices, 1,
+                  MPI_SimplexId, MPI_SUM, ttk::MPIcomm_);
+    ttk::SimplexId localMinOffset{totalNumberOfVertices};
+    ttk::SimplexId globalMinOffset{-1};
+    if(triangulation.getVertexRank(localMin) == ttk::MPIrank_) {
+      localMinOffset = offsets[localMin];
+    }
+    MPI_Allreduce(&localMinOffset, &globalMinOffset, 1, MPI_SimplexId, MPI_MIN,
+                  ttk::MPIcomm_);
+    if(globalMinOffset == localMinOffset) {
+      pairs.emplace_back(triangulation.getVertexGlobalId(localMin), -1, 0);
+      nConnComp++;
+    }
   }
 }
 
@@ -1186,8 +1630,10 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
 
   std::vector<saddleEdge<sizeSad>> saddles{};
   std::vector<extremaNode<sizeExtr>> extremas{};
+  std::vector<std::vector<char>> ghostPresence{};
   saddles.reserve(saddle2ToMaxima.size());
   extremas.reserve(2 * saddle2ToMaxima.size());
+  ghostPresence.reserve(2 * saddle2ToMaxima.size());
   globalToLocalExtrema.reserve(2 * saddle2ToMaxima.size());
   if(dim == 3) {
     globalToLocalSaddle.reserve(saddle2ToMaxima.size());
@@ -1301,10 +1747,8 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   extremaToPairedSaddle.resize(globalToLocalExtrema.size(), -1);
   saddleToPairedExtrema.resize(saddle2ToMaxima.size(), -1);
   const auto nMinSadPairs = pairs.size();
-  std::vector<std::vector<char>> ghostPresence(
-    extremas.size(), std::vector<char>());
   MPI_Datatype MPI_MessageType;
-  createMPIType<sizeExtr, sizeSad>(MPI_MessageType);
+  createMPIMessageType<sizeExtr, sizeSad>(MPI_MessageType);
   tripletsToPersistencePairs<sizeExtr, sizeSad>(
     pairs, dim - 1, extremas, saddles, saddleToPairedExtrema,
     extremaToPairedSaddle, globalToLocalSaddle, globalToLocalExtrema,
@@ -1316,8 +1760,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
     "Computed " + std::to_string(nSadMaxPairs) + " saddle-max pairs", 1.0,
     tm.getElapsedTime(), this->threadNumber_);
   this->printMsg("saddle-max pairs sequential part", 1.0,
-                 tmseq.getElapsedTime(), 1, debug::LineMode::NEW,
-                 debug::Priority::VERBOSE);
+                 tmseq.getElapsedTime(), 1, debug::LineMode::NEW);
 }
 template <typename triangulationType>
 void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
@@ -1571,11 +2014,15 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   for(int i = 0; i < saddleNumber; i++) {
     if(saddleToPairedExtrema[i] != -1 && saddles[i].rank_ == ttk::MPIrank_) {
       if(increasing) {
-        pairs.emplace_back(
-          saddles[i].gid_, extremas[saddleToPairedExtrema[i]].gid_, pairDim);
+        if(saddles[i].rank_ == ttk::MPIrank_) {
+          pairs.emplace_back(
+            saddles[i].gid_, extremas[saddleToPairedExtrema[i]].gid_, pairDim);
+        }
       } else {
-        pairs.emplace_back(
-          extremas[saddleToPairedExtrema[i]].gid_, saddles[i].gid_, pairDim);
+        if(saddles[i].rank_ == ttk::MPIrank_) {
+          pairs.emplace_back(
+            extremas[saddleToPairedExtrema[i]].gid_, saddles[i].gid_, pairDim);
+        }
       }
     }
   }
@@ -1597,7 +2044,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
   if(element.sRank_ != ttk::MPIrank_) {
     // TODO: potentiellement s déjà présent?
     auto it = globalToLocalSaddle.find(element.s_);
-    struct saddleEdge<sizeSad> s {}; // TODO: probably a problem (reference)
+    struct saddleEdge<sizeSad> s {};
     bool isSaddleLocal{true};
     if(it != globalToLocalSaddle.end()) {
       s = saddles[it->second];
@@ -2215,8 +2662,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     tm2.getElapsedTime(), this->threadNumber_);
 
   this->printMsg("saddle-saddle pairs sequential part", 1.0,
-                 tmseq.getElapsedTime(), 1, debug::LineMode::NEW,
-                 debug::Priority::VERBOSE);
+                 tmseq.getElapsedTime(), 1, debug::LineMode::NEW);
 }
 
 template <typename triangulationType>
@@ -2232,8 +2678,7 @@ void ttk::DiscreteMorseSandwichMPI::extractCriticalCells(
   this->dg_.getCriticalPoints(criticalCellsByDim, triangulation);
 
   this->printMsg("Extracted critical cells", 1.0, tm.getElapsedTime(),
-                 this->threadNumber_, debug::LineMode::NEW,
-                 debug::Priority::VERBOSE);
+                 this->threadNumber_, debug::LineMode::NEW);
 
   // memory allocations
   auto &critEdges{this->critEdges_};
@@ -2327,8 +2772,7 @@ void ttk::DiscreteMorseSandwichMPI::extractCriticalCells(
   }
 
   this->printMsg("Extracted & sorted critical cells", 1.0, tm.getElapsedTime(),
-                 this->threadNumber_, debug::LineMode::NEW,
-                 debug::Priority::DETAIL);
+                 this->threadNumber_, debug::LineMode::NEW);
 }
 
 template <typename triangulationType>
@@ -2370,7 +2814,7 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
                           criticalCellsByDim[0], offsets, nConnComp,
                           triangulation);
   // saddle - maxima pairs
-  this->getMaxSaddlePairs(pairs, criticalCellsByDim[dim - 1],
+  /*this->getMaxSaddlePairs(pairs, criticalCellsByDim[dim - 1],
                           critCellsOrder[dim - 1], critCellsOrder[dim],
                           triangulation, ignoreBoundary, offsets);
 
@@ -2381,7 +2825,7 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
     this->getSaddleSaddlePairs(pairs, false, tmp, criticalCellsByDim[1],
                                criticalCellsByDim[2], critCellsOrder[1],
                                triangulation);
-  }
+  }*/
   // TODO: implement following
   /*if(std::is_same<triangulationType, ttk::ExplicitTriangulation>::value) {
     // create infinite pairs from non-paired 1-saddles, 2-saddles and maxima

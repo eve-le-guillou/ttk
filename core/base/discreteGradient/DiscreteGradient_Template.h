@@ -764,7 +764,8 @@ int DiscreteGradient::getDescendingPath(
       const Cell vertex(0, currentId);
       vpath.push_back(vertex);
 
-      if(isCellCritical(vertex)) {
+      if(isCellCritical(vertex)
+         || triangulation.getVertexRank(currentId) != ttk::MPIrank_) {
         break;
       }
 
