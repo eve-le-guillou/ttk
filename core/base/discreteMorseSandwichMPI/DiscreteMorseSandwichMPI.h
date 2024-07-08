@@ -970,9 +970,6 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
                              static_cast<char>(ttk::MPIrank_));
             // We store it in the current rank
             // TODO: only locks for second one?
-            if(res.size() < saddleId) {
-              printErr("HERE IS YOUR PB: " + std::to_string(saddleId));
-            }
             saddleLocks[saddleId].lock();
             res[saddleId].emplace_back(n);
             saddleLocks[saddleId].unlock();

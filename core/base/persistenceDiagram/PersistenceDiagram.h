@@ -135,13 +135,26 @@
 // base code includes
 #include <ApproximateTopology.h>
 #include <DiscreteMorseSandwich.h>
+#include <DiscreteMorseSandwichMPI.h>
 #include <FTMTreePP.h>
 #include <PersistenceDiagramUtils.h>
 #include <PersistentSimplexPairs.h>
 #include <ProgressiveTopology.h>
 #include <Triangulation.h>
+#include <psort.h>
+#include <string>
 
 namespace ttk {
+
+  namespace persistenceSort {
+    inline bool comp(const PersistencePair a, const PersistencePair b) {
+      return a.birth.offset < b.birth.offset;
+    };
+
+    inline bool oppositeComp(const PersistencePair a, const PersistencePair b) {
+      return a.birth.offset > b.birth.offset;
+    };
+  } // namespace persistenceSort
 
   /**
    * Compute the persistence diagram of a function on a triangulation.
@@ -288,7 +301,7 @@ namespace ttk {
     ftm::FTMTreePP contourTree_{};
     dcg::DiscreteGradient dcg_{};
     PersistentSimplexPairs psp_{};
-    DiscreteMorseSandwich dms_{};
+    DiscreteMorseSandwichMPI dms_{};
 
     // int BackEnd{0};
     BACKEND BackEnd{BACKEND::DISCRETE_MORSE_SANDWICH};
@@ -326,22 +339,32 @@ int ttk::PersistenceDiagram::computeCTPersistenceDiagram(
     if(type == true) {
       diagram[i] = PersistencePair{
         CriticalVertex{
-          v0, getNodeType(tree.getJoinTree(), ftm::TreeType::Join, v0), {}, {}},
+          v0,
+          {},
+          {},
+          {},
+          getNodeType(tree.getJoinTree(), ftm::TreeType::Join, v0)},
         CriticalVertex{
-          v1, getNodeType(tree.getJoinTree(), ftm::TreeType::Join, v1), {}, {}},
+          v1,
+          {},
+          {},
+          {},
+          getNodeType(tree.getJoinTree(), ftm::TreeType::Join, v1)},
         0, true};
     } else {
       diagram[i] = PersistencePair{
         CriticalVertex{
           v1,
-          getNodeType(tree.getSplitTree(), ftm::TreeType::Split, v1),
           {},
-          {}},
+          {},
+          {},
+          getNodeType(tree.getSplitTree(), ftm::TreeType::Split, v1)},
         CriticalVertex{
           v0,
-          getNodeType(tree.getSplitTree(), ftm::TreeType::Split, v0),
           {},
-          {}},
+          {},
+          {},
+          getNodeType(tree.getSplitTree(), ftm::TreeType::Split, v0)},
         2, true};
     }
   }
@@ -408,11 +431,15 @@ int ttk::PersistenceDiagram::execute(std::vector<PersistencePair> &CTDiagram,
 
   this->printMsg("Complete", 1.0, tm.getElapsedTime(), this->threadNumber_);
 
-  // augment persistence pairs with meta-data
-  augmentPersistenceDiagram(CTDiagram, inputScalars, triangulation);
+  if(!isRunningWithMPI()) {
+    // augment persistence pairs with meta-data
+    augmentPersistenceDiagram(CTDiagram, inputScalars, triangulation);
 
-  // finally sort the diagram
-  sortPersistenceDiagram(CTDiagram, inputOffsets);
+    // finally sort the diagram
+    sortPersistenceDiagram(CTDiagram, inputOffsets);
+  } else {
+    /* TODO: nothing?*/
+  }
 
   printMsg(ttk::debug::Separator::L1);
 
@@ -469,8 +496,8 @@ int ttk::PersistenceDiagram::executePersistentSimplex(
                                ? CriticalType::Saddle1
                                : CriticalType::Local_maximum;
       CTDiagram.emplace_back(PersistencePair{
-        CriticalVertex{p.birth, CriticalType::Local_minimum, {}, {}},
-        CriticalVertex{death, deathType, {}, {}}, p.type, isFinite});
+        CriticalVertex{p.birth, {}, {}, {}, CriticalType::Local_minimum},
+        CriticalVertex{death, {}, {}, {}, deathType}, p.type, isFinite});
     } else if(p.type == 1) {
       const auto birthType
         = (dim == 3) ? CriticalType::Saddle1 : CriticalType::Saddle2;
@@ -478,12 +505,12 @@ int ttk::PersistenceDiagram::executePersistentSimplex(
                                ? CriticalType::Saddle2
                                : CriticalType::Local_maximum;
       CTDiagram.emplace_back(PersistencePair{
-        CriticalVertex{p.birth, birthType, {}, {}},
-        CriticalVertex{death, deathType, {}, {}}, p.type, isFinite});
+        CriticalVertex{p.birth, {}, {}, {}, birthType},
+        CriticalVertex{death, {}, {}, {}, deathType}, p.type, isFinite});
     } else if(p.type == 2) {
       CTDiagram.emplace_back(PersistencePair{
-        CriticalVertex{p.birth, CriticalType::Saddle2, {}, {}},
-        CriticalVertex{death, CriticalType::Local_maximum, {}, {}}, p.type,
+        CriticalVertex{p.birth, {}, {}, {}, CriticalType::Saddle2},
+        CriticalVertex{death, {}, {}, {}, CriticalType::Local_maximum}, p.type,
         isFinite});
     }
   }
@@ -503,68 +530,336 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   const auto dim = triangulation->getDimensionality();
 
   dms_.buildGradient(inputScalars, scalarsMTime, inputOffsets, *triangulation);
-  std::vector<DiscreteMorseSandwich::PersistencePair> dms_pairs{};
+  std::vector<DiscreteMorseSandwichMPI::PersistencePair> dms_pairs{};
   dms_.computePersistencePairs(
     dms_pairs, inputOffsets, *triangulation, this->IgnoreBoundary);
   CTDiagram.resize(dms_pairs.size());
 
   // transform DiscreteMorseSandwich pairs (critical cells id) to PL
   // pairs (vertices id)
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp parallel for num_threads(threadNumber_)
-#endif // TTK_ENABLE_OPENMP
-  for(size_t i = 0; i < dms_pairs.size(); ++i) {
-    auto &pair{dms_pairs[i]};
-    if(pair.type > 0) {
-      pair.birth = dms_.getCellGreaterVertex(
-        Cell{pair.type, pair.birth}, *triangulation);
-    }
-    if(pair.death != -1) {
-      pair.death = dms_.getCellGreaterVertex(
-        Cell{pair.type + 1, pair.death}, *triangulation);
-    }
-  }
-
+  struct dataRequest {
+    ttk::SimplexId gid_;
+    ttk::SimplexId lid_;
+    char dim_;
+    char isBirth_;
+  };
   // find the global maximum
   const auto nVerts = triangulation->getNumberOfVertices();
-  const SimplexId globmax = std::distance(
+  const SimplexId localMax = std::distance(
     inputOffsets, std::max_element(inputOffsets, inputOffsets + nVerts));
+  MPI_Datatype MPI_SimplexId = getMPIType(localMax);
+  ttk::SimplexId globmax{-1};
+  MPI_Allreduce(&localMax, &globmax, 1, MPI_SimplexId, MPI_MAX, ttk::MPIcomm_);
+  std::vector<std::vector<dataRequest>> sendRecvBuffer(ttk::MPIsize_);
 
-  // convert pairs to the relevant format
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp parallel for num_threads(threadNumber_)
-#endif // TTK_ENABLE_OPENMP
-  for(size_t i = 0; i < dms_pairs.size(); ++i) {
-    const auto &p{dms_pairs[i]};
+  const auto createDataRequestMPIType =
+    [this, &MPI_SimplexId](MPI_Datatype &MPI_MessageType) {
+      MPI_Datatype types[] = {MPI_SimplexId, MPI_SimplexId, MPI_CHAR, MPI_CHAR};
+      int lengths[] = {1, 1, 1, 1};
+      const long int mpi_offsets[]
+        = {offsetof(dataRequest, gid_), offsetof(dataRequest, lid_),
+           offsetof(dataRequest, dim_), offsetof(dataRequest, isBirth_)};
+      MPI_Type_create_struct(4, lengths, mpi_offsets, types, &MPI_MessageType);
+      MPI_Type_commit(&MPI_MessageType);
+    };
+
+  struct dataResponse {
+    ttk::SimplexId lid_{-1};
+    ttk::SimplexId vertexGid_{-1};
+    ttk::SimplexId offset_{-1};
+    float coords_[3];
+    double sfValue_{0};
+    char isBirth_{0};
+  };
+
+  const auto createDataResponseMPIType =
+    [this, &MPI_SimplexId](MPI_Datatype &MPI_MessageType) {
+      MPI_Datatype types[] = {MPI_SimplexId, MPI_SimplexId, MPI_SimplexId,
+                              MPI_FLOAT,     MPI_DOUBLE,    MPI_CHAR};
+      int lengths[] = {1, 1, 1, 3, 1, 1};
+      const long int mpi_offsets[]
+        = {offsetof(dataResponse, lid_),     offsetof(dataResponse, vertexGid_),
+           offsetof(dataResponse, offset_),  offsetof(dataResponse, coords_),
+           offsetof(dataResponse, sfValue_), offsetof(dataResponse, isBirth_)};
+      MPI_Type_create_struct(6, lengths, mpi_offsets, types, &MPI_MessageType);
+      MPI_Type_commit(&MPI_MessageType);
+    };
+
+  const auto fillBirthData
+    = [this, &dim](PersistencePair &CTPair,
+                   DiscreteMorseSandwichMPI::PersistencePair &p,
+                   ttk::SimplexId birthId) {
+        CTPair.birth.id = birthId;
+        if(p.type == 0) {
+          CTPair.birth.type = CriticalType::Local_minimum;
+        } else if(p.type == 1) {
+          CTPair.birth.type
+            = (dim == 3) ? CriticalType::Saddle1 : CriticalType::Saddle2;
+        } else if(p.type == 2) {
+          CTPair.birth.type = ((p.death >= 0) || dim == 3)
+                                ? CriticalType::Saddle2
+                                : CriticalType::Local_maximum;
+        }
+      };
+
+  const auto augmentBirthPersistence
+    = [this, &triangulation, &inputScalars, &inputOffsets](
+        PersistencePair &CTPair, ttk::SimplexId lid) {
+        triangulation->getVertexPoint(lid, CTPair.birth.coords[0],
+                                      CTPair.birth.coords[1],
+                                      CTPair.birth.coords[2]);
+        if(CTPair.birth.coords[0] > 22 || CTPair.birth.coords[0] < -22) {
+          printErr("Birth, Here is your problem, lid:" + std::to_string(lid)
+                   + ", value: " + std::to_string(CTPair.death.coords[0]));
+        }
+        CTPair.birth.sfValue = inputScalars[lid];
+        CTPair.birth.offset = inputOffsets[lid];
+      };
+
+  const auto fillDeathData = [this, &globmax, &dim](
+                               PersistencePair &CTPair,
+                               DiscreteMorseSandwichMPI::PersistencePair &p,
+                               ttk::SimplexId deathId) {
     const auto isFinite = (p.death >= 0);
-    const auto death = isFinite ? p.death : globmax;
-
+    CTPair.death.id = deathId;
     if(p.type == 0) {
-      const auto dtype = (isFinite && dim > 1) ? CriticalType::Saddle1
-                                               : CriticalType::Local_maximum;
-      CTDiagram[i] = PersistencePair{
-        CriticalVertex{p.birth, CriticalType::Local_minimum, {}, {}},
-        CriticalVertex{death, dtype, {}, {}}, p.type, isFinite};
+      CTPair.death.type = (isFinite && dim > 1) ? CriticalType::Saddle1
+                                                : CriticalType::Local_maximum;
     } else if(p.type == 1) {
-      const auto btype
-        = (dim == 3) ? CriticalType::Saddle1 : CriticalType::Saddle2;
-      const auto dtype = (isFinite && dim == 3) ? CriticalType::Saddle2
-                                                : CriticalType::Local_maximum;
-      CTDiagram[i] = PersistencePair{CriticalVertex{p.birth, btype, {}, {}},
-                                     CriticalVertex{death, dtype, {}, {}},
-                                     p.type, isFinite};
+      CTPair.death.type = (isFinite && dim == 3) ? CriticalType::Saddle2
+                                                 : CriticalType::Local_maximum;
     } else if(p.type == 2) {
-      const auto btype = (isFinite || dim == 3) ? CriticalType::Saddle2
-                                                : CriticalType::Local_maximum;
-      CTDiagram[i] = PersistencePair{
-        CriticalVertex{p.birth, btype, {}, {}},
-        CriticalVertex{death, CriticalType::Local_maximum, {}, {}}, p.type,
-        isFinite};
+      CTPair.death.type = CriticalType::Local_maximum;
+    }
+  };
+
+  const auto augmentDeathPersistence
+    = [this, &triangulation, &inputScalars, &inputOffsets](
+        PersistencePair &CTPair, ttk::SimplexId lid) {
+        triangulation->getVertexPoint(lid, CTPair.death.coords[0],
+                                      CTPair.death.coords[1],
+                                      CTPair.death.coords[2]);
+        CTPair.death.sfValue = inputScalars[lid];
+        CTPair.death.offset = inputOffsets[lid];
+        if(CTPair.death.coords[0] > 22 || CTPair.death.coords[0] < -22) {
+          printErr("Here is your problem, lid:" + std::to_string(lid)
+                   + ", value: " + std::to_string(CTPair.death.coords[0]) + ", "
+                   + std::to_string(triangulation->getNumberOfVertices()));
+        }
+      };
+  const auto getBirthSimplexType = [this, &dim](const int type) {
+    switch(type) {
+      case 0:
+        return 0;
+      case 1:
+        return 1;
+      default:
+        if(dim == 3) {
+          return 2;
+        } else {
+          return 1;
+        }
+    }
+  };
+
+  const auto getDeathSimplexType = [this, &dim](const int type) {
+    switch(type) {
+      case 0:
+        return 1;
+      case 1:
+        return 2;
+      default:
+        if(dim == 3) {
+          return 3;
+        } else {
+          return 2;
+        }
+    }
+  };
+#ifdef TTK_ENABLE_OPENMP
+//#pragma omp declare reduction(merge :std::vector<dataRequest>:
+//omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) #pragma omp
+//parallel for num_threads(threadNumber_) reduction(merge:
+//sendRecvBuffer.at(ttk::MPIrank_))
+#endif // TTK_ENABLE_OPENMP
+  for(ttk::SimplexId i = 0; i < dms_pairs.size(); ++i) {
+    auto &pair{dms_pairs[i]};
+    int simplexType = getBirthSimplexType(pair.type);
+    ttk::SimplexId lid
+      = triangulation->getSimplexLocalId(pair.birth, simplexType);
+    if(triangulation->getSimplexRank(lid, simplexType) == ttk::MPIrank_) {
+      if(pair.type > 0) {
+        lid = dms_.getCellGreaterVertex(Cell{pair.type, lid}, *triangulation);
+        pair.birth = triangulation->getVertexGlobalId(lid);
+      }
+      CTDiagram[i].dim = pair.type;
+      CTDiagram[i].isFinite = (pair.death >= 0);
+      // Add all the other stuff
+      fillBirthData(CTDiagram[i], pair, pair.birth);
+      augmentBirthPersistence(CTDiagram[i], lid);
+    } else {
+      sendRecvBuffer[ttk::MPIrank_].emplace_back(
+        dataRequest{pair.birth, i, pair.type, 1});
+    }
+    if(pair.death != -1) {
+      simplexType = getDeathSimplexType(pair.type);
+      lid = triangulation->getSimplexLocalId(pair.death, simplexType);
+      if(triangulation->getSimplexRank(lid, simplexType) == ttk::MPIrank_) {
+        CTDiagram[i].dim = pair.type;
+        CTDiagram[i].isFinite = (pair.death >= 0);
+        lid
+          = dms_.getCellGreaterVertex(Cell{pair.type + 1, lid}, *triangulation);
+        pair.death = triangulation->getVertexGlobalId(lid);
+        fillDeathData(CTDiagram[i], pair, pair.death);
+        augmentDeathPersistence(CTDiagram[i], lid);
+      } else {
+        sendRecvBuffer[ttk::MPIrank_].emplace_back(
+          dataRequest{pair.death, i, pair.type, 0});
+      }
     }
   }
+  // Broadcast all the data to everyone
+  // First, broadcast the size of the data to send
+  std::vector<ttk::SimplexId> recvBufferSize(ttk::MPIsize_, 0);
+  recvBufferSize[ttk::MPIrank_] = sendRecvBuffer[ttk::MPIrank_].size();
+  for(int i = 0; i < ttk::MPIsize_; i++) {
+    MPI_Bcast(&recvBufferSize[i], 1, MPI_SimplexId, i, ttk::MPIcomm_);
+    if(i != ttk::MPIrank_) {
+      sendRecvBuffer[i].resize(recvBufferSize[i]);
+    }
+  }
+  // Then, broadcast the actual data
+  MPI_Datatype MPI_requestDataType;
+  createDataRequestMPIType(MPI_requestDataType);
+  for(int i = 0; i < ttk::MPIsize_; i++) {
+    MPI_Bcast(sendRecvBuffer[i].data(), recvBufferSize[i], MPI_requestDataType,
+              i, ttk::MPIcomm_);
+  }
+  std::vector<std::vector<dataResponse>> response(ttk::MPIsize_);
 
+  // For each received element:
+  // if it is own by the triangulation, get the data and place to send back
+#pragma omp parallel for schedule(dynamic, 1)
+  for(int i = 0; i < ttk::MPIsize_; i++) {
+    if(i != ttk::MPIrank_) {
+      for(int j = 0; j < recvBufferSize[i]; j++) {
+        auto &element{sendRecvBuffer[i][j]};
+        int simplexType;
+        if(element.isBirth_) {
+          simplexType = getBirthSimplexType(element.dim_);
+        } else {
+          simplexType = getDeathSimplexType(element.dim_);
+        }
+        ttk::SimplexId lid
+          = triangulation->getSimplexLocalId(element.gid_, simplexType);
+        if(triangulation->getSimplexRank(lid, simplexType) == ttk::MPIrank_) {
+          // Add the relevant data
+          struct dataResponse res {
+            .lid_ = element.lid_, .isBirth_ = element.isBirth_
+          };
+          ttk::SimplexId vLid = dms_.getCellGreaterVertex(
+            Cell{element.dim_, lid}, *triangulation);
+          res.vertexGid_ = triangulation->getVertexGlobalId(vLid);
+          res.offset_ = inputOffsets[vLid];
+          triangulation->getVertexPoint(
+            vLid, res.coords_[0], res.coords_[1], res.coords_[2]);
+          if(res.coords_[0] > 22 || res.coords_[0] < -22) {
+            printErr("Here is your problem:" + std::to_string(res.vertexGid_));
+          }
+          res.sfValue_ = inputScalars[vLid];
+          // Store to send
+          response[i].emplace_back(res);
+        }
+      }
+    }
+  }
+  // Send back the data
+  // First, exchange the size of the data to exchange
+  std::vector<dataResponse> responseBuffer;
+  std::vector<ttk::SimplexId> sendBufferSize(ttk::MPIsize_, 0);
+  std::vector<ttk::SimplexId> sendDispls(ttk::MPIsize_, 0);
+  std::vector<ttk::SimplexId> recvDispls(ttk::MPIsize_, 0);
+  std::vector<dataResponse> recvBuffer;
+
+  sendBufferSize[0] = response[0].size();
+  for(int i = 1; i < ttk::MPIrank_; i++) {
+    sendBufferSize[i] = response[i].size();
+    sendDispls[i] = sendDispls[i - 1] + sendBufferSize[i - 1];
+    responseBuffer.insert(
+      responseBuffer.end(), response[i].begin(), response[i].end());
+  }
+  MPI_Alltoall(sendBufferSize.data(), 1, MPI_SimplexId, recvBufferSize.data(),
+               1, MPI_SimplexId, ttk::MPIcomm_);
+  for(int i = 1; i < ttk::MPIsize_; i++) {
+    recvDispls[i] = recvDispls[i - 1] + recvBufferSize[i - 1];
+  }
+  recvBuffer.resize(recvDispls.back() + recvBufferSize.back());
+  MPI_Datatype MPI_responseDataType;
+  createDataResponseMPIType(MPI_responseDataType);
+
+  // Then, exchange to actual data
+  MPI_Alltoallv(responseBuffer.data(), sendBufferSize.data(), sendDispls.data(),
+                MPI_responseDataType, recvBuffer.data(), recvBufferSize.data(),
+                recvDispls.data(), MPI_responseDataType, ttk::MPIcomm_);
+  // Receive the data and store it appropriately
+  for(const auto &element : recvBuffer) {
+    auto &CTPair{CTDiagram[element.lid_]};
+    if(element.isBirth_) {
+      fillBirthData(CTPair, dms_pairs[element.lid_], element.vertexGid_);
+      CTPair.birth.coords[0] = element.coords_[0];
+      CTPair.birth.coords[1] = element.coords_[1];
+      CTPair.birth.coords[2] = element.coords_[2];
+      CTPair.birth.sfValue = element.sfValue_;
+      CTPair.birth.offset = element.offset_;
+    } else {
+      fillDeathData(CTPair, dms_pairs[element.lid_], element.vertexGid_);
+      CTPair.death.coords[0] = element.coords_[0];
+      CTPair.death.coords[1] = element.coords_[1];
+      CTPair.death.coords[2] = element.coords_[2];
+      CTPair.death.sfValue = element.sfValue_;
+      CTPair.death.offset = element.offset_;
+    }
+  }
+  // Create MPI type for Critical Vertex
+  const auto createCriticalVertexMPIType =
+    [this, &MPI_SimplexId](MPI_Datatype &MPI_MessageType) {
+      MPI_Datatype types[]
+        = {MPI_SimplexId, MPI_DOUBLE, MPI_SimplexId, MPI_FLOAT, MPI_INTEGER};
+      int lengths[] = {1, 1, 1, 3, 1};
+      const long int mpi_offsets[]
+        = {offsetof(CriticalVertex, id), offsetof(CriticalVertex, sfValue),
+           offsetof(CriticalVertex, offset), offsetof(CriticalVertex, coords),
+           offsetof(CriticalVertex, type)};
+      MPI_Type_create_struct(5, lengths, mpi_offsets, types, &MPI_MessageType);
+      // printMsg("create_struct done");
+      MPI_Type_commit(&MPI_MessageType);
+    };
+  MPI_Datatype MPI_CriticalVertex;
+  createCriticalVertexMPIType(MPI_CriticalVertex);
+  // Create MPI type for PersistencePair
+  const auto createPersistencePairMPIType =
+    [this, &MPI_CriticalVertex, &MPI_SimplexId](MPI_Datatype &MPI_MessageType) {
+      MPI_Datatype types[]
+        = {MPI_CriticalVertex, MPI_CriticalVertex, MPI_SimplexId, MPI_CHAR};
+      int lengths[] = {1, 1, 1, 1};
+      const long int mpi_offsets[]
+        = {offsetof(PersistencePair, birth), offsetof(PersistencePair, death),
+           offsetof(PersistencePair, dim), offsetof(PersistencePair, isFinite)};
+      MPI_Type_create_struct(4, lengths, mpi_offsets, types, &MPI_MessageType);
+      MPI_Type_commit(&MPI_MessageType);
+    };
+  MPI_Datatype MPI_PersistencePair;
+  createPersistencePairMPIType(MPI_PersistencePair);
+  // Sort in parallel using the offset of the birth and psort
+  std::vector<ttk::SimplexId> vertexDistribution(ttk::MPIsize_);
+  ttk::SimplexId localVertexNumber = CTDiagram.size();
+  MPI_Allgather(&localVertexNumber, 1, MPI_SimplexId, vertexDistribution.data(),
+                1, MPI_SimplexId, ttk::MPIcomm_);
+  p_sort::parallel_sort<PersistencePair>(
+    CTDiagram, persistenceSort::comp, persistenceSort::oppositeComp,
+    vertexDistribution, MPI_PersistencePair, MPI_SimplexId, threadNumber_);
   return 0;
-}
+};
 
 template <typename scalarType, class triangulationType>
 int ttk::PersistenceDiagram::executeApproximateTopology(
@@ -591,18 +886,18 @@ int ttk::PersistenceDiagram::executeApproximateTopology(
   for(const auto &p : resultDiagram) {
     if(p.pairType == 0) {
       CTDiagram.emplace_back(PersistencePair{
-        CriticalVertex{p.birth, CriticalType::Local_minimum, {}, {}},
-        CriticalVertex{p.death, CriticalType::Saddle1, {}, {}}, p.pairType,
+        CriticalVertex{p.birth, {}, {}, {}, CriticalType::Local_minimum},
+        CriticalVertex{p.death, {}, {}, {}, CriticalType::Saddle1}, p.pairType,
         true});
     } else if(p.pairType == 2) {
       CTDiagram.emplace_back(PersistencePair{
-        CriticalVertex{p.birth, CriticalType::Saddle2, {}, {}},
-        CriticalVertex{p.death, CriticalType::Local_maximum, {}, {}},
+        CriticalVertex{p.birth, {}, {}, {}, CriticalType::Saddle2},
+        CriticalVertex{p.death, {}, {}, {}, CriticalType::Local_maximum},
         p.pairType, true});
     } else if(p.pairType == -1) {
       CTDiagram.emplace_back(PersistencePair{
-        CriticalVertex{p.birth, CriticalType::Local_minimum, {}, {}},
-        CriticalVertex{p.death, CriticalType::Local_maximum, {}, {}},
+        CriticalVertex{p.birth, {}, {}, {}, CriticalType::Local_minimum},
+        CriticalVertex{p.death, {}, {}, {}, CriticalType::Local_maximum},
         p.pairType, false});
     }
   }
@@ -634,18 +929,18 @@ int ttk::PersistenceDiagram::executeProgressiveTopology(
   for(const auto &p : resultDiagram) {
     if(p.pairType == 0) {
       CTDiagram.emplace_back(PersistencePair{
-        CriticalVertex{p.birth, CriticalType::Local_minimum, {}, {}},
-        CriticalVertex{p.death, CriticalType::Saddle1, {}, {}}, p.pairType,
+        CriticalVertex{p.birth, {}, {}, {}, CriticalType::Local_minimum},
+        CriticalVertex{p.death, {}, {}, {}, CriticalType::Saddle1}, p.pairType,
         true});
     } else if(p.pairType == 2) {
       CTDiagram.emplace_back(PersistencePair{
-        CriticalVertex{p.birth, CriticalType::Saddle2, {}, {}},
-        CriticalVertex{p.death, CriticalType::Local_maximum, {}, {}},
+        CriticalVertex{p.birth, {}, {}, {}, CriticalType::Saddle2},
+        CriticalVertex{p.death, {}, {}, {}, CriticalType::Local_maximum},
         p.pairType, true});
     } else if(p.pairType == -1) {
       CTDiagram.emplace_back(PersistencePair{
-        CriticalVertex{p.birth, CriticalType::Local_minimum, {}, {}},
-        CriticalVertex{p.death, CriticalType::Local_maximum, {}, {}}, 0,
+        CriticalVertex{p.birth, {}, {}, {}, CriticalType::Local_minimum},
+        CriticalVertex{p.death, {}, {}, {}, CriticalType::Local_maximum}, 0,
         false});
     }
   }

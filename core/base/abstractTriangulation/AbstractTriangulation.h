@@ -2828,6 +2828,23 @@ namespace ttk {
       return -1;
     }
 
+    inline ttk::SimplexId getSimplexLocalId(const SimplexId gsid,
+                                            const int type) const {
+      if(!ttk::isRunningWithMPI()) {
+        return gsid;
+      }
+      switch(type) {
+        case 0:
+          return this->getVertexLocalId(gsid);
+        case 1:
+          return this->getEdgeLocalId(gsid);
+        case 2:
+          return this->getTriangleLocalId(gsid);
+        default:
+          return this->getCellLocalId(gsid);
+      }
+    }
+
     virtual inline int getVertexRank(const SimplexId lvid) const {
 
       if(!ttk::isRunningWithMPI()) {
@@ -2921,6 +2938,22 @@ namespace ttk {
         return lcid;
       }
       return this->getCellRankInternal(lcid);
+    }
+
+    inline int getSimplexRank(const SimplexId lsid, const int type) const {
+      if(!ttk::isRunningWithMPI()) {
+        return lsid;
+      }
+      switch(type) {
+        case 0:
+          return this->getVertexRank(lsid);
+        case 1:
+          return this->getEdgeRank(lsid);
+        case 2:
+          return this->getTriangleRank(lsid);
+        default:
+          return this->getCellRank(lsid);
+      }
     }
 
     virtual inline const std::vector<int> &getNeighborRanks() const {

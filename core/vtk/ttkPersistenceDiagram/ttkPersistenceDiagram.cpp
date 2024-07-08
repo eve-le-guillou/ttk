@@ -78,8 +78,14 @@ int ttkPersistenceDiagram::dispatch(
   vtkNew<vtkUnstructuredGrid> const vtu{};
 
   // convert CTDiagram to vtkUnstructuredGrid
-  DiagramToVTU(vtu, CTDiagram, inputScalarsArray, *this,
-               triangulation->getDimensionality(), this->ShowInsideDomain);
+  if(!ttk::isRunningWithMPI()) {
+    DiagramToVTU(vtu, CTDiagram, inputScalarsArray, *this,
+                 triangulation->getDimensionality(), this->ShowInsideDomain);
+  } else {
+    DiagramToDistributedVTU(vtu, CTDiagram, inputScalarsArray, *this,
+                            triangulation->getDimensionality(),
+                            this->ShowInsideDomain);
+  }
 
   outputCTPersistenceDiagram->ShallowCopy(vtu);
 
@@ -118,7 +124,7 @@ int ttkPersistenceDiagram::RequestData(vtkInformation *ttkNotUsed(request),
 #endif
 
   vtkDataArray *offsetField = this->GetOrderArray(
-    input, 0, triangulation, false, 1, ForceInputOffsetScalarField);
+    input, 0, triangulation, true, 1, ForceInputOffsetScalarField);
 
 #ifndef TTK_ENABLE_KAMIKAZE
   if(!offsetField) {

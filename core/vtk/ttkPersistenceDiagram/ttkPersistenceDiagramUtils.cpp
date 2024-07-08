@@ -1,3 +1,5 @@
+#include <MPIUtils.h>
+#include <csignal>
 #include <ttkMacros.h>
 #include <ttkPersistenceDiagramUtils.h>
 #include <ttkUtils.h>
@@ -146,8 +148,9 @@ int VTUToDiagram(ttk::DiagramType &diagram,
 
     // put pairs in diagram
     diagram[i] = ttk::PersistencePair{
-      ttk::CriticalVertex{v0, ct0, birth, coordsBirth},
-      ttk::CriticalVertex{v1, ct1, birth + pers, coordsDeath}, pType, isFin};
+      ttk::CriticalVertex{v0, birth, {}, coordsBirth, ct0},
+      ttk::CriticalVertex{v1, birth + pers, {}, coordsDeath, ct1}, pType,
+      isFin};
   }
 
   return 0;
@@ -296,6 +299,164 @@ int DiagramToVTU(vtkUnstructuredGrid *vtu,
     birthScalars->InsertTuple1(diagram.size(), 0);
   }
 
+  return 0;
+}
+
+int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
+                            const ttk::DiagramType &diagram,
+                            vtkDataArray *const inputScalars,
+                            const ttk::Debug &dbg,
+                            const int dim,
+                            const bool embedInDomain) {
+
+  // Computation of order of first local pair
+  const ttk::SimplexId nPairs = diagram.size();
+  ttk::SimplexId beginning{0};
+  MPI_Datatype MPI_SimplexId = ttk::getMPIType(beginning);
+  MPI_Exscan(&nPairs, &beginning, 1, MPI_SimplexId, MPI_SUM, ttk::MPIcomm_);
+
+  /*if(diagram.empty()) {
+    dbg.printErr("Empty diagram");
+    return -1;
+  }*/
+
+  const auto pd = vtu->GetPointData();
+  const auto cd = vtu->GetCellData();
+
+  /*if(pd == nullptr || cd == nullptr) {
+    dbg.printErr("Grid has no point data or no cell data");
+    return -2;
+  }*/
+
+  // point data arrays
+
+  vtkNew<ttkSimplexIdTypeArray> vertsId{};
+  vertsId->SetName(ttk::VertexScalarFieldName);
+  vertsId->SetNumberOfTuples(2 * diagram.size());
+  pd->AddArray(vertsId);
+
+  vtkNew<vtkIntArray> critType{};
+  critType->SetName(ttk::PersistenceCriticalTypeName);
+  critType->SetNumberOfTuples(2 * diagram.size());
+  pd->AddArray(critType);
+
+  vtkNew<vtkFloatArray> coordsScalars{};
+
+  if(!embedInDomain) {
+    coordsScalars->SetNumberOfComponents(3);
+    coordsScalars->SetName(ttk::PersistenceCoordinatesName);
+    coordsScalars->SetNumberOfTuples(2 * diagram.size());
+    pd->AddArray(coordsScalars);
+  }
+
+  // cell data arrays
+
+  vtkNew<ttkSimplexIdTypeArray> pairsId{};
+  pairsId->SetName(ttk::PersistencePairIdentifierName);
+  pairsId->SetNumberOfTuples(diagram.size());
+  cd->AddArray(pairsId);
+
+  vtkNew<vtkIntArray> pairsDim{};
+  pairsDim->SetName(ttk::PersistencePairTypeName);
+  pairsDim->SetNumberOfTuples(diagram.size());
+  cd->AddArray(pairsDim);
+
+  vtkSmartPointer<vtkDataArray> const persistence{inputScalars->NewInstance()};
+  persistence->SetName(ttk::PersistenceName);
+  persistence->SetNumberOfTuples(diagram.size());
+  cd->AddArray(persistence);
+
+  vtkSmartPointer<vtkDataArray> const birthScalars{inputScalars->NewInstance()};
+  birthScalars->SetName(ttk::PersistenceBirthName);
+  birthScalars->SetNumberOfTuples(diagram.size());
+  cd->AddArray(birthScalars);
+
+  vtkNew<vtkUnsignedCharArray> isFinite{};
+  isFinite->SetName(ttk::PersistenceIsFinite);
+  isFinite->SetNumberOfTuples(diagram.size());
+  cd->AddArray(isFinite);
+
+  // grid
+
+  vtkNew<vtkPoints> points{};
+  points->SetNumberOfPoints(2 * diagram.size());
+  vtkNew<vtkIdTypeArray> offsets{}, connectivity{};
+  offsets->SetNumberOfComponents(1);
+  offsets->SetNumberOfTuples(diagram.size());
+  connectivity->SetNumberOfComponents(1);
+  connectivity->SetNumberOfTuples(2 * diagram.size());
+
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp parallel for num_threads(dbg.getThreadNumber())
+#endif // TTK_ENABLE_OPENMP
+  for(size_t i = 0; i < diagram.size(); ++i) {
+    const auto &pair{diagram[i]};
+    const auto i0{2 * i + 0}, i1{2 * i + 1};
+    if(embedInDomain) {
+      points->SetPoint(
+        i0, pair.birth.coords[0], pair.birth.coords[1], pair.birth.coords[2]);
+      points->SetPoint(
+        i1, pair.death.coords[0], pair.death.coords[1], pair.death.coords[2]);
+    } else {
+      points->SetPoint(i0, pair.birth.sfValue, pair.birth.sfValue, 0);
+      points->SetPoint(i1, pair.birth.sfValue, pair.death.sfValue, 0);
+    }
+
+    connectivity->SetTuple1(i0, i0);
+    connectivity->SetTuple1(i1, i1);
+    offsets->SetTuple1(i, 2 * beginning + 2 * i); // TODO: 2* ?
+
+    // point data
+    vertsId->SetTuple1(i0, pair.birth.id);
+    vertsId->SetTuple1(i1, pair.death.id);
+    critType->SetTuple1(i0, static_cast<ttk::SimplexId>(pair.birth.type));
+    critType->SetTuple1(i1, static_cast<ttk::SimplexId>(pair.death.type));
+
+    if(!embedInDomain) {
+      coordsScalars->SetTuple3(
+        i0, pair.birth.coords[0], pair.birth.coords[1], pair.birth.coords[2]);
+      coordsScalars->SetTuple3(
+        i1, pair.death.coords[0], pair.death.coords[1], pair.death.coords[2]);
+    }
+
+    // cell data
+    pairsId->SetTuple1(i, beginning + i);
+    persistence->SetTuple1(i, pair.persistence());
+    birthScalars->SetTuple1(i, pair.birth.sfValue);
+    isFinite->SetTuple1(i, pair.isFinite);
+    pairsDim->SetTuple1(
+      i, (pair.dim == 2 && pair.isFinite) ? dim - 1 : pair.dim);
+  }
+  // Only one is done on all processes
+  if(ttk::MPIrank_ == ttk::MPIsize_ - 1) {
+    offsets->InsertTuple1(
+      diagram.size(), 2 * beginning + connectivity->GetNumberOfTuples());
+  }
+
+  vtkNew<vtkCellArray> cells{};
+  cells->SetData(offsets, connectivity);
+  vtu->SetPoints(points);
+  vtu->SetCells(VTK_LINE, cells);
+
+  if(!embedInDomain) {
+    const auto lastPair = std::max_element(diagram.begin(), diagram.end());
+    // add diagonal (first point -> last birth/penultimate point)
+    // On all processes
+    std::array<vtkIdType, 2> diag{
+      0, 2 * std::distance(diagram.begin(), lastPair)};
+    vtu->InsertNextCell(VTK_LINE, 2, diag.data());
+    pairsId->InsertTuple1(diagram.size(), -1);
+    pairsDim->InsertTuple1(diagram.size(), -1);
+    isFinite->InsertTuple1(diagram.size(), false);
+    // persistence of global min-max pair
+    if(ttk::MPIrank_ == 0) {
+      const auto maxPersistence = diagram[0].persistence();
+      persistence->InsertTuple1(diagram.size(), 2 * maxPersistence);
+      // birth == death == 0
+      birthScalars->InsertTuple1(diagram.size(), 0);
+    }
+  }
+  kill(getpid(), SIGINT);
   return 0;
 }
 
