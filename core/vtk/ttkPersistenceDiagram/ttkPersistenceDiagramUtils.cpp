@@ -382,7 +382,7 @@ int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
   points->SetNumberOfPoints(2 * diagram.size());
   vtkNew<vtkIdTypeArray> offsets{}, connectivity{};
   offsets->SetNumberOfComponents(1);
-  offsets->SetNumberOfTuples(diagram.size());
+  offsets->SetNumberOfTuples(diagram.size() + 1);
   connectivity->SetNumberOfComponents(1);
   connectivity->SetNumberOfTuples(2 * diagram.size());
 
@@ -404,7 +404,7 @@ int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
 
     connectivity->SetTuple1(i0, i0);
     connectivity->SetTuple1(i1, i1);
-    offsets->SetTuple1(i, 2 * beginning + 2 * i); // TODO: 2* ?
+    offsets->SetTuple1(i, 2 * i); // TODO: 2* ?
 
     // point data
     vertsId->SetTuple1(i0, pair.birth.id);
@@ -427,11 +427,7 @@ int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
     pairsDim->SetTuple1(
       i, (pair.dim == 2 && pair.isFinite) ? dim - 1 : pair.dim);
   }
-  // Only one is done on all processes
-  if(ttk::MPIrank_ == ttk::MPIsize_ - 1) {
-    offsets->InsertTuple1(
-      diagram.size(), 2 * beginning + connectivity->GetNumberOfTuples());
-  }
+  offsets->SetTuple1(diagram.size(), connectivity->GetNumberOfTuples());
 
   vtkNew<vtkCellArray> cells{};
   cells->SetData(offsets, connectivity);
@@ -441,7 +437,6 @@ int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
   if(!embedInDomain) {
     const auto lastPair = std::max_element(diagram.begin(), diagram.end());
     // add diagonal (first point -> last birth/penultimate point)
-    // On all processes
     std::array<vtkIdType, 2> diag{
       0, 2 * std::distance(diagram.begin(), lastPair)};
     vtu->InsertNextCell(VTK_LINE, 2, diag.data());
@@ -449,14 +444,14 @@ int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
     pairsDim->InsertTuple1(diagram.size(), -1);
     isFinite->InsertTuple1(diagram.size(), false);
     // persistence of global min-max pair
-    if(ttk::MPIrank_ == 0) {
-      const auto maxPersistence = diagram[0].persistence();
-      persistence->InsertTuple1(diagram.size(), 2 * maxPersistence);
-      // birth == death == 0
-      birthScalars->InsertTuple1(diagram.size(), 0);
-    }
+    // if(ttk::MPIrank_ == 0) {
+    const auto maxPersistence = diagram[0].persistence();
+    persistence->InsertTuple1(diagram.size(), 2 * maxPersistence);
+    // birth == death == 0
+    birthScalars->InsertTuple1(diagram.size(), 0);
+    //}
   }
-  kill(getpid(), SIGINT);
+  // kill(getpid(), SIGINT);
   return 0;
 }
 
