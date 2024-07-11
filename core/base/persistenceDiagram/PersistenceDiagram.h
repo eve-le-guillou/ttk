@@ -608,10 +608,6 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
         triangulation->getVertexPoint(lid, CTPair.birth.coords[0],
                                       CTPair.birth.coords[1],
                                       CTPair.birth.coords[2]);
-        if(CTPair.birth.coords[0] > 22 || CTPair.birth.coords[0] < -22) {
-          printErr("Birth, Here is your problem, lid:" + std::to_string(lid)
-                   + ", value: " + std::to_string(CTPair.death.coords[0]));
-        }
         CTPair.birth.sfValue = inputScalars[lid];
         CTPair.birth.offset = inputOffsets[lid];
       };
@@ -641,11 +637,6 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
                                       CTPair.death.coords[2]);
         CTPair.death.sfValue = inputScalars[lid];
         CTPair.death.offset = inputOffsets[lid];
-        if(CTPair.death.coords[0] > 22 || CTPair.death.coords[0] < -22) {
-          printErr("Here is your problem, lid:" + std::to_string(lid)
-                   + ", value: " + std::to_string(CTPair.death.coords[0]) + ", "
-                   + std::to_string(triangulation->getNumberOfVertices()));
-        }
       };
   const auto getBirthSimplexType = [this, &dim](const int type) {
     switch(type) {
@@ -743,6 +734,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   for(int i = 0; i < ttk::MPIsize_; i++) {
     if(i != ttk::MPIrank_) {
       for(int j = 0; j < recvBufferSize[i]; j++) {
+        printMsg("received element");
         auto &element{sendRecvBuffer[i][j]};
         int simplexType;
         if(element.isBirth_) {
@@ -763,9 +755,6 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
           res.offset_ = inputOffsets[vLid];
           triangulation->getVertexPoint(
             vLid, res.coords_[0], res.coords_[1], res.coords_[2]);
-          if(res.coords_[0] > 22 || res.coords_[0] < -22) {
-            printErr("Here is your problem:" + std::to_string(res.vertexGid_));
-          }
           res.sfValue_ = inputScalars[vLid];
           // Store to send
           response[i].emplace_back(res);
@@ -782,6 +771,8 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   std::vector<dataResponse> recvBuffer;
 
   sendBufferSize[0] = response[0].size();
+  responseBuffer.insert(
+    responseBuffer.end(), response[0].begin(), response[0].end());
   for(int i = 1; i < ttk::MPIrank_; i++) {
     sendBufferSize[i] = response[i].size();
     sendDispls[i] = sendDispls[i - 1] + sendBufferSize[i - 1];
