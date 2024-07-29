@@ -545,11 +545,24 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   };
   // find the global maximum
   const auto nVerts = triangulation->getNumberOfVertices();
-  const SimplexId localMax = std::distance(
+  const SimplexId localMaxId = std::distance(
     inputOffsets, std::max_element(inputOffsets, inputOffsets + nVerts));
-  MPI_Datatype MPI_SimplexId = getMPIType(localMax);
+  MPI_Datatype MPI_SimplexId = getMPIType(localMaxId);
+  struct {
+    long int offset;
+    int rank;
+  } localMax, globalMax;
+  localMax.rank = triangulation->getVertexRank(localMaxId);
+  localMax.offset = static_cast<long int>(inputOffsets[localMaxId]);
+  MPI_Allreduce(
+    &localMax, &globalMax, 1, MPI_LONG_INT, MPI_MAXLOC, ttk::MPIcomm_);
   ttk::SimplexId globmax{-1};
-  MPI_Allreduce(&localMax, &globmax, 1, MPI_SimplexId, MPI_MAX, ttk::MPIcomm_);
+  if(globalMax.rank == ttk::MPIrank_) {
+    globmax = triangulation->getVertexGlobalId(localMaxId);
+  }
+  MPI_Bcast(&globmax, 1, MPI_SimplexId, globalMax.rank, ttk::MPIcomm_);
+  printMsg("globMax: " + std::to_string(globmax) + ", from "
+           + std::to_string(globalMax.rank));
   std::vector<std::vector<dataRequest>> sendRecvBuffer(ttk::MPIsize_);
 
   const auto createDataRequestMPIType =
@@ -603,16 +616,17 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
       };
 
   const auto augmentBirthPersistence
-    = [this, &triangulation, &inputScalars, &inputOffsets](
-        PersistencePair &CTPair, ttk::SimplexId lid) {
+    = [this, &triangulation, &inputOffsets](PersistencePair &CTPair,
+                                            ttk::SimplexId lid,
+                                            const scalarType *scalars) {
         triangulation->getVertexPoint(lid, CTPair.birth.coords[0],
                                       CTPair.birth.coords[1],
                                       CTPair.birth.coords[2]);
-        CTPair.birth.sfValue = inputScalars[lid];
+        CTPair.birth.sfValue = scalars[lid];
         CTPair.birth.offset = inputOffsets[lid];
       };
 
-  const auto fillDeathData = [this, &globmax, &dim](
+  const auto fillDeathData = [this, &dim](
                                PersistencePair &CTPair,
                                DiscreteMorseSandwichMPI::PersistencePair &p,
                                ttk::SimplexId deathId) {
@@ -630,12 +644,13 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   };
 
   const auto augmentDeathPersistence
-    = [this, &triangulation, &inputScalars, &inputOffsets](
-        PersistencePair &CTPair, ttk::SimplexId lid) {
+    = [this, &triangulation, &inputOffsets](PersistencePair &CTPair,
+                                            ttk::SimplexId lid,
+                                            const scalarType *scalars) {
         triangulation->getVertexPoint(lid, CTPair.death.coords[0],
                                       CTPair.death.coords[1],
                                       CTPair.death.coords[2]);
-        CTPair.death.sfValue = inputScalars[lid];
+        CTPair.death.sfValue = scalars[lid];
         CTPair.death.offset = inputOffsets[lid];
       };
   const auto getBirthSimplexType = [this, &dim](const int type) {
@@ -673,12 +688,20 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
 //parallel for num_threads(threadNumber_) reduction(merge:
 //sendRecvBuffer.at(ttk::MPIrank_))
 #endif // TTK_ENABLE_OPENMP
+  MPI_Barrier(ttk::MPIcomm_);
   for(ttk::SimplexId i = 0; i < dms_pairs.size(); ++i) {
     auto &pair{dms_pairs[i]};
     int simplexType = getBirthSimplexType(pair.type);
     ttk::SimplexId lid
       = triangulation->getSimplexLocalId(pair.birth, simplexType);
-    if(triangulation->getSimplexRank(lid, simplexType) == ttk::MPIrank_) {
+    if(pair.birth == 317 || pair.birth == 8) {
+      printErr("LOCATED: " + std::to_string(lid));
+    }
+    if(lid != -1
+       && triangulation->getSimplexRank(lid, simplexType) == ttk::MPIrank_) {
+      if(pair.birth == 317 || pair.birth == 8) {
+        printErr("LOCATED2");
+      }
       if(pair.type > 0) {
         lid = dms_.getCellGreaterVertex(Cell{pair.type, lid}, *triangulation);
         pair.birth = triangulation->getVertexGlobalId(lid);
@@ -687,22 +710,36 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
       CTDiagram[i].isFinite = (pair.death >= 0);
       // Add all the other stuff
       fillBirthData(CTDiagram[i], pair, pair.birth);
-      augmentBirthPersistence(CTDiagram[i], lid);
+      augmentBirthPersistence(CTDiagram[i], lid, inputScalars);
+      if(pair.birth == 317 || pair.birth == 8) {
+        printErr("LOCATED3");
+        printMsg("sfValue: " + std::to_string(CTDiagram[i].birth.sfValue) + ", "
+                 + std::to_string(inputScalars[lid]) + ", "
+                 + std::to_string(CTDiagram[i].birth.offset));
+      }
     } else {
+      printMsg("Element to send: " + std::to_string(pair.birth));
       sendRecvBuffer[ttk::MPIrank_].emplace_back(
         dataRequest{pair.birth, i, pair.type, 1});
     }
-    if(pair.death != -1) {
+    if(pair.death == -1) {
+      lid = triangulation->getVertexLocalId(globmax);
+    } else {
       simplexType = getDeathSimplexType(pair.type);
       lid = triangulation->getSimplexLocalId(pair.death, simplexType);
-      if(triangulation->getSimplexRank(lid, simplexType) == ttk::MPIrank_) {
-        CTDiagram[i].dim = pair.type;
-        CTDiagram[i].isFinite = (pair.death >= 0);
-        lid
-          = dms_.getCellGreaterVertex(Cell{pair.type + 1, lid}, *triangulation);
-        pair.death = triangulation->getVertexGlobalId(lid);
-        fillDeathData(CTDiagram[i], pair, pair.death);
-        augmentDeathPersistence(CTDiagram[i], lid);
+    }
+    if(lid != -1
+       && triangulation->getSimplexRank(lid, simplexType) == ttk::MPIrank_) {
+      CTDiagram[i].dim = pair.type;
+      CTDiagram[i].isFinite = (pair.death >= 0);
+      lid = dms_.getCellGreaterVertex(Cell{pair.type + 1, lid}, *triangulation);
+      pair.death = triangulation->getVertexGlobalId(lid);
+      fillDeathData(CTDiagram[i], pair, pair.death);
+      augmentDeathPersistence(CTDiagram[i], lid, inputScalars);
+    } else {
+      if(pair.death == -1) {
+        sendRecvBuffer[ttk::MPIrank_].emplace_back(
+          dataRequest{globmax, i, pair.type, 0});
       } else {
         sendRecvBuffer[ttk::MPIrank_].emplace_back(
           dataRequest{pair.death, i, pair.type, 0});
@@ -711,10 +748,10 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   }
   // Broadcast all the data to everyone
   // First, broadcast the size of the data to send
-  std::vector<ttk::SimplexId> recvBufferSize(ttk::MPIsize_, 0);
+  std::vector<int> recvBufferSize(ttk::MPIsize_, 0);
   recvBufferSize[ttk::MPIrank_] = sendRecvBuffer[ttk::MPIrank_].size();
   for(int i = 0; i < ttk::MPIsize_; i++) {
-    MPI_Bcast(&recvBufferSize[i], 1, MPI_SimplexId, i, ttk::MPIcomm_);
+    MPI_Bcast(&recvBufferSize[i], 1, MPI_INTEGER, i, ttk::MPIcomm_);
     if(i != ttk::MPIrank_) {
       sendRecvBuffer[i].resize(recvBufferSize[i]);
     }
@@ -734,8 +771,8 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   for(int i = 0; i < ttk::MPIsize_; i++) {
     if(i != ttk::MPIrank_) {
       for(int j = 0; j < recvBufferSize[i]; j++) {
-        printMsg("received element");
         auto &element{sendRecvBuffer[i][j]};
+        printMsg("Element received: " + std::to_string(element.gid_));
         int simplexType;
         if(element.isBirth_) {
           simplexType = getBirthSimplexType(element.dim_);
@@ -744,7 +781,11 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
         }
         ttk::SimplexId lid
           = triangulation->getSimplexLocalId(element.gid_, simplexType);
-        if(triangulation->getSimplexRank(lid, simplexType) == ttk::MPIrank_) {
+        printMsg("Local Id: " + std::to_string(lid));
+
+        if(lid != -1
+           && triangulation->getSimplexRank(lid, simplexType)
+                == ttk::MPIrank_) {
           // Add the relevant data
           struct dataResponse res {
             .lid_ = element.lid_, .isBirth_ = element.isBirth_
@@ -752,6 +793,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
           ttk::SimplexId vLid = dms_.getCellGreaterVertex(
             Cell{element.dim_, lid}, *triangulation);
           res.vertexGid_ = triangulation->getVertexGlobalId(vLid);
+          printMsg("VertexGid: " + std::to_string(res.vertexGid_));
           res.offset_ = inputOffsets[vLid];
           triangulation->getVertexPoint(
             vLid, res.coords_[0], res.coords_[1], res.coords_[2]);
@@ -765,26 +807,32 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   // Send back the data
   // First, exchange the size of the data to exchange
   std::vector<dataResponse> responseBuffer;
-  std::vector<ttk::SimplexId> sendBufferSize(ttk::MPIsize_, 0);
-  std::vector<ttk::SimplexId> sendDispls(ttk::MPIsize_, 0);
-  std::vector<ttk::SimplexId> recvDispls(ttk::MPIsize_, 0);
+  std::vector<int> sendBufferSize(ttk::MPIsize_, 0);
+  std::vector<int> sendDispls(ttk::MPIsize_, 0);
+  std::vector<int> recvDispls(ttk::MPIsize_, 0);
   std::vector<dataResponse> recvBuffer;
 
   sendBufferSize[0] = response[0].size();
   responseBuffer.insert(
     responseBuffer.end(), response[0].begin(), response[0].end());
-  for(int i = 1; i < ttk::MPIrank_; i++) {
+  for(int i = 1; i < ttk::MPIsize_; i++) {
     sendBufferSize[i] = response[i].size();
     sendDispls[i] = sendDispls[i - 1] + sendBufferSize[i - 1];
     responseBuffer.insert(
       responseBuffer.end(), response[i].begin(), response[i].end());
   }
-  MPI_Alltoall(sendBufferSize.data(), 1, MPI_SimplexId, recvBufferSize.data(),
-               1, MPI_SimplexId, ttk::MPIcomm_);
+  MPI_Alltoall(sendBufferSize.data(), 1, MPI_INTEGER, recvBufferSize.data(), 1,
+               MPI_INTEGER, ttk::MPIcomm_);
   for(int i = 1; i < ttk::MPIsize_; i++) {
     recvDispls[i] = recvDispls[i - 1] + recvBufferSize[i - 1];
   }
   recvBuffer.resize(recvDispls.back() + recvBufferSize.back());
+  for(int i = 0; i < sendBufferSize.size(); i++) {
+    printMsg("Send buffer size: " + std::to_string(sendBufferSize[i])
+             + ", sendDispls: " + std::to_string(sendDispls[i])
+             + ", recvBufferSize: " + std::to_string(recvBufferSize[i]) + ", "
+             + std::to_string(recvDispls[i]));
+  }
   MPI_Datatype MPI_responseDataType;
   createDataResponseMPIType(MPI_responseDataType);
 
@@ -794,6 +842,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
                 recvDispls.data(), MPI_responseDataType, ttk::MPIcomm_);
   // Receive the data and store it appropriately
   for(const auto &element : recvBuffer) {
+    printMsg("Received element: " + std::to_string(element.vertexGid_));
     auto &CTPair{CTDiagram[element.lid_]};
     if(element.isBirth_) {
       fillBirthData(CTPair, dms_pairs[element.lid_], element.vertexGid_);

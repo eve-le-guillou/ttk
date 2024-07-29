@@ -2942,7 +2942,7 @@ namespace ttk {
 
     inline int getSimplexRank(const SimplexId lsid, const int type) const {
       if(!ttk::isRunningWithMPI()) {
-        return lsid;
+        return ttk::MPIrank_;
       }
       switch(type) {
         case 0:
