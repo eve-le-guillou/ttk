@@ -2030,7 +2030,7 @@ struct ttk::DiscreteMorseSandwichMPI::extremaNode<sizeExtr> &
   while((*rep) != (*currentNode)) {
     // printMsg("In getRep: "+std::to_string(sv->gid_)+",
     // "+std::to_string(currentNode->gid_)+", "+std::to_string(rep->gid_));
-    if(sv->gid_ == 641) {
+    /*if(sv->gid_ == 641) {
       printMsg("saddle " + std::to_string(sv->gid_) + "("
                + std::to_string(sv->vOrder_[0]) + ")" + ", "
                + std::to_string(extr->gid_) + ", "
@@ -2038,7 +2038,7 @@ struct ttk::DiscreteMorseSandwichMPI::extremaNode<sizeExtr> &
                + std::to_string(saddles[currentNode->rep_.saddleId_].gid_) + "("
                + std::to_string(saddles[currentNode->rep_.saddleId_].vOrder_[0])
                + ")" + ", next: " + std::to_string(rep->gid_));
-    }
+    }*/
     if(currentNode->rep_.extremaId_ == -1) {
       break;
     }
@@ -2077,11 +2077,11 @@ struct ttk::DiscreteMorseSandwichMPI::extremaNode<sizeExtr> &
     }
     rep = &extremas[currentNode->rep_.extremaId_];
   }
-  if(sv->gid_ == 641) {
+  /*if(sv->gid_ == 641) {
     printMsg("final saddle " + std::to_string(sv->gid_) + ", "
              + std::to_string(extr->gid_) + ", "
              + std::to_string(currentNode->gid_));
-  }
+  }*/
   return extremas[currentNode->lid_];
 };
 
@@ -2105,16 +2105,7 @@ void ttk::DiscreteMorseSandwichMPI::addPair(
              + std::to_string(extr.lid_));
     // kill(getpid(), SIGINT);
   }*/
-  if(sad.gid_ == 630 || sad.gid_ == 1112) {
-    printMsg("AddPair: " + std::to_string(sad.gid_) + "("
-             + std::to_string(sad.vOrder_[0]) + "," + std::to_string(sad.order_)
-             + "," + std::to_string(sad.rank_) + "), "
-             + std::to_string(extr.gid_) + "(" + std::to_string(extr.vOrder_[0])
-             + "," + std::to_string(extr.rank_) + "), "
-             + std::to_string(extr.lid_));
-    // kill(getpid(), SIGINT);
-  }
-  if(extr.gid_ == 326) {
+  if(sad.gid_ == 264) {
     printMsg("AddPair: " + std::to_string(sad.gid_) + "("
              + std::to_string(sad.vOrder_[0]) + "," + std::to_string(sad.order_)
              + "," + std::to_string(sad.rank_) + "), "
@@ -2133,7 +2124,7 @@ void ttk::DiscreteMorseSandwichMPI::removePair(
   const extremaNode<sizeExtr> &extr,
   std::vector<ttk::SimplexId> &saddleToPairedExtrema,
   std::vector<ttk::SimplexId> &extremaToPairedSaddle) const {
-  if(sad.gid_ == 1112 || sad.gid_ == 278 || extr.gid_ == 326
+  /*if(sad.gid_ == 1112 || sad.gid_ == 278 || extr.gid_ == 326
      || sad.gid_ == 170) {
     printMsg("removePair: " + std::to_string(sad.gid_) + "("
              + std::to_string(sad.vOrder_[0]) + "," + std::to_string(sad.order_)
@@ -2141,14 +2132,15 @@ void ttk::DiscreteMorseSandwichMPI::removePair(
              + std::to_string(extr.gid_) + "(" + std::to_string(extr.vOrder_[0])
              + "," + std::to_string(extr.rank_) + ")");
     // kill(getpid(), SIGINT);
-  }
-  /*if(sad.gid_ == 1112) {
+  }*/
+  if(sad.gid_ == 264) {
     printMsg("removePair: " + std::to_string(sad.gid_) + "("
              + std::to_string(sad.vOrder_[0]) + "," + std::to_string(sad.order_)
              + "," + std::to_string(sad.rank_) + "), "
              + std::to_string(extr.gid_) + "(" + std::to_string(extr.vOrder_[0])
              + "," + std::to_string(extr.rank_) + ")");
-  }*/
+    // kill(getpid(), SIGINT);
+  }
   saddleToPairedExtrema[sad.lid_] = -1;
   if(extremaToPairedSaddle[extr.lid_] == sad.lid_) {
     extremaToPairedSaddle[extr.lid_] = -1;
@@ -2182,9 +2174,9 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
     = [=](const messageType<sizeExtr, sizeSad> &elt0,
           const messageType<sizeExtr, sizeSad> &elt1) -> bool {
     if(elt0.s_ != elt0.s_) {
-      for(size_t i = 0; i < 2; i++) {
+      for(size_t i = 0; i < sizeSad; i++) {
         if(elt0.sOrder_[i] != elt1.sOrder_[i]) {
-          return elt0.sOrder_[i] < elt1.sOrder_[i];
+          return elt0.sOrder_[i] < elt1.sOrder_[i]; // TODO: add increasing
         }
       }
     }
@@ -2199,7 +2191,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   MPI_Datatype MPI_SimplexId = getMPIType(hasSentMessages);
   while(hasSentMessages > 0) {
     // if (ttk::MPIrank_ == 0)
-    printErr("While loop iteration: " + std::to_string(hasSentMessages));
+    // printErr("While loop iteration: " + std::to_string(hasSentMessages));
     // MPI_Barrier(ttk::MPIcomm_);
     ttk::SimplexId localSentMessageNumber{0};
     std::vector<MPI_Request> sendRequests(ttk::MPIsize_ - 1);
@@ -2343,6 +2335,14 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
                  + " by "
                  + std::to_string(saddles[extremas[i].rep_.saddleId_].gid_));
       }
+      /*if (extremas[i].gid_ == 326 && extremas[i].rep_.extremaId_ != -1 &&
+      extremas[i].rep_.extremaId_ != extremas[i].lid_){ kill(getpid(), SIGINT);
+      }*/
+    }
+  }
+  for(int i = 0; i < saddles.size(); i++) {
+    if(saddleToPairedExtrema[i] == -2) {
+      printMsg("Saddles paired to -2 " + std::to_string(saddles[i].gid_));
     }
   }
 }
@@ -2360,10 +2360,10 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
   std::vector<std::vector<char>> &ghostPresence,
   char sender,
   bool increasing) const {
-  if(element.s_ == 630 || element.s_ == 170) {
+  if(element.s_ == 264) {
     printMsg("Receive element " + std::to_string(element.s_) + " from "
              + std::to_string(sender));
-    // kill(getpid(), SIGINT);
+    kill(getpid(), SIGINT);
   }
   const auto getSaddle = [this, &globalToLocalSaddle, &saddles](
                            const ttk::SimplexId saddleGid,
@@ -2373,6 +2373,15 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
       return saddles[it->second];
     }
     return saddleEdge<sizeSad>(saddleGid, -1, vOrder, rank);
+  };
+
+  const auto getLocalExtrema = [this, &globalToLocalExtrema,
+                                &extremas](const ttk::SimplexId extremaGid) {
+    auto it = globalToLocalExtrema.find(extremaGid);
+    if(it != globalToLocalExtrema.end()) {
+      return it->second;
+    }
+    return static_cast<ttk::SimplexId>(-1);
   };
 
   const auto addSaddle = [this, &globalToLocalSaddle, &saddles,
@@ -2398,11 +2407,14 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
         lid = it->second;
         auto e{extremas[lid]};
         rep = getRep(&e, &s, increasing, extremas, saddles);
+        if((rep.gid_ != e.gid_)
+           && !(
+             compareArray(s.vOrder_, saddles[e.rep_.saddleId_].vOrder_, sizeSad)
+             == increasing)) {
+          printErr("YES IT HAPPENS");
+        }
         // TODO: check niveau de rep/extr
-        if((rep.gid_ != e.gid_) && (e.rep_.saddleId_ != -1)
-           && (compareArray(
-                 s.vOrder_, saddles[e.rep_.saddleId_].vOrder_, sizeSad)
-               == increasing)) {
+        if(rep.gid_ != e.gid_) {
           lid = globalToLocalExtrema.find(rep.gid_)->second;
           elt.t1_ = rep.gid_;
           for(int i = 0; i < sizeExtr; i++) {
@@ -2434,6 +2446,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
                 elt.s1Order_[i] = s1Loc.vOrder_[i];
               }
             }
+            elt.hasBeenModified_ = 1;
           }
         }
       }
@@ -2452,10 +2465,13 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
         auto e{extremas[lid]};
         rep = getRep(&e, &s, increasing, extremas, saddles);
         // TODO: check niveau de rep/extr
-        if((rep.gid_ != e.gid_) && (e.rep_.saddleId_ != -1)
-           && (compareArray(
-                 s.vOrder_, saddles[e.rep_.saddleId_].vOrder_, sizeSad)
-               == increasing)) {
+        if((rep.gid_ != e.gid_)
+           && !(
+             compareArray(s.vOrder_, saddles[e.rep_.saddleId_].vOrder_, sizeSad)
+             == increasing)) {
+          printErr("YES IT HAPPENS");
+        }
+        if(rep.gid_ != e.gid_) {
           lid = globalToLocalExtrema.find(rep.gid_)->second;
           elt.t2_ = rep.gid_;
           for(int i = 0; i < sizeExtr; i++) {
@@ -2486,6 +2502,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
               for(int i = 0; i < sizeSad; i++) {
                 elt.s2Order_[i] = s2Loc.vOrder_[i];
               }
+              elt.hasBeenModified_ = 1;
             }
           }
         }
@@ -2510,17 +2527,17 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
            && (compareArray(elt.s1Order_, elt.sOrder_, sizeSad) == increasing));
       if(isR1Invalid)
         pairedR1 = false;
-      if(elt.s_ == 650) {
+      /*if(elt.s_ == 650) {
         printMsg("Test for swap for " + std::to_string(elt.s_) + ", t1: "
                  + std::to_string(elt.t1_) + ", " + std::to_string(elt.t2_));
-      }
+      }*/
       if(((compareArray(elt.t2Order_, elt.t1Order_, sizeExtr) == increasing)
           || pairedR1)
          && !pairedR2) {
-        if(elt.s_ == 650) {
+        /*if(elt.s_ == 650) {
           printErr("Swap for " + std::to_string(elt.s_) + ", t1: "
                    + std::to_string(elt.t1_) + ", " + std::to_string(elt.t2_));
-        }
+        }*/
         // if (elt.s_ == 1204 || elt.s_ == 225)
         //  kill(getpid(), SIGINT);
         std::swap(t1Lid, t2Lid);
@@ -2548,7 +2565,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
         }
       };
 
-  if(element.s_ == 1009) {
+  if(element.s_ == 1009 || element.s_ == 170) {
     printMsg("Receive element " + std::to_string(element.s_) + ", "
              + std::to_string(element.t1_) + ", " + std::to_string(element.t2_)
              + " with hasBeenModified: "
@@ -2557,19 +2574,19 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
     // kill(getpid(), SIGINT);
   }
 
-  if(element.s_ == 170 || element.s_ == 650) {
+  /*if(element.s_ == 170 || element.s_ == 650) {
     printMsg("Receive element " + std::to_string(element.s_) + ", "
              + std::to_string(element.t1_) + ", " + std::to_string(element.t2_)
              + " with hasBeenModified: "
              + std::to_string(element.hasBeenModified_) + " from "
              + std::to_string(sender));
     // kill(getpid(), SIGINT);
-  }
+  }*/
 
   struct saddleEdge<sizeSad> s
     = getSaddle(element.s_, element.sOrder_, element.sRank_);
   if(s.rank_ == ttk::MPIrank_ && element.t1_ == -1 && element.t2_ == -1) {
-    printErr("Restart run for " + std::to_string(s.gid_));
+    // printErr("Restart run for " + std::to_string(s.gid_));
     processTriplet<sizeExtr>(saddles[s.lid_], saddleToPairedExtrema,
                              extremaToPairedSaddle, saddles, extremas,
                              increasing, ghostPresence, sendBuffer);
@@ -2577,26 +2594,26 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
   }
   ttk::SimplexId t1Lid = getUpdatedT1(element.t1_, element, s);
   ttk::SimplexId t2Lid = getUpdatedT2(element.t2_, element, s);
-  if(element.s_ == 1112) {
+  /*if(element.s_ == 1112) {
     printMsg("Updated element " + std::to_string(element.s_) + ", "
              + std::to_string(element.t1_) + ", "
              + std::to_string(element.t2_));
     // kill(getpid(), SIGINT);
-  }
+  }*/
 
-  if(element.s_ == 650 || element.s_ == 170) {
+  /*if(element.s_ == 650 || element.s_ == 170) {
     printMsg("Updated element " + std::to_string(element.s_) + ", "
              + std::to_string(element.t1_) + ", "
              + std::to_string(element.t2_));
     // kill(getpid(), SIGINT);
-  }
+  }*/
 
-  /*if(element.s_ == 914 && element.t1_ == 326) {
+  if(element.s_ == 1009 || element.s_ == 170) {
     printMsg("Updated element " + std::to_string(element.s_) + ", "
              + std::to_string(element.t1_) + ", "
              + std::to_string(element.t2_));
     //kill(getpid(), SIGINT);
-  }*/
+  }
 
   swapT1T2(element, t1Lid, t2Lid);
 
@@ -2610,26 +2627,28 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
     // auto &t1{extremas[t1Lid]};
     // auto &t2{extremas[t2Lid]};
     if(t1Lid == -1 || extremas[t1Lid].rep_.extremaId_ == -1) {
-      if(t2Lid == -1 || extremas[t2Lid].rep_.extremaId_ == -1) {
-        element.hasBeenModified_ = 1;
-        sendBuffer.at(element.t2Rank_).emplace_back(element);
-      } else {
+      /*if((element.t1_ != element.t2_) && (t2Lid == -1 ||
+      extremas[t2Lid].rep_.extremaId_ == -1)) {
+        //element.hasBeenModified_ = 1;
+        //sendBuffer.at(element.t2Rank_).emplace_back(element);
+        //printMsg("Send for "+std::to_string(element.s_)+" and
+      "+std::to_string(element.t1_)+", "+std::to_string(element.t2_)); } else {
         // Update the rep and send to the owner of t1
-        /*s1 = addSaddle(s1);
+        s1 = addSaddle(s1);
         addLocalExtrema(
           t1Lid, element.t1_, element.t1Rank_, element.t1Order_, s1.lid_);
         if(extremas[t2Lid].rep_.extremaId_ != -1) {
           extremas[t2Lid].rep_.extremaId_ = t1Lid;
         }
         s = addSaddle(s);
-        extremas[t2Lid].rep_.saddleId_ = s.lid_;*/
-      }
+        extremas[t2Lid].rep_.saddleId_ = s.lid_;
+      }*/
       element.hasBeenModified_ = 1;
       sendBuffer.at(element.t1Rank_).emplace_back(element);
     } else {
       // Send back to owner of s if hasBeenModified
       if(element.hasBeenModified_) {
-        element.hasBeenModified_ = 0;
+        element.hasBeenModified_ = 0; // TODO: intérêt?
         sendBuffer.at(s.rank_).emplace_back(element);
         element.hasBeenModified_ = 1;
       }
@@ -2637,140 +2656,47 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
       extremaNode<sizeExtr> &rep1 = extremas[t1Lid];
       // Who is t1 paired with?
       ttk::SimplexId ls1Id = extremaToPairedSaddle[t1Lid];
-      if(ls1Id != -1 && ls1Id != s.lid_) {
-        if(ls1Id != -1) {
+      if(element.t1_ == element.t2_) {
+        if(s.lid_ > -1 && saddleToPairedExtrema[s.lid_] > -1) {
+          auto &t1{extremas[saddleToPairedExtrema[s.lid_]]};
+          extremaToPairedSaddle[saddleToPairedExtrema[s.lid_]] = -1;
+          if(t1.gid_ == rep1.gid_) {
+            t1.rep_.extremaId_ = t1.lid_;
+            t1.rep_.saddleId_ = -1;
+            if(element.t1Rank_ != ttk::MPIrank_ && element.t1Rank_ != sender) {
+              sendBuffer.at(element.t1Rank_).emplace_back(element);
+            } else {
+              if(element.t1Rank_ == ttk::MPIrank_
+                 && ghostPresence[t1.lid_].size() > 1) {
+                for(const auto rank : ghostPresence[t1.lid_]) {
+                  if((rank != ttk::MPIrank_)
+                     && ((rank == sender && element.hasBeenModified_)
+                         || rank != sender)) {
+                    sendBuffer.at(rank).emplace_back(element);
+                  }
+                }
+              }
+            }
+          }
+        }
+        saddleToPairedExtrema[s.lid_] = -2;
+      } else {
+        if(ls1Id != -1 && ls1Id != s.lid_) {
           // To s1:
           auto ls1{saddles[ls1Id]};
-          /*if(element.s_ == 98) {
-            printErr("Trying to pair :" + std::to_string(element.s_) + ", "
-                    + std::to_string(extremas[t1Lid].gid_));
-            printErr("Element of saddle " + std::to_string(element.s_)
-                    + " has already linked to " + std::to_string(s1.gid_)
-                    + ", rank " + std::to_string(s1.rank_) + ", "
-                    + std::to_string(s1.vOrder_[0]) + ","
-                    + std::to_string(s1.order_)
-                    + ", extrema: " + std::to_string(extremas[t1Lid].gid_));
-          }*/
           // s1 is owned by the process
           if((ls1 < s) == increasing) {
             // s1 is incorrect
-            // Change rep, removePair, addPair
-            // auto &t1{extremas[t1Lid]};
-            if(rep1.gid_ == 326) {
-              printMsg("removePair? " + std::to_string(s.gid_));
-              // kill(getpid(), SIGINT);
-            }
-            if(element.t1_ != element.t2_) {
-              if((rep1.rep_.saddleId_ == -1) && s.gid_ == 170) {
-                printErr("HERE IS THE PROBLEM");
-                // getpid(), SIGINT);
-              }
-              ttk::SimplexId oldRep = rep1.rep_.extremaId_;
-              ttk::SimplexId oldSaddleId = rep1.rep_.saddleId_;
-              removePair(
-                ls1, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
-              s = addSaddle(s);
-              s2 = addSaddle(s2);
-              addLocalExtrema(
-                t2Lid, element.t2_, element.t2Rank_, element.t2Order_, s2.lid_);
-              // HERE
-              extremaNode<sizeExtr> &rep2 = extremas[t2Lid];
-              addPair(s, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
-              if(rep1.rep_.extremaId_ != -1) {
-                rep1.rep_.extremaId_ = t2Lid;
-                if(extremas[rep1.lid_].gid_ == 326) {
-                  printMsg("Change for rep for "
-                           + std::to_string(extremas[rep1.lid_].gid_) + " to "
-                           + std::to_string(
-                             extremas[extremas[rep1.lid_].rep_.extremaId_].gid_)
-                           + " by " + std::to_string(s.gid_));
-                }
-              }
-              rep1.rep_.saddleId_ = s.lid_;
-              // Re-compute for incorrect s1
-              if(ls1.gid_ != s.gid_) {
-                if(saddles[ls1.lid_].rank_ == ttk::MPIrank_) {
-                  // kill(getpid(), SIGINT);
-                  processTriplet<sizeExtr, sizeSad>(
-                    saddles[ls1.lid_], saddleToPairedExtrema,
-                    extremaToPairedSaddle, saddles, extremas, increasing,
-                    ghostPresence, sendBuffer);
-                } else {
-                  // Send s1 for re-computation
-                  // auto &rep2{extremas[t2Lid]};
-                  storeRerunToSend<sizeExtr>(sendBuffer, saddles[oldSaddleId]);
-                  /*messageType<sizeExtr, sizeSad> m
-                    = messageType<sizeExtr, sizeSad>(
-                      rep2.gid_, rep2.vOrder_, extremas[oldRep].gid_,
-                      extremas[oldRep].vOrder_, ls1.gid_, ls1.vOrder_,
-                      s2.gid_, s2.vOrder_, saddles[oldSaddleId].gid_,
-                      saddles[oldSaddleId].vOrder_, rep2.rank_,
-                      extremas[oldRep].rank_, ls1.rank_, s2.rank_,
-                      saddles[oldSaddleId].rank_, 0);
-                  sendBuffer.at(ls1.rank_).emplace_back(m);*/
-                }
-              } else {
-                printErr("THIS IS ANOTHER PROBLEM: "
-                         + std::to_string(ls1.gid_));
-              }
-
-              // If t1 owned but with !ghostPresence.empty() -> send to
-              // ghostPresence
-              saddleEdge<sizeSad> lst1;
-              saddleEdge<sizeSad> lst2;
-              if(rep1.rep_.saddleId_ != -1) {
-                lst1 = saddles[rep1.rep_.saddleId_];
-              }
-              if(extremas[t2Lid].rep_.saddleId_ != -1) {
-                lst2 = saddles[extremas[t2Lid].rep_.saddleId_];
-              }
-              storeMessageToSend<sizeExtr, sizeSad>(
-                ghostPresence, sendBuffer, s, lst1, lst2, rep1, extremas[t2Lid],
-                sender, element.hasBeenModified_);
-            } else {
-              // remove extremaToPairedSaddle if necessary
-              if(saddleToPairedExtrema[s.lid_] == rep1.lid_) {
-                extremaToPairedSaddle[rep1.lid_] = -1;
-                if(rep1.rep_.extremaId_ != -1) {
-                  rep1.rep_.extremaId_ = rep1.lid_;
-                }
-                rep1.rep_.saddleId_ = -1;
-                if(extremas[rep1.lid_].gid_ == 326) {
-                  printMsg("Change for rep for "
-                           + std::to_string(extremas[rep1.lid_].gid_) + " to "
-                           + std::to_string(
-                             extremas[extremas[rep1.lid_].rep_.extremaId_].gid_)
-                           + " by " + std::to_string(s.gid_));
-                }
-                if(element.t1Rank_ != ttk::MPIrank_
-                   && element.t1Rank_ != sender) {
-                  sendBuffer.at(element.t1Rank_).emplace_back(element);
-                }
-                saddleToPairedExtrema[s.lid_] = -2;
-              }
-              /*printMsg("No pairing of received message with saddle :"
-                        + std::to_string(s.gid_));*/
-            }
-          } else {
-            // Do nothing
-            /*if(element.hasBeenModified_ == 1
-                && element.t1Rank_ != element.sRank_) {
-              element.hasBeenModified_ = 0;
-              sendBuffer.at(element.t1Rank_).emplace_back(element);
-              element.hasBeenModified_ = 1;
-            }*/
-          }
-        } else {
-          // To no one:
-          // auto &t1{extremas[t1Lid]};
-          s = addSaddle(s);
-          // Set rep of t1 to t2 and add pair between s and t1
-          addPair(s, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
-          s2 = addSaddle(s2);
-          addLocalExtrema(
-            t2Lid, element.t2_, element.t2Rank_, element.t2Order_, s2.lid_);
-          ttk::SimplexId oldSaddle = rep1.rep_.saddleId_;
-          if(rep1.rep_.extremaId_ != -1) {
+            ttk::SimplexId oldRep = rep1.rep_.extremaId_;
+            ttk::SimplexId oldSaddleId = rep1.rep_.saddleId_;
+            removePair(ls1, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
+            s = addSaddle(s);
+            s2 = addSaddle(s2);
+            addLocalExtrema(
+              t2Lid, element.t2_, element.t2Rank_, element.t2Order_, s2.lid_);
+            // HERE
+            extremaNode<sizeExtr> &rep2 = extremas[t2Lid];
+            addPair(s, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
             rep1.rep_.extremaId_ = t2Lid;
             if(extremas[rep1.lid_].gid_ == 326) {
               printMsg("Change for rep for "
@@ -2779,31 +2705,32 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
                          extremas[extremas[rep1.lid_].rep_.extremaId_].gid_)
                        + " by " + std::to_string(s.gid_));
             }
+            rep1.rep_.saddleId_ = s.lid_;
+            // If t1 owned but with !ghostPresence.empty() -> send to
+            // ghostPresence
+            saddleEdge<sizeSad> lst1;
+            saddleEdge<sizeSad> lst2;
+            if(rep1.rep_.saddleId_ != -1) {
+              lst1 = saddles[rep1.rep_.saddleId_];
+            }
+            if(extremas[t2Lid].rep_.saddleId_ != -1) {
+              lst2 = saddles[extremas[t2Lid].rep_.saddleId_];
+            }
+            storeMessageToSend<sizeExtr, sizeSad>(
+              ghostPresence, sendBuffer, s, lst1, lst2, rep1, extremas[t2Lid],
+              sender, element.hasBeenModified_);
+            // Re-compute for incorrect s1
+            if(saddles[ls1.lid_].rank_ == ttk::MPIrank_) {
+              processTriplet<sizeExtr, sizeSad>(
+                saddles[ls1.lid_], saddleToPairedExtrema, extremaToPairedSaddle,
+                saddles, extremas, increasing, ghostPresence, sendBuffer);
+            } else {
+              // Send s1 for re-computation
+              storeRerunToSend<sizeExtr>(sendBuffer, saddles[oldSaddleId]);
+            }
           }
-          rep1.rep_.saddleId_ = s.lid_;
-          saddleEdge<sizeSad> ls1;
-          saddleEdge<sizeSad> ls2;
-          if(oldSaddle != -1) {
-            ls1 = saddles[oldSaddle];
-          }
-          if(extremas[t2Lid].rep_.saddleId_ != -1) {
-            ls2 = saddles[extremas[t2Lid].rep_.saddleId_];
-          }
-          // If t1 owned but with !ghostPresence.empty() -> send to
-          // ghostPresence
-          storeMessageToSend<sizeExtr, sizeSad>(
-            ghostPresence, sendBuffer, s, ls1, ls2, rep1, extremas[t2Lid],
-            sender, element.hasBeenModified_);
-          /*// If hasBeenModified: send to prop of s
-          if(element.hasBeenModified_) {
-            // TODO: sendBuffer? is it empty by now?
-            element.hasBeenModified_ = 0;
-            sendBuffer.at(element.sRank_).emplace_back(element);
-          }*/
-        }
-      } else {
-        // TODO: update rep + send update to other processes
-        if(element.t1_ != element.t2_) {
+        } else {
+          // TODO: update rep + send update to other processes
           s = addSaddle(s);
           addLocalExtrema(
             t2Lid, element.t2_, element.t2Rank_, element.t2Order_, s2.lid_);
@@ -2819,94 +2746,55 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
                          extremas[extremas[rep1.lid_].rep_.extremaId_].gid_)
                        + " by " + std::to_string(s.gid_));
             }
-          }
-          rep1.rep_.saddleId_ = s.lid_;
-        } else {
-          printErr("HERE WE ARE FOR " + std::to_string(element.s_) + " and "
-                   + std::to_string(element.t1_));
-          auto &t1{extremas[t1Lid]};
-          if(element.s_ == 170 && element.t2_ == 326) {
-            // kill(getpid(), SIGINT);
-          }
-          if(element.s_ == 170 && element.t2_ == 326 && element.t1_ == 326) {
-            // kill(getpid(), SIGINT);
-          }
-          if(s.lid_ != -1
-             && saddleToPairedExtrema[s.lid_] == t1.rep_.extremaId_) {
-            printMsg("Change rep");
-            extremaToPairedSaddle[t1Lid] = -1;
-            if(t1.rep_.extremaId_ != -1) {
-              t1.rep_.extremaId_ = t1.lid_;
-            }
-            t1.rep_.saddleId_ = -1;
-            if(element.t1Rank_ != ttk::MPIrank_ && element.t1Rank_ != sender) {
-              sendBuffer.at(element.t1Rank_).emplace_back(element);
-              printMsg("Send message to " + std::to_string(element.t1Rank_)
-                       + " of " + std::to_string(s.gid_) + " with "
-                       + std::to_string(element.t1_) + ", "
-                       + std::to_string(element.t2_));
-            }
-            saddleToPairedExtrema[s.lid_] = -2;
-          } else {
-            printErr("No change to rep");
+            rep1.rep_.saddleId_ = s.lid_;
           }
         }
       }
     }
   } else {
-    // If s present locally
-    addLocalExtrema(
-      t1Lid, element.t1_, element.t1Rank_, element.t1Order_, s1.lid_);
-    if(s.gid_ == 170) {
-      printMsg("About to check for " + std::to_string(s.gid_));
-    }
-    bool rerunSaddle{false};
-    if(saddleToPairedExtrema[s.lid_] == -2) {
-      printErr("RERUN SADDLE TRUE FOR " + std::to_string(s.gid_)
-               + " extremas: " + std::to_string(element.t1_) + ", "
-               + std::to_string(element.t2_));
-      rerunSaddle = true;
-    }
-    s1 = addSaddle(s1);
-    bool isPairedWithWrongExtrema = (saddleToPairedExtrema[s.lid_] > -1)
-                                    && ((saddleToPairedExtrema[s.lid_] != t1Lid)
-                                        || (element.t1_ == element.t2_));
-    bool isPairedWithWrongSaddle
-      = ((extremaToPairedSaddle[t1Lid] > -1)
-         && (extremaToPairedSaddle[t1Lid] != s.lid_));
-    struct saddleEdge<sizeSad> sCurrent;
-    if(extremaToPairedSaddle[t1Lid] > -1) {
-      sCurrent = saddles[extremaToPairedSaddle[t1Lid]];
-    }
-    bool shouldAddPair = saddleToPairedExtrema[s.lid_] < 0;
-
-    if(isPairedWithWrongExtrema && saddleToPairedExtrema[s.lid_] > -1) {
-      printErr("IS THIS THE PROBLEM? " + std::to_string(element.s_));
-      removePair(s, extremas[saddleToPairedExtrema[s.lid_]],
-                 saddleToPairedExtrema, extremaToPairedSaddle);
-    }
-
-    // extrema paired to wrong saddle
-    if(isPairedWithWrongSaddle) {
-      if((sCurrent < s) == increasing) {
-        shouldAddPair = true;
-      }
-    }
-    printMsg("BeforeShouldAddPair test for " + std::to_string(element.s_));
-    if(element.s_ == 170 && element.t1_ == 326 && element.t2_ == 326) {
-      // kill(getpid(), SIGINT);
-    }
-    if(shouldAddPair || (element.t1_ == element.t2_)) {
-      printMsg("Should add pair for " + std::to_string(element.s_) + " with "
-               + std::to_string(element.t1_) + " and "
-               + std::to_string(element.t2_));
-      // The new saddle is right, the old one is false
-      extremaNode<sizeExtr> &rep1 = extremas[t1Lid];
-      if(element.t1_ != element.t2_) {
-        if(isPairedWithWrongSaddle && ((sCurrent < s) == increasing)) {
-          removePair(
-            sCurrent, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
+    if(element.t1_ == element.t2_) {
+      if(saddleToPairedExtrema[s.lid_] > -1) {
+        auto &t1{extremas[saddleToPairedExtrema[s.lid_]]};
+        extremaToPairedSaddle[saddleToPairedExtrema[s.lid_]] = -1;
+        ttk::SimplexId r1Lid = getLocalExtrema(element.t1_);
+        if(r1Lid != -1 && t1.gid_ == extremas[r1Lid].gid_) {
+          if(t1.rep_.extremaId_ != -1) {
+            t1.rep_.extremaId_ = t1.lid_;
+            t1.rep_.saddleId_ = -1;
+          }
         }
+        if(element.t1Rank_ == ttk::MPIrank_
+           && ghostPresence[t1.lid_].size() > 1) {
+          for(const auto rank : ghostPresence[t1.lid_]) {
+            if((rank != ttk::MPIrank_)
+               && ((rank == sender && element.hasBeenModified_)
+                   || rank != sender)) {
+              sendBuffer.at(rank).emplace_back(element);
+            }
+          }
+        }
+      }
+      saddleToPairedExtrema[s.lid_] = -2;
+    } else {
+      addLocalExtrema(
+        t1Lid, element.t1_, element.t1Rank_, element.t1Order_, s1.lid_);
+      // s1 = addSaddle(s1);
+      bool isPairedWithWrongSaddle
+        = ((extremaToPairedSaddle[t1Lid] > -1)
+           && (extremaToPairedSaddle[t1Lid] != s.lid_));
+      struct saddleEdge<sizeSad> sCurrent;
+      if(extremaToPairedSaddle[t1Lid] > -1) {
+        sCurrent = saddles[extremaToPairedSaddle[t1Lid]];
+      }
+      if(element.s_ == 170 && element.t1_ == 326 && element.t2_ == 326) {
+        // kill(getpid(), SIGINT);
+      }
+      // extrema paired to wrong saddle
+      if(isPairedWithWrongSaddle && ((sCurrent < s) == increasing)) {
+        // The new saddle is right, the old one is false
+        extremaNode<sizeExtr> &rep1 = extremas[t1Lid];
+        removePair(
+          sCurrent, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
         addPair(s, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
         ttk::SimplexId oldExtrema = rep1.rep_.extremaId_;
         ttk::SimplexId oldSaddle = rep1.rep_.saddleId_;
@@ -2916,21 +2804,10 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
         extremaNode<sizeExtr> &rep2 = extremas[t2Lid];
         if(rep1.rep_.extremaId_ != -1) {
           rep1.rep_.extremaId_ = t2Lid;
-          if(extremas[rep1.lid_].gid_ == 326) {
-            printMsg("Change for rep for "
-                     + std::to_string(extremas[rep1.lid_].gid_) + " to "
-                     + std::to_string(
-                       extremas[extremas[rep1.lid_].rep_.extremaId_].gid_)
-                     + " by " + std::to_string(s.gid_));
-          }
+          rep1.rep_.saddleId_ = s.lid_;
         }
-        rep1.rep_.saddleId_ = s.lid_;
-        if(rerunSaddle) {
-          processTriplet<sizeExtr>(s, saddleToPairedExtrema,
-                                   extremaToPairedSaddle, saddles, extremas,
-                                   increasing, ghostPresence, sendBuffer);
-        }
-        if(rep1.rank_ != ttk::MPIrank_ || !ghostPresence[rep1.lid_].empty()) {
+        if(rep1.rank_ != ttk::MPIrank_
+           || (ghostPresence[rep1.lid_].size() > 1)) {
           saddleEdge<sizeSad> ls1;
           saddleEdge<sizeSad> ls2;
           if(oldSaddle != -1) {
@@ -2944,41 +2821,12 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
         }
         if(sCurrent.gid_ != -1) {
           if(sCurrent.rank_ == ttk::MPIrank_) {
-            // kill(getpid(), SIGINT);
             processTriplet<sizeExtr, sizeSad>(
               sCurrent, saddleToPairedExtrema, extremaToPairedSaddle, saddles,
               extremas, increasing, ghostPresence, sendBuffer);
           } else {
-            /*storeMessageToSend<sizeExtr, sizeSad>(
-              ghostPresence, sendBuffer, sCurrent, s, saddles[oldSaddle], rep2,
-              extremas[oldExtrema]);*/
             storeRerunToSend<sizeExtr>(sendBuffer, sCurrent);
           }
-        }
-      } else {
-        printMsg("No pairing here either: " + std::to_string(s.gid_) + ", "
-                 + std::to_string(element.t1_) + ", "
-                 + std::to_string(element.t2_));
-        if((isPairedWithWrongSaddle && ((sCurrent < s) == increasing))
-           || isPairedWithWrongExtrema) {
-          if(isPairedWithWrongSaddle && ((sCurrent < s) == increasing)) {
-            removePair(
-              sCurrent, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
-          }
-          auto &t1{extremas[t1Lid]};
-          extremaToPairedSaddle[t1Lid] = -1;
-          if(t1.rep_.extremaId_ != -1) {
-            t1.rep_.extremaId_ = t1.lid_;
-          }
-          t1.rep_.saddleId_ = -1;
-          if(element.t1Rank_ != ttk::MPIrank_ && element.t1Rank_ != sender) {
-            sendBuffer.at(element.t1Rank_).emplace_back(element);
-            printMsg("Send message to " + std::to_string(element.t1Rank_)
-                     + " of " + std::to_string(s.gid_) + " with "
-                     + std::to_string(element.t1_) + ", "
-                     + std::to_string(element.t2_));
-          }
-          saddleToPairedExtrema[s.lid_] = -2;
         }
       }
     }
@@ -3040,8 +2888,8 @@ void ttk::DiscreteMorseSandwichMPI::storeRerunToSend(
   saddleEdge<sizeSad> &sv) const {
   messageType<sizeExtr, sizeSad> m
     = messageType<sizeExtr, sizeSad>(sv.gid_, sv.vOrder_, sv.rank_);
-  printErr("IN RERUN TO SEND: " + std::to_string(sv.gid_) + " to "
-           + std::to_string(sv.rank_));
+  /*printErr("IN RERUN TO SEND: " + std::to_string(sv.gid_) + " to "
+           + std::to_string(sv.rank_));*/
   sendBuffer.at(sv.rank_).emplace_back(m);
 };
 
@@ -3055,10 +2903,10 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
   bool increasing,
   std::vector<std::vector<char>> &ghostPresence,
   std::vector<std::vector<messageType<sizeExtr, sizeSad>>> &sendBuffer) const {
-  if(sv.gid_ == 1112) {
+  /*if(sv.gid_ == 1112) {
     printErr("Process saddle " + std::to_string(sv.gid_));
     // kill(getpid(), SIGINT);
-  }
+  }*/
   // rep1 is either last correct in local or a ghost
   auto &rep1 = getRep(&extremas[sv.t_[0]], &sv, increasing, extremas, saddles);
   bool pairedR1 = extremaToPairedSaddle[rep1.lid_] > -1;
@@ -3086,7 +2934,7 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
       addPair(sv, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
       // If extrema is has local id, then is present in local TODO: CAREFUL:
       // NOT TRUE extrema can be present in triangulation but not graph
-      if(rep1.rank_ != ttk::MPIrank_ || !ghostPresence[rep1.lid_].empty()) {
+      if(rep1.rank_ != ttk::MPIrank_ || (ghostPresence[rep1.lid_].size() > 1)) {
         saddleEdge<sizeSad> s1;
         if(oldSaddle != -1) {
           s1 = saddles[oldSaddle];
@@ -3136,27 +2984,8 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
     pairedR2 = false;
   if(rep1.gid_ != rep2.gid_) {
     if((((rep2 < rep1) == increasing) || pairedR1) && !pairedR2) {
-      if(isR2Invalid) {
-        oldSaddle = rep2.rep_.saddleId_;
-        oldRepId = rep2.rep_.extremaId_;
-        removePair(saddles[rep2.rep_.saddleId_], rep2, saddleToPairedExtrema,
-                   extremaToPairedSaddle);
-      }
-      if(sv.gid_ == 225) {
-        printMsg("Prepare for pairs " + std::to_string(sv.gid_));
-      }
-      addPair(sv, rep2, saddleToPairedExtrema, extremaToPairedSaddle);
-      if(rep2.rep_.extremaId_ != -1) {
-        rep2.rep_.extremaId_ = rep1.lid_;
-        if(extremas[rep2.lid_].gid_ == 326) {
-          printMsg(
-            "Change for rep for " + std::to_string(extremas[rep2.lid_].gid_)
-            + " to "
-            + std::to_string(extremas[extremas[rep2.lid_].rep_.extremaId_].gid_)
-            + " by " + std::to_string(sv.gid_));
-        }
-      } else {
-        // Send to owner of extrema
+      if(rep2.rep_.extremaId_ == -1) {
+        // Send to owner to continue computation
         saddleEdge<sizeSad> s1;
         saddleEdge<sizeSad> s2;
         if(rep1.rep_.saddleId_ != -1) {
@@ -3170,26 +2999,59 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
           s2.gid_, s2.vOrder_, s1.gid_, s1.vOrder_, rep2.rank_, rep1.rank_,
           sv.rank_, s2.rank_, s1.rank_, 0);
         sendBuffer.at(rep2.rank_).emplace_back(m);
-      }
-      rep2.rep_.saddleId_ = sv.lid_;
-      // If extremaId == -1, send new pair to owner process
-      if(oldRepId == -1) {
-        saddleEdge<sizeSad> s1;
-        saddleEdge<sizeSad> s2;
-        if(rep1.rep_.saddleId_ != -1) {
-          s1 = saddles[rep1.rep_.saddleId_];
-        }
-        if(rep2.rep_.saddleId_ != -1) {
-          s2 = saddles[rep2.rep_.saddleId_];
-        }
-        messageType<sizeExtr, sizeSad> m = messageType<sizeExtr, sizeSad>(
-          rep1.gid_, rep1.vOrder_, rep2.gid_, rep2.vOrder_, sv.gid_, sv.vOrder_,
-          s1.gid_, s1.vOrder_, s2.gid_, s2.vOrder_, rep1.rank_, rep2.rank_,
-          sv.rank_, s1.rank_, s2.rank_, 0);
-        sendBuffer.at(rep1.rank_).emplace_back(m);
       } else {
-        // else, do normal other stuff
-        if(rep2.rank_ != ttk::MPIrank_ || !ghostPresence[rep2.lid_].empty()) {
+        if(isR2Invalid) {
+          oldSaddle = rep2.rep_.saddleId_;
+          oldRepId = rep2.rep_.extremaId_;
+          removePair(saddles[rep2.rep_.saddleId_], rep2, saddleToPairedExtrema,
+                     extremaToPairedSaddle);
+        }
+        addPair(sv, rep2, saddleToPairedExtrema, extremaToPairedSaddle);
+        // if(rep2.rep_.extremaId_ != -1) {
+        rep2.rep_.extremaId_ = rep1.lid_;
+        if(extremas[rep2.lid_].gid_ == 326) {
+          printMsg(
+            "Change for rep for " + std::to_string(extremas[rep2.lid_].gid_)
+            + " to "
+            + std::to_string(extremas[extremas[rep2.lid_].rep_.extremaId_].gid_)
+            + " by " + std::to_string(sv.gid_));
+        }
+        /*} else { // TODO: inutile, non?
+          // Send to owner of extrema
+          saddleEdge<sizeSad> s1;
+          saddleEdge<sizeSad> s2;
+          if(rep1.rep_.saddleId_ != -1) {
+            s1 = saddles[rep1.rep_.saddleId_];
+          }
+          if(rep2.rep_.saddleId_ != -1) {
+            s2 = saddles[rep2.rep_.saddleId_];
+          }
+          messageType<sizeExtr, sizeSad> m = messageType<sizeExtr, sizeSad>(
+            rep2.gid_, rep2.vOrder_, rep1.gid_, rep1.vOrder_, sv.gid_,
+        sv.vOrder_, s2.gid_, s2.vOrder_, s1.gid_, s1.vOrder_, rep2.rank_,
+        rep1.rank_, sv.rank_, s2.rank_, s1.rank_, 0);
+          sendBuffer.at(rep2.rank_).emplace_back(m);
+        }*/
+        rep2.rep_.saddleId_ = sv.lid_;
+        // If extremaId == -1, send new pair to owner process
+        /*if(oldRepId == -1) {
+          saddleEdge<sizeSad> s1;
+          saddleEdge<sizeSad> s2;
+          if(rep1.rep_.saddleId_ != -1) {
+            s1 = saddles[rep1.rep_.saddleId_];
+          }
+          if(rep2.rep_.saddleId_ != -1) {
+            s2 = saddles[rep2.rep_.saddleId_];
+          }
+          messageType<sizeExtr, sizeSad> m = messageType<sizeExtr, sizeSad>(
+            rep1.gid_, rep1.vOrder_, rep2.gid_, rep2.vOrder_, sv.gid_,
+        sv.vOrder_, s1.gid_, s1.vOrder_, s2.gid_, s2.vOrder_, rep1.rank_,
+        rep2.rank_, sv.rank_, s1.rank_, s2.rank_, 0);
+          sendBuffer.at(rep1.rank_).emplace_back(m);
+        } else {*/
+        // send to other processes if necessary
+        if(rep2.rank_ != ttk::MPIrank_
+           || (ghostPresence[rep2.lid_].size() > 1)) {
           saddleEdge<sizeSad> s1;
           saddleEdge<sizeSad> s2;
           if(rep1.rep_.saddleId_ != -1) {
@@ -3207,9 +3069,6 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
             // TODO: if from another process
             /*printMsg("Recompute for " +
              * std::to_string(saddles[oldSaddle].gid_));*/
-            if(oldSaddle == sv.lid_) {
-              printErr("HERE IS YOUR PROBLEM");
-            }
             return processTriplet<sizeExtr, sizeSad>(
               saddles[oldSaddle], saddleToPairedExtrema, extremaToPairedSaddle,
               saddles, extremas, increasing, ghostPresence, sendBuffer);
@@ -3222,28 +3081,12 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
               saddles[oldRep.rep_.saddleId_], rep1, oldRep);*/
           }
         }
+        //}
       }
-
     } else {
       if(!pairedR1) {
-        if(isR1Invalid) {
-          oldSaddle = rep1.rep_.saddleId_;
-          oldRepId = rep1.rep_.extremaId_;
-          removePair(saddles[rep1.rep_.saddleId_], rep1, saddleToPairedExtrema,
-                     extremaToPairedSaddle);
-        }
-        addPair(sv, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
-        if(rep1.rep_.extremaId_ != -1) {
-          rep1.rep_.extremaId_ = rep2.lid_;
-          if(extremas[rep1.lid_].gid_ == 326) {
-            printMsg("Change for rep for "
-                     + std::to_string(extremas[rep1.lid_].gid_) + " to "
-                     + std::to_string(
-                       extremas[extremas[rep1.lid_].rep_.extremaId_].gid_)
-                     + " by " + std::to_string(sv.gid_));
-          }
-        } else {
-          // Send to owner of extrema
+        if(rep1.rep_.extremaId_ == -1) {
+          // Send to owner to continue computation
           saddleEdge<sizeSad> s1;
           saddleEdge<sizeSad> s2;
           if(rep1.rep_.saddleId_ != -1) {
@@ -3257,29 +3100,62 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
             sv.vOrder_, s1.gid_, s1.vOrder_, s2.gid_, s2.vOrder_, rep1.rank_,
             rep2.rank_, sv.rank_, s1.rank_, s2.rank_, 0);
           sendBuffer.at(rep1.rank_).emplace_back(m);
-        }
-        rep1.rep_.saddleId_ = sv.lid_;
-        if(oldRepId == -1) {
-          saddleEdge<sizeSad> s1;
-          saddleEdge<sizeSad> s2;
-          if(rep1.rep_.saddleId_ != -1) {
-            s1 = saddles[rep1.rep_.saddleId_];
-          }
-          if(rep2.rep_.saddleId_ != -1) {
-            s2 = saddles[rep2.rep_.saddleId_];
-          }
-          messageType<sizeExtr, sizeSad> m = messageType<sizeExtr, sizeSad>(
-            rep2.gid_, rep2.vOrder_, rep1.gid_, rep1.vOrder_, sv.gid_,
-            sv.vOrder_, s2.gid_, s2.vOrder_, s1.gid_, s1.vOrder_, rep2.rank_,
-            rep1.rank_, sv.rank_, s2.rank_, s1.rank_, 0);
-          if(rep2.rank_ != ttk::MPIrank_) {
-            sendBuffer.at(rep2.rank_).emplace_back(m);
-          }
-          if(rep1.rank_ != ttk::MPIrank_) {
-            sendBuffer.at(rep1.rank_).emplace_back(m);
-          }
         } else {
-          if(rep1.rank_ != ttk::MPIrank_ || !ghostPresence[rep1.lid_].empty()) {
+          if(isR1Invalid) {
+            oldSaddle = rep1.rep_.saddleId_;
+            oldRepId = rep1.rep_.extremaId_;
+            removePair(saddles[rep1.rep_.saddleId_], rep1,
+                       saddleToPairedExtrema, extremaToPairedSaddle);
+          }
+          addPair(sv, rep1, saddleToPairedExtrema, extremaToPairedSaddle);
+          // if(rep1.rep_.extremaId_ != -1) {
+          rep1.rep_.extremaId_ = rep2.lid_;
+          if(extremas[rep1.lid_].gid_ == 326) {
+            printMsg("Change for rep for "
+                     + std::to_string(extremas[rep1.lid_].gid_) + " to "
+                     + std::to_string(
+                       extremas[extremas[rep1.lid_].rep_.extremaId_].gid_)
+                     + " by " + std::to_string(sv.gid_));
+          }
+          /*} else {
+            // Send to owner of extrema
+            saddleEdge<sizeSad> s1;
+            saddleEdge<sizeSad> s2;
+            if(rep1.rep_.saddleId_ != -1) {
+              s1 = saddles[rep1.rep_.saddleId_];
+            }
+            if(rep2.rep_.saddleId_ != -1) {
+              s2 = saddles[rep2.rep_.saddleId_];
+            }
+            messageType<sizeExtr, sizeSad> m = messageType<sizeExtr, sizeSad>(
+              rep1.gid_, rep1.vOrder_, rep2.gid_, rep2.vOrder_, sv.gid_,
+              sv.vOrder_, s1.gid_, s1.vOrder_, s2.gid_, s2.vOrder_, rep1.rank_,
+              rep2.rank_, sv.rank_, s1.rank_, s2.rank_, 0);
+            sendBuffer.at(rep1.rank_).emplace_back(m);
+          }*/
+          rep1.rep_.saddleId_ = sv.lid_;
+          /*if(oldRepId == -1) {
+            saddleEdge<sizeSad> s1;
+            saddleEdge<sizeSad> s2;
+            if(rep1.rep_.saddleId_ != -1) {
+              s1 = saddles[rep1.rep_.saddleId_];
+            }
+            if(rep2.rep_.saddleId_ != -1) {
+              s2 = saddles[rep2.rep_.saddleId_];
+            }
+            messageType<sizeExtr, sizeSad> m = messageType<sizeExtr, sizeSad>(
+              rep2.gid_, rep2.vOrder_, rep1.gid_, rep1.vOrder_, sv.gid_,
+              sv.vOrder_, s2.gid_, s2.vOrder_, s1.gid_, s1.vOrder_, rep2.rank_,
+              rep1.rank_, sv.rank_, s2.rank_, s1.rank_, 0);
+            if(rep2.rank_ != ttk::MPIrank_) {
+              sendBuffer.at(rep2.rank_).emplace_back(m);
+            }
+            if(rep1.rank_ != ttk::MPIrank_) {
+              sendBuffer.at(rep1.rank_).emplace_back(m);
+            }
+          } else {*/
+          if(rep1.rank_ != ttk::MPIrank_
+             || (ghostPresence[rep1.lid_].size() > 1)) {
             saddleEdge<sizeSad> s1;
             saddleEdge<sizeSad> s2;
             if(oldSaddle != -1) {
@@ -3314,37 +3190,69 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
       }
     }
   } else {
-    /*printMsg("No pairing for saddle " + std::to_string(sv.gid_)
-             + " and extrema " + std::to_string(rep1.gid_));*/
-    saddleToPairedExtrema[sv.lid_] = -2;
-    if(saddleToPairedExtrema[sv.lid_] == rep1.lid_) {
-      extremaToPairedSaddle[rep1.lid_] = -1;
-      if(rep1.rep_.extremaId_ != -1) {
-        rep1.rep_.extremaId_ = rep1.lid_;
-      }
-      rep1.rep_.saddleId_ = -1;
-      if(extremas[rep1.lid_].gid_ == 326) {
-        printMsg(
-          "Change for rep for " + std::to_string(extremas[rep1.lid_].gid_)
-          + " to "
-          + std::to_string(extremas[extremas[rep1.lid_].rep_.extremaId_].gid_)
-          + " by " + std::to_string(sv.gid_));
-      }
-    }
-
-    // TODO: send to owner if necessary
-    if(rep1.rank_ != ttk::MPIrank_) {
+    if(rep1.rep_.extremaId_ == -1) {
+      // Send to owner to continue computation
       saddleEdge<sizeSad> s1;
+      saddleEdge<sizeSad> s2;
       if(rep1.rep_.saddleId_ != -1) {
         s1 = saddles[rep1.rep_.saddleId_];
       }
+      if(rep2.rep_.saddleId_ != -1) {
+        s2 = saddles[rep2.rep_.saddleId_];
+      }
       messageType<sizeExtr, sizeSad> m = messageType<sizeExtr, sizeSad>(
-        rep1.gid_, rep1.vOrder_, rep2.gid_, rep2.vOrder_, sv.gid_, sv.vOrder_,
-        s1.gid_, s1.vOrder_, s1.gid_, s1.vOrder_, rep1.rank_, rep2.rank_,
-        sv.rank_, s1.rank_, s1.rank_, 0);
+        rep2.gid_, rep2.vOrder_, rep1.gid_, rep1.vOrder_, sv.gid_, sv.vOrder_,
+        s2.gid_, s2.vOrder_, s1.gid_, s1.vOrder_, rep2.rank_, rep1.rank_,
+        sv.rank_, s2.rank_, s1.rank_, 0);
       sendBuffer.at(rep1.rank_).emplace_back(m);
+    } else {
+      if(saddleToPairedExtrema[sv.lid_] > -1) {
+        auto &t1{extremas[saddleToPairedExtrema[sv.lid_]]};
+        if(sv.gid_ == 1009) {
+          printMsg(
+            "3338 Change saddleToPairedExtrema for " + std::to_string(sv.gid_)
+            + " rep de rep: " + std::to_string(rep1.rep_.extremaId_) + " rep1: "
+            + std::to_string(rep1.gid_) + " t1 : " + std::to_string(t1.gid_));
+        }
+        extremaToPairedSaddle[saddleToPairedExtrema[sv.lid_]] = -1;
+        if(t1.gid_ == rep1.gid_) {
+          if(sv.gid_ == 1009) {
+            printMsg("Change rep for " + std::to_string(sv.gid_));
+          }
+          t1.rep_.extremaId_ = t1.lid_;
+          t1.rep_.saddleId_ = -1;
+          if(rep1.rank_ != ttk::MPIrank_
+             || (ghostPresence[rep1.lid_].size() > 1)) {
+            saddleEdge<sizeSad> s1;
+            saddleEdge<sizeSad> s2;
+            if(rep1.rep_.saddleId_ != -1) {
+              s1 = saddles[rep1.rep_.saddleId_];
+            }
+            if(rep2.rep_.saddleId_ != -1) {
+              s2 = saddles[rep2.rep_.saddleId_];
+            }
+            storeMessageToSend<sizeExtr, sizeSad>(
+              ghostPresence, sendBuffer, sv, s1, s2, rep1, rep2);
+          }
+        }
+        saddleToPairedExtrema[sv.lid_] = -2;
+      }
+
+      // TODO: send to owner if necessary USELESS, NO?
+      /*if(rep1.rank_ != ttk::MPIrank_) {
+        saddleEdge<sizeSad> s1;
+        if(rep1.rep_.saddleId_ != -1) {
+          s1 = saddles[rep1.rep_.saddleId_];
+        }
+        messageType<sizeExtr, sizeSad> m = messageType<sizeExtr, sizeSad>(
+          rep1.gid_, rep1.vOrder_, rep2.gid_, rep2.vOrder_, sv.gid_, sv.vOrder_,
+          s1.gid_, s1.vOrder_, s1.gid_, s1.vOrder_, rep1.rank_, rep2.rank_,
+          sv.rank_, s1.rank_, s1.rank_, 0);
+        sendBuffer.at(rep1.rank_).emplace_back(m);
+      }*/
     }
   }
+
   return 0;
 };
 
