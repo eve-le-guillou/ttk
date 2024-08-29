@@ -1747,13 +1747,13 @@ int ImplicitTriangulationCRTP<Derived>::getTriangleVertexInternal(
       switch(localVertexId) {
         break;
         case 0:
-          vertexId = p[0] / 2 + p[1] * vshift_[0];
+          vertexId = p[0] + p[1] * vshift_[0];
           break;
         case 1:
-          vertexId = p[0] / 2 + p[1] * vshift_[0] + 1;
+          vertexId = p[0] + p[1] * vshift_[0] + 1;
           break;
         case 2:
-          vertexId = p[0] / 2 + p[1] * vshift_[0] + vshift_[0];
+          vertexId = p[0] + p[1] * vshift_[0] + vshift_[0];
           break;
       }
       break;
@@ -1761,13 +1761,13 @@ int ImplicitTriangulationCRTP<Derived>::getTriangleVertexInternal(
       switch(localVertexId) {
         break;
         case 0:
-          vertexId = p[0] / 2 + p[1] * vshift_[0] + 1;
+          vertexId = p[0] + p[1] * vshift_[0] + 1;
           break;
         case 1:
-          vertexId = p[0] / 2 + p[1] * vshift_[0] + vshift_[0] + 1;
+          vertexId = p[0] + p[1] * vshift_[0] + vshift_[0] + 1;
           break;
         case 2:
-          vertexId = p[0] / 2 + p[1] * vshift_[0] + vshift_[0];
+          vertexId = p[0] + p[1] * vshift_[0] + vshift_[0];
           break;
       }
   }
