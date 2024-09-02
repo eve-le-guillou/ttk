@@ -570,8 +570,6 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   MPI_Bcast(&globmax, 1, MPI_SimplexId, globalMax.rank, ttk::MPIcomm_);
   MPI_Bcast(maxMetaData, 4, MPI_DOUBLE, globalMax.rank, ttk::MPIcomm_);
 
-  printMsg("globMax: " + std::to_string(globmax) + ", from "
-           + std::to_string(globalMax.rank));
   std::vector<std::vector<dataRequest>> sendRecvBuffer(ttk::MPIsize_);
 
   const auto createDataRequestMPIType =
@@ -837,12 +835,6 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
     recvDispls[i] = recvDispls[i - 1] + recvBufferSize[i - 1];
   }
   recvBuffer.resize(recvDispls.back() + recvBufferSize.back());
-  for(int i = 0; i < sendBufferSize.size(); i++) {
-    printMsg("Send buffer size: " + std::to_string(sendBufferSize[i])
-             + ", sendDispls: " + std::to_string(sendDispls[i])
-             + ", recvBufferSize: " + std::to_string(recvBufferSize[i]) + ", "
-             + std::to_string(recvDispls[i]));
-  }
   MPI_Datatype MPI_responseDataType;
   createDataResponseMPIType(MPI_responseDataType);
 
@@ -852,7 +844,6 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
                 recvDispls.data(), MPI_responseDataType, ttk::MPIcomm_);
   // Receive the data and store it appropriately
   for(const auto &element : recvBuffer) {
-    printMsg("Received element: " + std::to_string(element.vertexGid_));
     auto &CTPair{CTDiagram[element.lid_]};
     if(element.isBirth_) {
       fillBirthData(CTPair, dms_pairs[element.lid_], element.vertexGid_);
