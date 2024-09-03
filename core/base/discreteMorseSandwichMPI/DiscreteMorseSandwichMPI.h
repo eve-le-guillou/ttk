@@ -1514,23 +1514,30 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
   const SimplexId *const offsets,
   size_t &nConnComp,
   const triangulationType &triangulation) const {
-  // extracts the global pair
-  const auto localMin{
-    *std::min_element(criticalExtremas.begin(), criticalExtremas.end(),
-                      [offsets](const SimplexId a, const SimplexId b) {
-                        return offsets[a] < offsets[b];
-                      })};
+
   ttk::SimplexId totalNumberOfVertices{-1};
-  ttk::SimplexId localNumberOfVertices = triangulation.getNumberOfVertices();
   MPI_Datatype MPI_SimplexId = getMPIType(totalNumberOfVertices);
+  ttk::SimplexId localNumberOfVertices = triangulation.getNumberOfVertices();
 
   MPI_Allreduce(&localNumberOfVertices, &totalNumberOfVertices, 1,
                 MPI_SimplexId, MPI_SUM, ttk::MPIcomm_);
+
   ttk::SimplexId localMinOffset{totalNumberOfVertices};
   ttk::SimplexId globalMinOffset{-1};
-  if(triangulation.getVertexRank(localMin) == ttk::MPIrank_) {
-    localMinOffset = offsets[localMin];
+  ttk::SimplexId localMin;
+
+  if(criticalExtremas.size() > 0) {
+    // extracts the global pair
+    localMin
+      = *std::min_element(criticalExtremas.begin(), criticalExtremas.end(),
+                          [offsets](const SimplexId a, const SimplexId b) {
+                            return offsets[a] < offsets[b];
+                          });
+    if(triangulation.getVertexRank(localMin) == ttk::MPIrank_) {
+      localMinOffset = offsets[localMin];
+    }
   }
+
   MPI_Allreduce(&localMinOffset, &globalMinOffset, 1, MPI_SimplexId, MPI_MIN,
                 ttk::MPIcomm_);
 
@@ -1722,19 +1729,25 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     // non-paired minima
     //#pragma omp parallel for reduction(+:nConnComp) shared(pairs, nConnComp)
     // num_threads(this->threadNumber_)
-    for(const auto [gid, lid] : globalToLocalExtrema) {
-      if(extremas[lid].rank_ == ttk::MPIrank_) {
-        if(extremaToPairedSaddle[lid] < 0) {
-          //#pragma omp critical
-          //        {
-          pairs.emplace_back(gid, -1, 0);
-          nConnComp++;
-          printMsg("Emplace back min: " + std::to_string(gid)
-                   + ", lid:" + std::to_string(lid));
-          //       }
+    if(totalNumberOfPairs > 1) {
+      for(const auto [gid, lid] : globalToLocalExtrema) {
+        if(extremas[lid].rank_ == ttk::MPIrank_) {
+          if(extremaToPairedSaddle[lid] < 0) {
+            //#pragma omp critical
+            //        {
+            pairs.emplace_back(gid, -1, 0);
+            nConnComp++;
+            //       }
+          }
         }
       }
+    } else {
+      if(globalMinOffset == localMinOffset) {
+        pairs.emplace_back(triangulation.getVertexGlobalId(localMin), -1, 0);
+        nConnComp++;
+      }
     }
+
   } else {
     if(globalMinOffset == localMinOffset) {
       pairs.emplace_back(triangulation.getVertexGlobalId(localMin), -1, 0);
