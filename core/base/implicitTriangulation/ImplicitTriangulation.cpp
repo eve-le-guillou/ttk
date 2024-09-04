@@ -2973,9 +2973,6 @@ int ttk::ImplicitTriangulation::preconditionDistributedCells() {
       Bbox[2 * i + 1] = boundingBox_[2 * i + 1];
     }
   }
-  printMsg("BBox: " + std::to_string(Bbox[0]) + ", " + std::to_string(Bbox[1])
-           + ", " + std::to_string(Bbox[2]) + ", " + std::to_string(Bbox[3])
-           + ", " + std::to_string(Bbox[4]) + ", " + std::to_string(Bbox[5]));
   for(size_t i = 0; i < this->neighborRanks_.size(); ++i) {
     const auto neigh{this->neighborRanks_[i]};
     MPI_Sendrecv(this->neighborCellBBoxes_[ttk::MPIrank_].data(), 6, MPI_DOUBLE,
