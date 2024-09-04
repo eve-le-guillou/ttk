@@ -315,10 +315,9 @@ int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
   MPI_Datatype MPI_SimplexId = ttk::getMPIType(beginning);
   MPI_Exscan(&nPairs, &beginning, 1, MPI_SimplexId, MPI_SUM, ttk::MPIcomm_);
 
-  /*if(diagram.empty()) {
-    dbg.printErr("Empty diagram");
-    return -1;
-  }*/
+  if(diagram.empty()) {
+    return 0;
+  }
 
   const auto pd = vtu->GetPointData();
   const auto cd = vtu->GetCellData();

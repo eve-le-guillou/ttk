@@ -70,10 +70,10 @@ int ttkPersistenceDiagram::dispatch(
     return 0;
   }
 
-  if(CTDiagram.empty()) {
+  /*if(CTDiagram.empty()) {
     this->printErr("Empty diagram!");
     return 0;
-  }
+  }*/
 
   vtkNew<vtkUnstructuredGrid> const vtu{};
 
