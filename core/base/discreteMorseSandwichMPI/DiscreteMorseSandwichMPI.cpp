@@ -7,6 +7,9 @@
 
 ttk::DiscreteMorseSandwichMPI::DiscreteMorseSandwichMPI() {
   this->setDebugMsgPrefix("DiscreteMorseSandwichMPI");
+#ifdef TTK_ENABLE_MPI
+  hasMPISupport_ = true;
+#endif
 }
 
 void ttk::DiscreteMorseSandwichMPI::displayStats(
