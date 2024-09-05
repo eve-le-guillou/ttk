@@ -2223,8 +2223,8 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
       if(recvPerformedCount > 0) {
         for(int i = 0; i < recvPerformedCount; i++) {
           r = recvStatusData[i].MPI_SOURCE;
-          std::sort(
-            recvBuffer.at(r).begin(), recvBuffer.at(r).end(), cmpSadMin);
+          TTK_PSORT(this->threadNumber_, recvBuffer.at(r).begin(),
+                    recvBuffer.at(r).end(), cmpSadMin);
           //#pragma omp parallel for schedule(static)
           for(ttk::SimplexId j = 0; j < recvMessageSize[r]; j++) {
             receiveElement<sizeExtr, sizeSad>(
