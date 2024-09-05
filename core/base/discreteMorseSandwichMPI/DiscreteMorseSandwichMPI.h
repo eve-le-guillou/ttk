@@ -934,7 +934,11 @@ namespace ttk {
 
     template <typename triangulationType>
     void alloc(const triangulationType &triangulation) {
-      Timer tm{};
+#ifdef TTK_ENABLE_MPI_TIME
+      ttk::Timer t_mpi;
+      ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
+      // Timer tm{};
       const auto dim{this->dg_.getDimensionality()};
       if(dim > 3 || dim < 1) {
         return;
@@ -981,12 +985,25 @@ namespace ttk {
             this->dg_.getNumberOfCells(i, triangulation), -1);
         }
       }
-      this->printMsg("Memory allocations", 1.0, tm.getElapsedTime(), 1,
-                     debug::LineMode::NEW);
+#ifdef TTK_ENABLE_MPI_TIME
+      double elapsedTime
+        = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+      if(ttk::MPIrank_ == 0) {
+        printMsg("Memory allocations performed using "
+                 + std::to_string(ttk::MPIsize_)
+                 + " MPI processes lasted :" + std::to_string(elapsedTime));
+      }
+#endif
+      /*this->printMsg("Memory allocations", 1.0, tm.getElapsedTime(), 1,
+                     debug::LineMode::NEW);*/
     }
 
     void clear() {
-      Timer tm{};
+#ifdef TTK_ENABLE_MPI_TIME
+      ttk::Timer t_mpi;
+      ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
+      // Timer tm{};
       this->edgeTrianglePartner_ = {};
       this->s2Mapping_ = {};
       this->s1Mapping_ = {};
@@ -1000,8 +1017,17 @@ namespace ttk {
       this->maxToPairedSaddle_ = {};
       this->globalToLocalSaddle1_ = {};
       this->globalToLocalSaddle2_ = {};
-      this->printMsg(
-        "Memory cleanup", 1.0, tm.getElapsedTime(), 1, debug::LineMode::NEW);
+      /*this->printMsg(
+        "Memory cleanup", 1.0, tm.getElapsedTime(), 1, debug::LineMode::NEW);*/
+#ifdef TTK_ENABLE_MPI_TIME
+      double elapsedTime
+        = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+      if(ttk::MPIrank_ == 0) {
+        printMsg("Memory cleanup performed using "
+                 + std::to_string(ttk::MPIsize_)
+                 + " MPI processes lasted :" + std::to_string(elapsedTime));
+      }
+#endif
     }
 
     dcg::DiscreteGradient dg_{};
@@ -1418,9 +1444,9 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
       }
     }
   }
-  this->printMsg("Computed the descending 1-separatrices", 1.0,
+  /*this->printMsg("Computed the descending 1-separatrices", 1.0,
                  tm.getElapsedTime(), this->threadNumber_,
-                 debug::LineMode::NEW);
+                 debug::LineMode::NEW);*/
 
   return 0;
 }
@@ -1489,7 +1515,10 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
   const SimplexId *const offsets,
   size_t &nConnComp,
   const triangulationType &triangulation) const {
-
+#ifdef TTK_ENABLE_MPI_TIME
+  ttk::Timer t_mpi;
+  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
   ttk::SimplexId totalNumberOfVertices{-1};
   MPI_Datatype MPI_SimplexId = getMPIType(totalNumberOfVertices);
   ttk::SimplexId localNumberOfVertices = triangulation.getNumberOfVertices();
@@ -1499,7 +1528,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
 
   ttk::SimplexId localMinOffset{totalNumberOfVertices};
   ttk::SimplexId globalMinOffset{-1};
-  ttk::SimplexId localMin;
+  ttk::SimplexId localMin{-1};
 
   if(criticalExtremas.size() > 0) {
     // extracts the global pair
@@ -1518,14 +1547,23 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
 
   if(this->ComputeMinSad) {
     // minima - saddle pairs
-    Timer tm{};
+    // Timer tm{};
     std::vector<std::vector<extremaNode<1>>> saddle1ToMinima;
     std::unordered_map<ttk::SimplexId, std::vector<char>> localGhostPresenceMap;
     std::vector<std::vector<char>> localGhostPresenceVector;
     this->getSaddle1ToMinima(criticalEdges, triangulation, offsets,
                              saddle1ToMinima, localGhostPresenceVector,
                              localGhostPresenceMap);
-    Timer tmseq{};
+#ifdef TTK_ENABLE_MPI_TIME
+    double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+    if(ttk::MPIrank_ == 0) {
+      printMsg("Computation of separatrices performed using "
+               + std::to_string(ttk::MPIsize_)
+               + " MPI processes lasted :" + std::to_string(elapsedTime));
+    }
+    ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
+    // Timer tmseq{};
     auto &saddleToPairedExtrema{this->saddleToPairedMin_};
     auto &extremaToPairedSaddle{this->minToPairedSaddle_};
     auto &globalToLocalSaddle{this->globalToLocalSaddle1_};
@@ -1696,13 +1734,21 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
         nConnComp++;
       }
     }
-
-    this->printMsg("min-saddle pairs sequential part", 1.0,
+#ifdef TTK_ENABLE_MPI_TIME
+    elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+    if(ttk::MPIrank_ == 0) {
+      printMsg("Pairing of min-saddles performed using "
+               + std::to_string(ttk::MPIsize_)
+               + " MPI processes lasted :" + std::to_string(elapsedTime));
+    }
+    ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
+    /*this->printMsg("min-saddle pairs sequential part", 1.0,
                    tmseq.getElapsedTime(), 1, debug::LineMode::NEW);
 
     this->printMsg(
       "Computed " + std::to_string(nMinSadPairs) + " min-saddle pairs", 1.0,
-      tm.getElapsedTime(), this->threadNumber_);
+      tm.getElapsedTime(), this->threadNumber_);*/
   } else {
     if(globalMinOffset == localMinOffset) {
       pairs.emplace_back(triangulation.getVertexGlobalId(localMin), -1, 0);
@@ -3266,8 +3312,8 @@ void ttk::DiscreteMorseSandwichMPI::extractCriticalCells(
 
   this->dg_.getCriticalPoints(criticalCellsByDim, triangulation);
 
-  this->printMsg("Extracted critical cells", 1.0, tm.getElapsedTime(),
-                 this->threadNumber_, debug::LineMode::NEW);
+  /*this->printMsg("Extracted critical cells", 1.0, tm.getElapsedTime(),
+                 this->threadNumber_, debug::LineMode::NEW);*/
 
   // memory allocations
   auto &critEdges{this->critEdges_};
@@ -3360,8 +3406,8 @@ void ttk::DiscreteMorseSandwichMPI::extractCriticalCells(
     }
   }
 
-  this->printMsg("Extracted & sorted critical cells", 1.0, tm.getElapsedTime(),
-                 this->threadNumber_, debug::LineMode::NEW);
+  /*this->printMsg("Extracted & sorted critical cells", 1.0,
+     tm.getElapsedTime(), this->threadNumber_, debug::LineMode::NEW);*/
 }
 
 template <typename triangulationType>
@@ -3374,7 +3420,10 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
 
   // allocate memory
   this->alloc(triangulation);
-
+#ifdef TTK_ENABLE_MPI_TIME
+  ttk::Timer t_mpi;
+  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
   Timer tm{};
   pairs.clear();
   const auto dim = this->dg_.getDimensionality();
@@ -3388,6 +3437,14 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
   this->extractCriticalCells(
     criticalCellsByDim, critCellsOrder, offsets, triangulation, dim == 3);
 
+#ifdef TTK_ENABLE_MPI_TIME
+  double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Extract critical cells performed using "
+             + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
+  }
+#endif
   /* // if minima are paired
    auto &pairedMinima{this->pairedCritCells_[0]};
    // if 1-saddles are paired
@@ -3468,10 +3525,17 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
 
     this->printMsg(rows, debug::Priority::DETAIL);
   }*/
-
-  this->printMsg(
+#ifdef TTK_ENABLE_MPI_TIME
+  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Computation of persistence pairs performed using "
+             + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
+  }
+#endif
+  /*this->printMsg(
     "Computed " + std::to_string(pairs.size()) + " persistence pairs", 1.0,
-    tm.getElapsedTime(), this->threadNumber_);
+    tm.getElapsedTime(), this->threadNumber_);*/
 
   // this->displayStats(pairs, criticalCellsByDim, pairedMinima, paired1Saddles,
   //                   paired2Saddles, pairedMaxima);
