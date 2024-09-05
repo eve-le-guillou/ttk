@@ -1190,7 +1190,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
         if(sendPerformedCount > 0) {
           for(int i = 0; i < sendPerformedCount; i++) {
             int rankId = sendCompleted[i];
-            r = neighbors[i];
+            r = neighbors[rankId];
             if((sendMessageSize[rankId] > 0)) {
               MPI_Isend(sendBuffer.at(rankId).data(), sendMessageSize[rankId],
                         MPI_MessageType, r, 1, ttk::MPIcomm_,
