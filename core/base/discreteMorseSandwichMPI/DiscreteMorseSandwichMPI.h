@@ -770,6 +770,49 @@ namespace ttk {
                           std::vector<extremaNode<sizeExtr>> &extremas,
                           std::vector<saddleEdge<sizeSad>> &saddles) const;
 
+    template <int sizeSad>
+    struct saddleEdge<sizeSad> addSaddle(
+      saddleEdge<sizeSad> s,
+      std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalSaddle,
+      std::vector<saddleEdge<sizeSad>> &saddles,
+      std::vector<ttk::SimplexId> &saddleToPairedExtrema) const;
+
+    template <int sizeExtr, int sizeSad>
+    ttk::SimplexId getUpdatedT1(
+      const ttk::SimplexId extremaGid,
+      messageType<sizeExtr, sizeSad> &elt,
+      saddleEdge<sizeSad> s,
+      std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalExtrema,
+      std::vector<extremaNode<sizeExtr>> &extremas,
+      std::vector<saddleEdge<sizeSad>> &saddles,
+      bool increasing) const;
+
+    template <int sizeExtr, int sizeSad>
+    ttk::SimplexId getUpdatedT2(
+      const ttk::SimplexId extremaGid,
+      messageType<sizeExtr, sizeSad> &elt,
+      saddleEdge<sizeSad> s,
+      std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalExtrema,
+      std::vector<extremaNode<sizeExtr>> &extremas,
+      std::vector<saddleEdge<sizeSad>> &saddles,
+      bool increasing) const;
+
+    template <int sizeExtr, int sizeSad>
+    void swapT1T2(messageType<sizeExtr, sizeSad> &elt,
+                  ttk::SimplexId &t1Lid,
+                  ttk::SimplexId &t2Lid,
+                  bool increasing) const;
+
+    template <int sizeExtr>
+    void addLocalExtrema(
+      ttk::SimplexId &lid,
+      const ttk::SimplexId gid,
+      char rank,
+      ttk::SimplexId *vOrder,
+      std::vector<extremaNode<sizeExtr>> &extremas,
+      std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalExtrema,
+      std::vector<ttk::SimplexId> &extremaToPairedSaddle) const;
+
     template <int sizeExtr, int sizeSad>
     void receiveElement(
       messageType<sizeExtr, sizeSad> &element,
@@ -1602,7 +1645,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
 
   if(this->ComputeMinSad) {
     // minima - saddle pairs
-    // Timer tm{};
+    Timer tm{};
     std::vector<std::vector<extremaNode<1>>> saddle1ToMinima;
     std::unordered_map<ttk::SimplexId, std::vector<char>> localGhostPresenceMap;
     std::vector<std::vector<char>> localGhostPresenceVector;
@@ -1647,7 +1690,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
 #pragma omp parallel for reduction(merge : extremasGid) reduction(+: saddleNumber) schedule(static)
     for(size_t i = 0; i < saddle1ToMinimaNumber; ++i) {
       auto &mins = saddle1ToMinima[i];
-      const auto s1 = criticalEdges[i];
       // remove duplicates
       std::sort(mins.begin(), mins.end());
       const auto last = std::unique(mins.begin(), mins.end());
@@ -1672,13 +1714,13 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     std::vector<saddleEdge<2>> saddles{};
     saddles.reserve(saddleNumber);
     globalToLocalSaddle.reserve(saddleNumber);
-    //#pragma omp declare reduction (merge : std::vector<saddleEdge<2>>:
-    //omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) #pragma omp
-    //declare reduction (mergeMap : std::unordered_map<ttk::SimplexId,
-    //ttk::SimplexId>: omp_out.merge(omp_in)) #pragma omp parallel for
-    //reduction(merge : saddles) reduction(mergeMap : globalToLocalExtrema)
-    //schedule(static) shared(extremaLocks, extremas, globalMinOffset,
-    //ghostPresence)
+#pragma omp declare reduction (merge : std::vector<saddleEdge<2>>:omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+#pragma omp declare reduction (mergeMap : std::unordered_map<ttk::SimplexId, ttk::SimplexId>: omp_out.merge(omp_in))
+#pragma omp parallel for reduction(merge             \
+                                   : saddles)        \
+  reduction(mergeMap                                 \
+            : globalToLocalExtrema) schedule(static) \
+    shared(extremaLocks, extremas, globalMinOffset, ghostPresence)
     for(size_t i = 0; i < saddle1ToMinimaNumber; ++i) {
       auto &mins = saddle1ToMinima[i];
       const auto s1 = criticalEdges[i];
@@ -1902,10 +1944,10 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
 #endif
     /*this->printMsg("min-saddle pairs sequential part", 1.0,
                    tmseq.getElapsedTime(), 1, debug::LineMode::NEW);
-
+    */
     this->printMsg(
       "Computed " + std::to_string(nMinSadPairs) + " min-saddle pairs", 1.0,
-      tm.getElapsedTime(), this->threadNumber_);*/
+      tm.getElapsedTime(), this->threadNumber_);
   } else {
     if(globalMinOffset == localMinOffset) {
       pairs.emplace_back(triangulation.getVertexGlobalId(localMin), -1, 0);
@@ -2466,6 +2508,192 @@ int ttk::DiscreteMorseSandwichMPI::computePairNumbers(
   return computedSaddleNumber;
 }
 
+template <int sizeSad>
+struct ttk::DiscreteMorseSandwichMPI::saddleEdge<sizeSad>
+  ttk::DiscreteMorseSandwichMPI::addSaddle(
+    saddleEdge<sizeSad> s,
+    std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalSaddle,
+    std::vector<saddleEdge<sizeSad>> &saddles,
+    std::vector<ttk::SimplexId> &saddleToPairedExtrema) const {
+  if(s.lid_ == -1 && s.gid_ > -1) {
+    globalToLocalSaddle[s.gid_] = saddles.size();
+    s.lid_ = saddles.size();
+    saddles.emplace_back(s);
+    s = saddles.back();
+    saddleToPairedExtrema.emplace_back(static_cast<ttk::SimplexId>(-1));
+  }
+  return s;
+};
+
+template <int sizeExtr, int sizeSad>
+ttk::SimplexId ttk::DiscreteMorseSandwichMPI::getUpdatedT1(
+  const ttk::SimplexId extremaGid,
+  messageType<sizeExtr, sizeSad> &elt,
+  saddleEdge<sizeSad> s,
+  std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalExtrema,
+  std::vector<extremaNode<sizeExtr>> &extremas,
+  std::vector<saddleEdge<sizeSad>> &saddles,
+  bool increasing) const {
+  ttk::SimplexId lid{-1};
+  auto it = globalToLocalExtrema.find(extremaGid);
+  if(it != globalToLocalExtrema.end()) {
+    lid = it->second;
+    auto e{extremas[lid]};
+    ttk::SimplexId repLid
+      = getRep(extremas[lid], s, increasing, extremas, saddles);
+    if((extremas[repLid].gid_ != e.gid_)
+       && !(compareArray(s.vOrder_, saddles[e.rep_.saddleId_].vOrder_, sizeSad)
+            == increasing)) {
+      printErr("YES IT HAPPENS");
+    }
+    if(extremas[repLid].gid_ != e.gid_) {
+      lid = repLid;
+      elt.t1_ = extremas[repLid].gid_;
+      for(int i = 0; i < sizeExtr; i++) {
+        elt.t1Order_[i] = extremas[repLid].vOrder_[i];
+      }
+      elt.t1Rank_ = extremas[repLid].rank_;
+      elt.hasBeenModified_ = 1;
+      saddleEdge<sizeSad> s1;
+      if(extremas[repLid].rep_.saddleId_ > -1) {
+        s1 = saddles[extremas[repLid].rep_.saddleId_];
+      }
+      elt.s1Rank_ = s1.rank_;
+      elt.s1_ = s1.gid_;
+      for(int i = 0; i < sizeSad; i++) {
+        elt.s1Order_[i] = s1.vOrder_[i];
+      }
+    } else {
+      // Update s1 anyway
+      if(elt.t1_ != -1) {
+        saddleEdge<sizeSad> s1Loc;
+        if(e.rep_.saddleId_ > -1) {
+          s1Loc = saddles[e.rep_.saddleId_];
+        }
+        if(compareArray(s1Loc.vOrder_, elt.s1Order_, sizeSad) == increasing) {
+          elt.s1_ = s1Loc.gid_;
+          elt.s1Rank_ = s1Loc.rank_;
+          for(int i = 0; i < sizeSad; i++) {
+            elt.s1Order_[i] = s1Loc.vOrder_[i];
+          }
+        }
+      }
+    }
+  }
+  return lid;
+};
+
+template <int sizeExtr, int sizeSad>
+ttk::SimplexId ttk::DiscreteMorseSandwichMPI::getUpdatedT2(
+  const ttk::SimplexId extremaGid,
+  messageType<sizeExtr, sizeSad> &elt,
+  saddleEdge<sizeSad> s,
+  std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalExtrema,
+  std::vector<extremaNode<sizeExtr>> &extremas,
+  std::vector<saddleEdge<sizeSad>> &saddles,
+  bool increasing) const {
+  ttk::SimplexId lid{-1};
+  auto it = globalToLocalExtrema.find(extremaGid);
+  if(it != globalToLocalExtrema.end()) {
+    lid = it->second;
+    auto e{extremas[lid]};
+    ttk::SimplexId repLid = getRep(e, s, increasing, extremas, saddles);
+    if((extremas[repLid].gid_ != e.gid_)
+       && !(compareArray(s.vOrder_, saddles[e.rep_.saddleId_].vOrder_, sizeSad)
+            == increasing)) {
+      printErr("YES IT HAPPENS");
+    }
+    if(extremas[repLid].gid_ != e.gid_) {
+      lid = repLid;
+      elt.t2_ = extremas[repLid].gid_;
+      for(int i = 0; i < sizeExtr; i++) {
+        elt.t2Order_[i] = extremas[repLid].vOrder_[i];
+      }
+      elt.t2Rank_ = extremas[repLid].rank_;
+      elt.hasBeenModified_ = 1;
+      saddleEdge<sizeSad> s2;
+      if(extremas[repLid].rep_.saddleId_ > -1) {
+        s2 = saddles[extremas[repLid].rep_.saddleId_];
+      }
+      elt.s2Rank_ = s2.rank_;
+      elt.s2_ = s2.gid_;
+      for(int i = 0; i < sizeSad; i++) {
+        elt.s2Order_[i] = s2.vOrder_[i];
+      }
+    } else {
+      // Update s2 anyway
+      if(elt.t2_ != -1) {
+        saddleEdge<sizeSad> s2Loc;
+        if(e.rep_.saddleId_ > -1) {
+          s2Loc = saddles[e.rep_.saddleId_];
+        }
+        if(compareArray(s2Loc.vOrder_, elt.s2Order_, sizeSad) == increasing) {
+          elt.s2_ = s2Loc.gid_;
+          elt.s2Rank_ = s2Loc.rank_;
+          for(int i = 0; i < sizeSad; i++) {
+            elt.s2Order_[i] = s2Loc.vOrder_[i];
+          }
+          // elt.hasBeenModified_ = 1;
+        }
+      }
+    }
+  }
+  return lid;
+};
+
+template <int sizeExtr, int sizeSad>
+void ttk::DiscreteMorseSandwichMPI::swapT1T2(
+  messageType<sizeExtr, sizeSad> &elt,
+  ttk::SimplexId &t1Lid,
+  ttk::SimplexId &t2Lid,
+  bool increasing) const {
+  if(elt.t1_ != elt.t2_) {
+    bool pairedR2 = elt.s2_ != -1;
+    bool isR2Invalid
+      = ((elt.s2_ != -1)
+         && (compareArray(elt.s2Order_, elt.sOrder_, sizeSad) == increasing));
+    if(isR2Invalid)
+      pairedR2 = false;
+    bool pairedR1 = elt.s1_ != -1;
+    bool isR1Invalid
+      = ((elt.s1_ != -1)
+         && (compareArray(elt.s1Order_, elt.sOrder_, sizeSad) == increasing));
+    if(isR1Invalid)
+      pairedR1 = false;
+    if((((compareArray(elt.t2Order_, elt.t1Order_, sizeExtr)) == increasing)
+        || pairedR1)
+       && !pairedR2) {
+      std::swap(t1Lid, t2Lid);
+      std::swap(elt.t1_, elt.t2_);
+      std::swap(elt.t1Order_, elt.t2Order_);
+      std::swap(elt.s1Order_, elt.s2Order_);
+      std::swap(elt.t1Rank_, elt.t2Rank_);
+      std::swap(elt.s2Rank_, elt.s1Rank_);
+      std::swap(elt.s1_, elt.s2_);
+      elt.hasBeenModified_ = 1;
+    }
+  }
+};
+
+template <int sizeExtr>
+void ttk::DiscreteMorseSandwichMPI::addLocalExtrema(
+  ttk::SimplexId &lid,
+  const ttk::SimplexId gid,
+  char rank,
+  ttk::SimplexId *vOrder,
+  std::vector<extremaNode<sizeExtr>> &extremas,
+  std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalExtrema,
+  std::vector<ttk::SimplexId> &extremaToPairedSaddle) const {
+  if(lid == -1) {
+    lid = extremas.size();
+    extremaNode n
+      = extremaNode<sizeExtr>(gid, lid, -1, Rep{-1, -2}, rank, vOrder);
+    extremas.emplace_back(n);
+    extremaToPairedSaddle.emplace_back(-1);
+    globalToLocalExtrema[gid] = lid;
+  }
+};
+
 template <int sizeExtr, int sizeSad>
 void ttk::DiscreteMorseSandwichMPI::receiveElement(
   messageType<sizeExtr, sizeSad> &element,
@@ -2479,196 +2707,13 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
   std::vector<std::vector<char>> &ghostPresence,
   char sender,
   bool increasing) const {
-  printMsg("extremasSize: " + std::to_string(extremas.size()));
-  const auto getSaddle = [this, &globalToLocalSaddle, &saddles](
-                           const ttk::SimplexId saddleGid,
-                           ttk::SimplexId *vOrder, const char rank) {
-    auto it = globalToLocalSaddle.find(saddleGid);
-    if(it != globalToLocalSaddle.end()) {
-      return saddles[it->second];
-    }
-    return saddleEdge<sizeSad>(saddleGid, -1, vOrder, rank);
-  };
-
-  const auto getLocalExtrema = [this, &globalToLocalExtrema,
-                                &extremas](const ttk::SimplexId extremaGid) {
-    auto it = globalToLocalExtrema.find(extremaGid);
-    if(it != globalToLocalExtrema.end()) {
-      return it->second;
-    }
-    return static_cast<ttk::SimplexId>(-1);
-  };
-
-  const auto addSaddle = [this, &globalToLocalSaddle, &saddles,
-                          &saddleToPairedExtrema](saddleEdge<sizeSad> s) {
-    if(s.lid_ == -1 && s.gid_ > -1) {
-      globalToLocalSaddle[s.gid_] = saddles.size();
-      s.lid_ = saddles.size();
-      saddles.emplace_back(s);
-      s = saddles.back();
-      // saddleToPairedExt.resize(saddleToPairedExt.size()+1, -1);
-      saddleToPairedExtrema.emplace_back(static_cast<ttk::SimplexId>(-1));
-    }
-    return s;
-  };
-
-  const auto getUpdatedT1 =
-    [this, &globalToLocalExtrema, &extremas, &increasing, &saddles](
-      const ttk::SimplexId extremaGid, messageType<sizeExtr, sizeSad> &elt,
-      saddleEdge<sizeSad> s) {
-      ttk::SimplexId lid{-1};
-      auto it = globalToLocalExtrema.find(extremaGid);
-      if(it != globalToLocalExtrema.end()) {
-        lid = it->second;
-        auto e{extremas[lid]};
-        ttk::SimplexId repLid
-          = getRep(extremas[lid], s, increasing, extremas, saddles);
-        if((extremas[repLid].gid_ != e.gid_)
-           && !(
-             compareArray(s.vOrder_, saddles[e.rep_.saddleId_].vOrder_, sizeSad)
-             == increasing)) {
-          printErr("YES IT HAPPENS");
-        }
-        if(extremas[repLid].gid_ != e.gid_) {
-          lid = repLid;
-          elt.t1_ = extremas[repLid].gid_;
-          for(int i = 0; i < sizeExtr; i++) {
-            elt.t1Order_[i] = extremas[repLid].vOrder_[i];
-          }
-          elt.t1Rank_ = extremas[repLid].rank_;
-          elt.hasBeenModified_ = 1;
-          saddleEdge<sizeSad> s1;
-          if(extremas[repLid].rep_.saddleId_ > -1) {
-            s1 = saddles[extremas[repLid].rep_.saddleId_];
-          }
-          elt.s1Rank_ = s1.rank_;
-          elt.s1_ = s1.gid_;
-          for(int i = 0; i < sizeSad; i++) {
-            elt.s1Order_[i] = s1.vOrder_[i];
-          }
-        } else {
-          // Update s1 anyway
-          if(elt.t1_ != -1) {
-            saddleEdge<sizeSad> s1Loc;
-            if(e.rep_.saddleId_ > -1) {
-              s1Loc = saddles[e.rep_.saddleId_];
-            }
-            if(compareArray(s1Loc.vOrder_, elt.s1Order_, sizeSad)
-               == increasing) {
-              elt.s1_ = s1Loc.gid_;
-              elt.s1Rank_ = s1Loc.rank_;
-              for(int i = 0; i < sizeSad; i++) {
-                elt.s1Order_[i] = s1Loc.vOrder_[i];
-              }
-            }
-          }
-        }
-      }
-      return lid;
-    };
-
-  const auto getUpdatedT2 =
-    [this, &globalToLocalExtrema, &extremas, &increasing, &saddles](
-      const ttk::SimplexId extremaGid, messageType<sizeExtr, sizeSad> &elt,
-      saddleEdge<sizeSad> s) {
-      ttk::SimplexId lid{-1};
-      auto it = globalToLocalExtrema.find(extremaGid);
-      if(it != globalToLocalExtrema.end()) {
-        lid = it->second;
-        auto e{extremas[lid]};
-        ttk::SimplexId repLid = getRep(e, s, increasing, extremas, saddles);
-        if((extremas[repLid].gid_ != e.gid_)
-           && !(
-             compareArray(s.vOrder_, saddles[e.rep_.saddleId_].vOrder_, sizeSad)
-             == increasing)) {
-          printErr("YES IT HAPPENS");
-        }
-        if(extremas[repLid].gid_ != e.gid_) {
-          lid = repLid;
-          elt.t2_ = extremas[repLid].gid_;
-          for(int i = 0; i < sizeExtr; i++) {
-            elt.t2Order_[i] = extremas[repLid].vOrder_[i];
-          }
-          elt.t2Rank_ = extremas[repLid].rank_;
-          elt.hasBeenModified_ = 1;
-          saddleEdge<sizeSad> s2;
-          if(extremas[repLid].rep_.saddleId_ > -1) {
-            s2 = saddles[extremas[repLid].rep_.saddleId_];
-          }
-          elt.s2Rank_ = s2.rank_;
-          elt.s2_ = s2.gid_;
-          for(int i = 0; i < sizeSad; i++) {
-            elt.s2Order_[i] = s2.vOrder_[i];
-          }
-        } else {
-          // Update s2 anyway
-          if(elt.t2_ != -1) {
-            saddleEdge<sizeSad> s2Loc;
-            if(e.rep_.saddleId_ > -1) {
-              s2Loc = saddles[e.rep_.saddleId_];
-            }
-            if(compareArray(s2Loc.vOrder_, elt.s2Order_, sizeSad)
-               == increasing) {
-              elt.s2_ = s2Loc.gid_;
-              elt.s2Rank_ = s2Loc.rank_;
-              for(int i = 0; i < sizeSad; i++) {
-                elt.s2Order_[i] = s2Loc.vOrder_[i];
-              }
-              // elt.hasBeenModified_ = 1;
-            }
-          }
-        }
-      }
-      return lid;
-    };
-
-  const auto swapT1T2 = [this, &increasing, &sendBuffer](
-                          messageType<sizeExtr, sizeSad> &elt,
-                          ttk::SimplexId &t1Lid, ttk::SimplexId &t2Lid) {
-    if(elt.t1_ != elt.t2_) {
-      bool pairedR2 = elt.s2_ != -1;
-      bool isR2Invalid
-        = ((elt.s2_ != -1)
-           && (compareArray(elt.s2Order_, elt.sOrder_, sizeSad) == increasing));
-      if(isR2Invalid)
-        pairedR2 = false;
-      bool pairedR1 = elt.s1_ != -1;
-      bool isR1Invalid
-        = ((elt.s1_ != -1)
-           && (compareArray(elt.s1Order_, elt.sOrder_, sizeSad) == increasing));
-      if(isR1Invalid)
-        pairedR1 = false;
-      if((((compareArray(elt.t2Order_, elt.t1Order_, sizeExtr)) == increasing)
-          || pairedR1)
-         && !pairedR2) {
-        std::swap(t1Lid, t2Lid);
-        std::swap(elt.t1_, elt.t2_);
-        std::swap(elt.t1Order_, elt.t2Order_);
-        std::swap(elt.s1Order_, elt.s2Order_);
-        std::swap(elt.t1Rank_, elt.t2Rank_);
-        std::swap(elt.s2Rank_, elt.s1Rank_);
-        std::swap(elt.s1_, elt.s2_);
-        elt.hasBeenModified_ = 1;
-      }
-    }
-  };
-
-  const auto addLocalExtrema
-    = [this, &extremas, &globalToLocalExtrema, &extremaToPairedSaddle](
-        ttk::SimplexId &lid, const ttk::SimplexId gid, char rank,
-        ttk::SimplexId *vOrder) {
-        if(lid == -1) {
-          lid = extremas.size();
-          extremaNode n
-            = extremaNode<sizeExtr>(gid, lid, -1, Rep{-1, -2}, rank, vOrder);
-          extremas.emplace_back(n);
-          extremaToPairedSaddle.emplace_back(-1);
-          globalToLocalExtrema[gid] = lid;
-        }
-      };
-
-  struct saddleEdge<sizeSad> s
-    = getSaddle(element.s_, element.sOrder_, element.sRank_);
+  struct saddleEdge<sizeSad> s;
+  auto it = globalToLocalSaddle.find(element.s_);
+  if(it != globalToLocalSaddle.end()) {
+    s = saddles[it->second];
+  } else {
+    s = saddleEdge<sizeSad>(element.s_, -1, element.sOrder_, element.sRank_);
+  }
   if(s.rank_ == ttk::MPIrank_ && element.t1_ == -1 && element.t2_ == -1) {
     if(saddleToPairedExtrema[s.lid_] > -1) {
       removePair(saddles[s.lid_], extremas[saddleToPairedExtrema[s.lid_]],
@@ -2679,10 +2724,14 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
                              increasing, ghostPresence, sendBuffer);
     return;
   }
-  ttk::SimplexId t1Lid = getUpdatedT1(element.t1_, element, s);
-  ttk::SimplexId t2Lid = getUpdatedT2(element.t2_, element, s);
+  ttk::SimplexId t1Lid
+    = getUpdatedT1(element.t1_, element, s, globalToLocalExtrema, extremas,
+                   saddles, increasing);
+  ttk::SimplexId t2Lid
+    = getUpdatedT2(element.t2_, element, s, globalToLocalExtrema, extremas,
+                   saddles, increasing);
 
-  swapT1T2(element, t1Lid, t2Lid);
+  swapT1T2(element, t1Lid, t2Lid, increasing);
 
   if(element.sRank_ != ttk::MPIrank_) {
     // Send now if the extrema rep is -1
@@ -2738,9 +2787,11 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
             ttk::SimplexId oldSaddleId = extremas[t1Lid].rep_.saddleId_;
             removePair(ls1, extremas[t1Lid], saddleToPairedExtrema,
                        extremaToPairedSaddle);
-            s = addSaddle(s);
-            addLocalExtrema(
-              t2Lid, element.t2_, element.t2Rank_, element.t2Order_);
+            s = addSaddle(
+              s, globalToLocalSaddle, saddles, saddleToPairedExtrema);
+            addLocalExtrema(t2Lid, element.t2_, element.t2Rank_,
+                            element.t2Order_, extremas, globalToLocalExtrema,
+                            extremaToPairedSaddle);
             addPair(
               s, extremas[t1Lid], saddleToPairedExtrema, extremaToPairedSaddle);
             extremas[t1Lid].rep_.extremaId_ = t2Lid;
@@ -2765,17 +2816,15 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
                 saddles, extremas, increasing, ghostPresence, sendBuffer);
             } else {
               // Send s1 for re-computation
-              if(oldSaddleId == -1) {
-                printErr("HERE IS THE PROBLEM");
-              }
               storeRerunToSend<sizeExtr>(sendBuffer, saddles[oldSaddleId]);
             }
           }
         } else {
           // Update rep + send update to other processes
-          s = addSaddle(s);
-          addLocalExtrema(
-            t2Lid, element.t2_, element.t2Rank_, element.t2Order_);
+          s = addSaddle(s, globalToLocalSaddle, saddles, saddleToPairedExtrema);
+          addLocalExtrema(t2Lid, element.t2_, element.t2Rank_, element.t2Order_,
+                          extremas, globalToLocalExtrema,
+                          extremaToPairedSaddle);
           addPair(
             s, extremas[t1Lid], saddleToPairedExtrema, extremaToPairedSaddle);
           if(extremas[t1Lid].rep_.extremaId_ != -1) {
@@ -2793,7 +2842,11 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
       if(element.t1_ == element.t2_) {
         if(saddleToPairedExtrema[s.lid_] > -1) {
           extremaToPairedSaddle[saddleToPairedExtrema[s.lid_]] = -1;
-          ttk::SimplexId r1Lid = getLocalExtrema(element.t1_);
+          ttk::SimplexId r1Lid{-1};
+          auto it_extr = globalToLocalExtrema.find(element.t1_);
+          if(it_extr != globalToLocalExtrema.end()) {
+            r1Lid = it_extr->second;
+          }
           if(r1Lid != -1
              && extremas[saddleToPairedExtrema[s.lid_]].gid_
                   == extremas[r1Lid].gid_) {
@@ -2819,7 +2872,8 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
         }
         saddleToPairedExtrema[s.lid_] = static_cast<ttk::SimplexId>(-2);
       } else {
-        addLocalExtrema(t1Lid, element.t1_, element.t1Rank_, element.t1Order_);
+        addLocalExtrema(t1Lid, element.t1_, element.t1Rank_, element.t1Order_,
+                        extremas, globalToLocalExtrema, extremaToPairedSaddle);
         // If saddle is not paired at all
         if(extremaToPairedSaddle[t1Lid] < 0
            && saddleToPairedExtrema[s.lid_] < 0) {
@@ -2828,9 +2882,9 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
           addPair(
             s, extremas[t1Lid], saddleToPairedExtrema, extremaToPairedSaddle);
           ttk::SimplexId oldSaddle = extremas[t1Lid].rep_.saddleId_;
-          // s2 = addSaddle(s2);
-          addLocalExtrema(
-            t2Lid, element.t2_, element.t2Rank_, element.t2Order_);
+          addLocalExtrema(t2Lid, element.t2_, element.t2Rank_, element.t2Order_,
+                          extremas, globalToLocalExtrema,
+                          extremaToPairedSaddle);
           if(extremas[t1Lid].rep_.extremaId_ != -1) {
             extremas[t1Lid].rep_.extremaId_ = t2Lid;
             extremas[t1Lid].rep_.saddleId_ = s.lid_;
@@ -2862,13 +2916,13 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
              && (saddleToPairedExtrema[s.lid_] != t1Lid));
 
         if(isPairedWithWrongExtrema) {
-          removePair(s, extremas[saddleToPairedExtrema[s.lid_]],
-                     saddleToPairedExtrema, extremaToPairedSaddle);
           if(extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_ != -1) {
             extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_
               = extremas[saddleToPairedExtrema[s.lid_]].lid_;
             extremas[saddleToPairedExtrema[s.lid_]].rep_.saddleId_ = -1;
           }
+          removePair(s, extremas[saddleToPairedExtrema[s.lid_]],
+                     saddleToPairedExtrema, extremaToPairedSaddle);
         }
         // extrema paired to wrong saddle
         if(isPairedWithWrongSaddle && ((sCurrent < s) == increasing)) {
@@ -2882,9 +2936,9 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
           addPair(
             s, extremas[t1Lid], saddleToPairedExtrema, extremaToPairedSaddle);
           ttk::SimplexId oldSaddle = extremas[t1Lid].rep_.saddleId_;
-          // s2 = addSaddle(s2);
-          addLocalExtrema(
-            t2Lid, element.t2_, element.t2Rank_, element.t2Order_);
+          addLocalExtrema(t2Lid, element.t2_, element.t2Rank_, element.t2Order_,
+                          extremas, globalToLocalExtrema,
+                          extremaToPairedSaddle);
           if(extremas[t1Lid].rep_.extremaId_ != -1) {
             extremas[t1Lid].rep_.extremaId_ = t2Lid;
             extremas[t1Lid].rep_.saddleId_ = s.lid_;
