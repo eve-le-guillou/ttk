@@ -2917,6 +2917,20 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
             extremas[t1Lid].rep_.extremaId_ = t2Lid;
             extremas[t1Lid].rep_.saddleId_ = s.lid_;
           }
+
+          // If t1 owned but with !ghostPresence.empty() -> send to
+          // ghostPresence
+          saddleEdge<sizeSad> lst1;
+          saddleEdge<sizeSad> lst2;
+          if(extremas[t1Lid].rep_.saddleId_ > -1) {
+            lst1 = saddles[extremas[t1Lid].rep_.saddleId_];
+          }
+          if(extremas[t2Lid].rep_.saddleId_ > -1) {
+            lst2 = saddles[extremas[t2Lid].rep_.saddleId_];
+          }
+          storeMessageToSend<sizeExtr, sizeSad>(
+            ghostPresence, sendBuffer, s, lst1, lst2, extremas[t1Lid],
+            extremas[t2Lid], sender, element.hasBeenModified_);
         }
       }
     }
