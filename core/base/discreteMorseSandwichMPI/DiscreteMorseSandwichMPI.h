@@ -1783,15 +1783,15 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
                                           const saddleEdge<2> &s1) -> bool {
       if(&s0 != &s1) {
         if(s0.order_ != -1 && s1.order_ != -1) {
-          return s0.order_ > s1.order_;
+          return s0.order_ < s1.order_;
         }
         for(size_t i = 0; i < 2; i++) {
           if(s0.vOrder_[i] != s1.vOrder_[i]) {
-            return s0.vOrder_[i] > s1.vOrder_[i];
+            return s0.vOrder_[i] < s1.vOrder_[i];
           }
         }
       }
-      return extremas[s0.t_[0]].vOrder_ < extremas[s1.t_[0]].vOrder_;
+      return extremas[s0.t_[0]].vOrder_ > extremas[s1.t_[0]].vOrder_;
     };
 
     // TRI des arcs
@@ -2760,10 +2760,6 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
         kill(getpid(), SIGINT);
       }
     }
-  }
-  if (element.s_ == 379739 && ttk::MPIrank_ == 6){
-    printMsg("HERE");
-    //kill(getpid(), SIGINT);
   }*/
   if(s.rank_ == ttk::MPIrank_ && element.t1_ == -1 && element.t2_ == -1) {
     if(saddleToPairedExtrema[s.lid_] > -1) {
@@ -2990,14 +2986,12 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
               = extremas[saddleToPairedExtrema[s.lid_]].lid_;
             extremas[saddleToPairedExtrema[s.lid_]].rep_.saddleId_ = -1;
           }
+          auto extr{extremas[saddleToPairedExtrema[s.lid_]]};
           removePair(s, extremas[saddleToPairedExtrema[s.lid_]],
                      saddleToPairedExtrema, extremaToPairedSaddle);
-          if(extremas[saddleToPairedExtrema[s.lid_]].rank_ == ttk::MPIrank_
-             && ghostPresence[extremas[saddleToPairedExtrema[s.lid_]].lid_]
-                    .size()
-                  > 1) {
-            for(const auto rank :
-                ghostPresence[extremas[saddleToPairedExtrema[s.lid_]].lid_]) {
+          if(extr.rank_ == ttk::MPIrank_
+             && ghostPresence[extr.lid_].size() > 1) {
+            for(const auto rank : ghostPresence[extr.lid_]) {
               if((rank != ttk::MPIrank_)
                  && ((rank == sender && element.hasBeenModified_)
                      || rank != sender)) {
