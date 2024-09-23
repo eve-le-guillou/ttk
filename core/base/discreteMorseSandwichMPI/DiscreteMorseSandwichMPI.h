@@ -112,7 +112,7 @@ namespace ttk {
       ttk::SimplexId saddleId_;
       ttk::SimplexId extremaId_;
       ttk::SimplexId vOrder_[sizeExtr];
-      char ghostPresenceSize_;
+      ttk::SimplexId ghostPresenceSize_;
       char extremaRank_;
 
       bool operator==(const vpathFinished<sizeExtr> &vp) {
@@ -137,8 +137,8 @@ namespace ttk {
     void createFinishedVpathMPIType(MPI_Datatype &MPI_MessageType) const {
       ttk::SimplexId id = 0;
       MPI_Datatype MPI_SimplexId = getMPIType(id);
-      MPI_Datatype types[]
-        = {MPI_SimplexId, MPI_SimplexId, MPI_SimplexId, MPI_CHAR, MPI_CHAR};
+      MPI_Datatype types[] = {
+        MPI_SimplexId, MPI_SimplexId, MPI_SimplexId, MPI_SimplexId, MPI_CHAR};
       int lengths[] = {1, 1, sizeExtr, 1, 1};
       const long int mpi_offsets[]
         = {offsetof(vpathFinished<sizeExtr>, saddleId_),
@@ -1919,8 +1919,9 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     }
     for(ttk::SimplexId i = 0; i < extremaToPairedSaddle.size(); i++) {
       if(saddleToPairedExtrema[i] > -1) {
-        if(extremaToPairedSaddle[saddleToPairedExtrema[i]] != i) {
-          printMsg("ERROR for saddle " + std::to_string(saddles[i].gid_));
+        if(saddleToPairedExtrema[extremaToPairedSaddle[i]] != i) {
+          printMsg("ERROR for saddle "
+                   + std::to_string(saddles[extremaToPairedSaddle[i]].gid_));
           kill(getpid(), SIGINT);
         }
       }
