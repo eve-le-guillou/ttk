@@ -1910,28 +1910,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       MPI_IN_PLACE, &rerunNeeded, 1, MPI_CHAR, MPI_LOR, ttk::MPIcomm_);
     MPI_Allreduce(
       MPI_IN_PLACE, &nMinSadPairs, 1, MPI_SimplexId, MPI_SUM, ttk::MPIcomm_);
-    for(ttk::SimplexId i = 0; i < extremaToPairedSaddle.size(); i++) {
-      if(extremaToPairedSaddle[i] != -1) {
-        if(saddleToPairedExtrema[extremaToPairedSaddle[i]] != i) {
-          printMsg(
-            "ERROR for extrema " + std::to_string(extremas[i].gid_)
-            + " extToSad: "
-            + std::to_string(saddles[extremaToPairedSaddle[i]].gid_)
-            + ", sadToExt: "
-            + std::to_string(
-              extremas[saddleToPairedExtrema[extremaToPairedSaddle[i]]].gid_));
-          kill(getpid(), SIGINT);
-        }
-      }
-    }
-    for(ttk::SimplexId i = 0; i < saddleToPairedExtrema.size(); i++) {
-      if(saddleToPairedExtrema[i] > -1) {
-        if(extremaToPairedSaddle[saddleToPairedExtrema[i]] != i) {
-          printMsg("ERROR for saddle " + std::to_string(saddles[i].gid_));
-          kill(getpid(), SIGINT);
-        }
-      }
-    }
 
     while((nMinSadPairs != totalNumberOfPairs - 1) || rerunNeeded) {
       printMsg("Re-computation, rerun needed: " + std::to_string(rerunNeeded)
