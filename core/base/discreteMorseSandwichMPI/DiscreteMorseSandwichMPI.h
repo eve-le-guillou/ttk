@@ -1731,6 +1731,11 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     ttk::SimplexId totalNumberOfPairs = criticalExtremas.size();
     MPI_Allreduce(MPI_IN_PLACE, &totalNumberOfPairs, 1, MPI_SimplexId, MPI_SUM,
                   ttk::MPIcomm_);
+    std::vector<ttk::SimplexId> extremasGid(saddle1ToMinimaNumber * 2, -1);
+    std::vector<saddleEdge<2>> saddles(saddle1ToMinimaNumber);
+    globalToLocalSaddle.reserve(saddle1ToMinimaNumber);
+    ttk::SimplexId elementPerThread = std::min(
+      saddle1ToMinimaNumber, (saddle1ToMinimaNumber + 1) / threadNumber_);
 #ifdef TTK_ENABLE_MPI_TIME
     elapsedTime = ttk::endMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
     if(ttk::MPIrank_ == 0) {
@@ -1740,30 +1745,26 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     }
     ttk::startMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
-    ttk::SimplexId saddleNumber{0};
-    std::vector<ttk::SimplexId> extremasGid;
-    extremasGid.reserve(saddle1ToMinimaNumber * 2);
-    ttk::SimplexId currentSaddleId{0};
-    std::vector<saddleEdge<2>> saddles(saddle1ToMinimaNumber);
-    globalToLocalSaddle.reserve(saddle1ToMinimaNumber);
-#pragma omp declare reduction (merge : std::vector<ttk::SimplexId>: omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
-#pragma omp parallel for reduction(merge                           \
-                                   : extremasGid) schedule(static) \
-  shared(saddles)
-    for(size_t i = 0; i < saddle1ToMinimaNumber; ++i) {
-      auto &mins = saddle1ToMinima[i];
-      const auto s1 = criticalEdges[i];
-      // remove duplicates
-      std::sort(mins.begin(), mins.end());
-      const auto last = std::unique(mins.begin(), mins.end());
-      if(last != mins.end()) {
-        continue;
-      }
-      saddles[i].lid_ = i;
-      ttk::SimplexId gid = triangulation.getEdgeGlobalId(s1);
-      saddles[i].gid_ = gid;
-      for(int j = 0; j < 2; j++) {
-        extremasGid.emplace_back(mins[j].gid_);
+#pragma omp parallel for schedule(static, 1) shared(saddles, extremasGid) \
+  firstprivate(elementPerThread, saddle1ToMinimaNumber)                   \
+    num_threads(threadNumber_)
+    for(ttk::SimplexId thread = 0; thread < threadNumber_; thread++) {
+      for(ttk::SimplexId i = 0; i < elementPerThread; i++) {
+        ttk::SimplexId localId = thread * elementPerThread + i;
+        if(localId < saddle1ToMinimaNumber) {
+          auto &mins = saddle1ToMinima[localId];
+          const auto s1 = criticalEdges[localId];
+          // remove duplicates
+          std::sort(mins.begin(), mins.end());
+          const auto last = std::unique(mins.begin(), mins.end());
+          if(last == mins.end()) {
+            saddles[localId].lid_ = localId;
+            ttk::SimplexId gid = triangulation.getEdgeGlobalId(s1);
+            saddles[localId].gid_ = gid;
+            extremasGid[2 * localId] = mins[0].gid_;
+            extremasGid[2 * localId + 1] = mins[1].gid_;
+          }
+        }
       }
     }
     TTK_PSORT(this->threadNumber_, extremasGid.begin(), extremasGid.end());
@@ -1795,8 +1796,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
         }
       }
       int numTask = std::max(threadNumber_ - 2, 1);
-//#pragma omp declare reduction(mergeMap : std::unordered_map<ttk::SimplexId,
-//ttk::SimplexId>: omp_out.merge(omp_in))
 #pragma omp taskloop num_tasks(numTask)
       for(ttk::SimplexId i = 0; i < saddle1ToMinimaNumber; ++i) {
         auto &mins = saddle1ToMinima[i];
