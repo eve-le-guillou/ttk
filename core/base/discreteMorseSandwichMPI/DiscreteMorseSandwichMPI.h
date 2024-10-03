@@ -1122,8 +1122,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
     threadNumber_);
   std::vector<std::vector<std::vector<vpathFinished<1>>>>
     sendFinishedVPathBufferThread(threadNumber_);
-  std::vector<std::unordered_map<char, std::vector<ttk::SimplexId>>>
-    ghostPresenceVector;
+  std::vector<std::vector<std::vector<ttk::SimplexId>>> ghostPresenceVector;
   std::vector<char> saddleAtomic;
   std::vector<Lock> extremaLocks(criticalExtremasNumber);
   // TODO: PUT IN ALLOC?
@@ -1133,12 +1132,13 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
     saddleAtomic.resize(criticalEdges.size(), 0);
 #pragma omp task
     ghostPresenceVector.resize(
-      criticalExtremasNumber,
-      std::unordered_map<char, std::vector<ttk::SimplexId>>());
-  }
-  for(int i = 0; i < this->threadNumber_; i++) {
-    sendBufferThread[i].resize(neighborNumber);
-    sendFinishedVPathBufferThread[i].resize(ttk::MPIsize_);
+      criticalExtremasNumber, std::vector<std::vector<ttk::SimplexId>>(
+                                ttk::MPIsize_, std::vector<ttk::SimplexId>()));
+#pragma omp task
+    for(int i = 0; i < this->threadNumber_; i++) {
+      sendBufferThread[i].resize(neighborNumber);
+      sendFinishedVPathBufferThread[i].resize(ttk::MPIsize_);
+    }
   }
   ttk::SimplexId localElementNumber = 2 * criticalEdges.size();
   ttk::SimplexId totalElement{0};
@@ -1168,7 +1168,6 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
             = localTriangToLocalVectExtrema.find(lastCell.id_)->second;
           extremaLocks[id].lock();
           auto &ghost{ghostPresenceVector[id]};
-          ghost.try_emplace(saddleRank, std::vector<ttk::SimplexId>());
           ghost[saddleRank].emplace_back(saddleId);
           extremaLocks[id].unlock();
           if(saddleRank == ttk::MPIrank_) {
@@ -1373,71 +1372,68 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
     ghostCounterThread[i].resize(ttk::MPIsize_, 0);
   }
   // Transform the ghostPresenceVector in proper ghostPresence
-#pragma omp parallel for shared(ghostPresence, ghostPresenceVector) \
-  num_threads(threadNumber_)
+#pragma omp parallel for shared(ghostPresence) num_threads(threadNumber_)
   for(ttk::SimplexId i = 0; i < ghostPresence.size(); i++) {
     auto &ghost{ghostPresenceVector[i]};
     auto &ranks{ghostPresence[i]};
     // Check if some saddleId appear twice for the same rank
-    for(auto &[key, value] : ghost) {
-      ttk::SimplexId valueSize = value.size();
+    for(int j = 0; j < ttk::MPIsize_; j++) {
+      ttk::SimplexId ghostSize = ghost[j].size();
       // Only occurs when the number of saddles is even
-      if(valueSize % 2 == 0) {
-        std::sort(value.begin(), value.end());
-        const auto last = std::unique(value.begin(), value.end());
-        ttk::SimplexId newSize = std::distance(value.begin(), last);
-        if(!(valueSize % newSize == 0 && valueSize / newSize == 2)) {
-          ranks.emplace_back(key);
+      if(ghostSize > 0) {
+        if(ghostSize % 2 == 0) {
+          std::sort(ghost[j].begin(), ghost[j].end());
+          const auto last = std::unique(ghost[j].begin(), ghost[j].end());
+          ttk::SimplexId newSize = std::distance(ghost[j].begin(), last);
+          if(!(ghostSize % newSize == 0 && ghostSize / newSize == 2)) {
+            ranks.emplace_back(j);
+          }
+        } else {
+          ranks.emplace_back(j);
         }
-      } else {
-        ranks.emplace_back(key);
       }
     }
   }
-
-#pragma omp parallel num_threads(threadNumber_) shared(ghostCounterThread) \
-  firstprivate(localTriangToLocalVectExtrema)
-  {
-#pragma omp for schedule(static, 1)
-    for(int j = 0; j < threadNumber_; j++) {
-      for(int i = 0; i < ttk::MPIsize_; i++) {
-        for(ttk::SimplexId k = 0;
-            k < sendFinishedVPathBufferThread[j][i].size(); k++) {
-          // Find owner by applying the following rule:
-          // if the current rank is in ghostPresence, then the current rank is
-          // the owner if not, it is the rank with the lowest rank id that is
-          // the owner
-          auto vp = sendFinishedVPathBufferThread[j][i][k];
-          ttk::SimplexId lid
-            = localTriangToLocalVectExtrema
-                .find(triangulation.getVertexLocalId(vp.extremaId_))
-                ->second;
-          auto &ghost{ghostPresence.at(lid)};
-          auto it = std::find(
-            ghost.begin(), ghost.end(), static_cast<char>(ttk::MPIrank_));
-          if(it != ghost.end()) {
-            // The rank of the extrema is the current rank
-            // We store to send the finished vpath
-            vp.extremaRank_ = ttk::MPIrank_;
-            vp.ghostPresenceSize_ = ghostCounterThread[j][i];
-          } else {
-            // The rank of the extrema is NOT the current rank
-            // We find the smallest rank
-            auto minRank = std::min_element(ghost.begin(), ghost.end());
-            vp.extremaRank_ = (*minRank);
-            if(i == (*minRank) && ghost.size() > 1) {
-              ghostCounterThread[j][i] += ghost.size();
-            }
-            vp.ghostPresenceSize_ = ghostCounterThread[j][i];
-            // Send the ghostPresence to that rank
-            if(ghost.size() > 1) {
-              ghostPresenceToSendThread[j][i].insert(
-                ghostPresenceToSendThread[j][i].end(), ghost.begin(),
-                ghost.end());
-            }
+#pragma omp parallel for schedule(static, 1) num_threads(threadNumber_) \
+  shared(ghostCounterThread)
+  for(int j = 0; j < threadNumber_; j++) {
+    for(int i = 0; i < ttk::MPIsize_; i++) {
+      for(ttk::SimplexId k = 0; k < sendFinishedVPathBufferThread[j][i].size();
+          k++) {
+        // Find owner by applying the following rule:
+        // if the current rank is in ghostPresence, then the current rank is
+        // the owner if not, it is the rank with the lowest rank id that is
+        // the owner
+        auto vp = sendFinishedVPathBufferThread[j][i][k];
+        ttk::SimplexId lid
+          = localTriangToLocalVectExtrema
+              .find(triangulation.getVertexLocalId(vp.extremaId_))
+              ->second;
+        auto &ghost{ghostPresence[lid]};
+        auto it = std::find(
+          ghost.begin(), ghost.end(), static_cast<char>(ttk::MPIrank_));
+        if(it != ghost.end()) {
+          // The rank of the extrema is the current rank
+          // We store to send the finished vpath
+          vp.extremaRank_ = ttk::MPIrank_;
+          vp.ghostPresenceSize_ = ghostCounterThread[j][i];
+        } else {
+          // The rank of the extrema is NOT the current rank
+          // We find the smallest rank
+          auto minRank = std::min_element(ghost.begin(), ghost.end());
+          vp.extremaRank_ = (*minRank);
+          if(i == (*minRank) && ghost.size() > 1) {
+            ghostCounterThread[j][i] += ghost.size();
           }
-          finishedVPathToSendThread[j][i].emplace_back(vp);
+          vp.ghostPresenceSize_ = ghostCounterThread[j][i];
+          // Send the ghostPresence to that rank
+          if(ghost.size() > 1) {
+            ghostPresenceToSendThread[j][i].insert(
+              ghostPresenceToSendThread[j][i].end(), ghost.begin(),
+              ghost.end());
+          }
         }
+        finishedVPathToSendThread[j][i].emplace_back(vp);
       }
     }
   }
