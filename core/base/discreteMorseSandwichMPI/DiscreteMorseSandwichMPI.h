@@ -1747,11 +1747,9 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     std::vector<saddleEdge<2>> saddles(saddle1ToMinimaNumber);
     globalToLocalSaddle.reserve(saddle1ToMinimaNumber);
 #pragma omp declare reduction (merge : std::vector<ttk::SimplexId>: omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
-#pragma omp declare reduction (mergeMap :std::unordered_map<ttk::SimplexId,ttk::SimplexId>:omp_out.merge(omp_in))
-#pragma omp parallel for reduction(mergeMap               \
-                                   : globalToLocalSaddle) \
-  reduction(merge                                         \
-            : extremasGid) schedule(static) shared(saddles)
+#pragma omp parallel for reduction(merge                           \
+                                   : extremasGid) schedule(static) \
+  shared(saddles)
     for(size_t i = 0; i < saddle1ToMinimaNumber; ++i) {
       auto &mins = saddle1ToMinima[i];
       const auto s1 = criticalEdges[i];
@@ -1761,18 +1759,13 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       if(last != mins.end()) {
         continue;
       }
-      ttk::SimplexId saddleId;
-#pragma omp atomic capture
-      saddleId = currentSaddleId++;
-      saddles[saddleId].lid_ = saddleId;
+      saddles[i].lid_ = i;
       ttk::SimplexId gid = triangulation.getEdgeGlobalId(s1);
-      saddles[saddleId].gid_ = gid;
-      globalToLocalSaddle[gid] = saddleId;
+      saddles[i].gid_ = gid;
       for(int j = 0; j < 2; j++) {
         extremasGid.emplace_back(mins[j].gid_);
       }
     }
-    saddles.resize(currentSaddleId);
     TTK_PSORT(this->threadNumber_, extremasGid.begin(), extremasGid.end());
     const auto last = std::unique(
       std::execution::par_unseq, extremasGid.begin(), extremasGid.end());
@@ -1793,7 +1786,15 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
           globalToLocalExtrema.emplace(extremasGid[i], i);
         }
       }
-      int numTask = std::max(threadNumber_ - 1, 1);
+#pragma omp task shared(globalToLocalSaddle)
+      {
+        for(ttk::SimplexId i = 0; i < saddle1ToMinimaNumber; i++) {
+          if(saddles[i].gid_ != -1) {
+            globalToLocalSaddle.emplace(saddles[i].gid_, i);
+          }
+        }
+      }
+      int numTask = std::max(threadNumber_ - 2, 1);
 //#pragma omp declare reduction(mergeMap : std::unordered_map<ttk::SimplexId,
 //ttk::SimplexId>: omp_out.merge(omp_in))
 #pragma omp taskloop num_tasks(numTask)
@@ -1805,9 +1806,10 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
         if(last != mins.end()) {
           continue;
         }
-        ttk::SimplexId elid
-          = globalToLocalSaddle.find(triangulation.getEdgeGlobalId(s1))->second;
-        saddleEdge<2> &e{saddles[elid]};
+        /*ttk::SimplexId elid
+          =
+          globalToLocalSaddle.find(triangulation.getEdgeGlobalId(s1))->second;*/
+        saddleEdge<2> &e{saddles[i]};
         fillEdgeOrder(s1, offsets, triangulation, e.vOrder_);
         e.order_ = critEdgesOrder[s1];
         for(int j = 0; j < 2; j++) {
@@ -1888,7 +1890,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     ttk::startMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
     extremaToPairedSaddle.resize(globalToLocalExtrema.size(), -1);
-    saddleToPairedExtrema.resize(globalToLocalSaddle.size(), -1);
+    saddleToPairedExtrema.resize(saddles.size(), -1);
 #ifdef TTK_ENABLE_MPI_TIME
     elapsedTime = ttk::endMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
     if(ttk::MPIrank_ == 0) {
@@ -2369,13 +2371,15 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   // saddleToPairedExtremaTime = tm.getElapsedTime();
   if(isFirstTime) {
     for(const auto &sid : saddleIds) {
-      processTriplet<sizeExtr, sizeSad>(
-        saddles[sid], saddleToPairedExtrema, extremaToPairedSaddle, saddles,
-        extremas, increasing, ghostPresence, sendBuffer);
+      if(saddles[sid].gid_ != -1) {
+        processTriplet<sizeExtr, sizeSad>(
+          saddles[sid], saddleToPairedExtrema, extremaToPairedSaddle, saddles,
+          extremas, increasing, ghostPresence, sendBuffer);
+      }
     }
   } else {
     for(const auto &sid : saddleIds) {
-      if(saddleToPairedExtrema[sid] == -2) {
+      if(saddleToPairedExtrema[sid] == -2 && saddles[sid].gid_ != -1) {
         processTriplet<sizeExtr, sizeSad>(
           saddles[sid], saddleToPairedExtrema, extremaToPairedSaddle, saddles,
           extremas, increasing, ghostPresence, sendBuffer);
