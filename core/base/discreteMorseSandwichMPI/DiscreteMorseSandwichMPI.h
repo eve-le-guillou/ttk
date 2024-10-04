@@ -1716,6 +1716,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       localTriangToLocalVectExtrema;
     std::vector<ttk::SimplexId> extremasGid;
     std::vector<saddleEdge<2>> saddles;
+    extremasGid.reserve(criticalEdgesNumber * 2);
 #pragma omp parallel master shared(localTriangToLocalVectExtrema)
     {
 #pragma omp task
@@ -1728,8 +1729,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
 #pragma omp task
       localGhostPresenceVector.resize(
         criticalExtremasNumber, std::vector<char>());
-#pragma omp task
-      extremasGid.resize(criticalEdgesNumber * 2, -1);
 #pragma omp task
       saddles.resize(criticalEdgesNumber);
     }
@@ -1779,26 +1778,25 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     }
     ttk::startMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
-#pragma omp parallel for schedule(static, 1) shared(saddles, extremasGid) \
-  firstprivate(elementPerThread, criticalEdgesNumber)                     \
-    num_threads(threadNumber_)
-    for(ttk::SimplexId thread = 0; thread < threadNumber_; thread++) {
-      for(ttk::SimplexId i = 0; i < elementPerThread; i++) {
-        ttk::SimplexId localId = thread * elementPerThread + i;
-        if(localId < criticalEdgesNumber) {
-          auto &mins = saddle1ToMinima[localId];
-          const auto s1 = criticalEdges[localId];
-          // remove duplicates
-          std::sort(mins.begin(), mins.end());
-          const auto last = std::unique(mins.begin(), mins.end());
-          if(last == mins.end()) {
-            saddles[localId].lid_ = localId;
-            ttk::SimplexId gid = triangulation.getEdgeGlobalId(s1);
-            saddles[localId].gid_ = gid;
-            extremasGid[2 * localId] = mins[0].gid_;
-            extremasGid[2 * localId + 1] = mins[1].gid_;
-          }
-        }
+
+#pragma omp declare reduction (merge : std::vector<ttk::SimplexId>: omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+#pragma omp parallel for reduction(merge                           \
+                                   : extremasGid) schedule(static) \
+  shared(saddles)
+    for(ttk::SimplexId i = 0; i < criticalEdgesNumber; ++i) {
+      auto &mins = saddle1ToMinima[i];
+      const auto s1 = criticalEdges[i];
+      // remove duplicates
+      std::sort(mins.begin(), mins.end());
+      const auto last = std::unique(mins.begin(), mins.end());
+      if(last != mins.end()) {
+        continue;
+      }
+      saddles[i].lid_ = i;
+      ttk::SimplexId gid = triangulation.getEdgeGlobalId(s1);
+      saddles[i].gid_ = gid;
+      for(int j = 0; j < 2; j++) {
+        extremasGid.emplace_back(mins[j].gid_);
       }
     }
     TTK_PSORT(this->threadNumber_, extremasGid.begin(), extremasGid.end());
@@ -1839,9 +1837,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
         if(last != mins.end()) {
           continue;
         }
-        /*ttk::SimplexId elid
-          =
-          globalToLocalSaddle.find(triangulation.getEdgeGlobalId(s1))->second;*/
         saddleEdge<2> &e{saddles[i]};
         fillEdgeOrder(s1, offsets, triangulation, e.vOrder_);
         e.order_ = critEdgesOrder[s1];
@@ -1854,7 +1849,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
         extremaExists = extremaLocks[lid]++;
         if(extremaExists == 0) {
           std::vector<char> ghosts{};
-          // globalToLocalExtrema.emplace(mins[j].gid_, lid);
           mins[j].lid_ = lid;
           mins[j].rep_.extremaId_ = lid;
           extremas[lid] = mins[j];
