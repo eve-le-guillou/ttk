@@ -301,7 +301,7 @@ namespace ttk {
     ftm::FTMTreePP contourTree_{};
     dcg::DiscreteGradient dcg_{};
     PersistentSimplexPairs psp_{};
-    DiscreteMorseSandwichMPI dms_{};
+    DiscreteMorseSandwich dms_{};
 
     // int BackEnd{0};
     BACKEND BackEnd{BACKEND::DISCRETE_MORSE_SANDWICH};
@@ -530,7 +530,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   const auto dim = triangulation->getDimensionality();
 
   dms_.buildGradient(inputScalars, scalarsMTime, inputOffsets, *triangulation);
-  std::vector<DiscreteMorseSandwichMPI::PersistencePair> dms_pairs{};
+  std::vector<DiscreteMorseSandwich::PersistencePair> dms_pairs{};
   dms_.computePersistencePairs(
     dms_pairs, inputOffsets, *triangulation, this->IgnoreBoundary);
   CTDiagram.resize(dms_pairs.size());
@@ -607,7 +607,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
 
   const auto fillBirthData
     = [this, &dim](PersistencePair &CTPair,
-                   DiscreteMorseSandwichMPI::PersistencePair &p,
+                   DiscreteMorseSandwich::PersistencePair &p,
                    ttk::SimplexId birthId) {
         CTPair.birth.id = birthId;
         if(p.type == 0) {
@@ -635,7 +635,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
 
   const auto fillDeathData = [this, &dim](
                                PersistencePair &CTPair,
-                               DiscreteMorseSandwichMPI::PersistencePair &p,
+                               DiscreteMorseSandwich::PersistencePair &p,
                                ttk::SimplexId deathId) {
     const auto isFinite = (p.death >= 0);
     CTPair.death.id = deathId;

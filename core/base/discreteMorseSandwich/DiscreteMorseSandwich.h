@@ -441,6 +441,10 @@ namespace ttk {
 
     template <typename triangulationType>
     void alloc(const triangulationType &triangulation) {
+#ifdef TTK_ENABLE_MPI_TIME
+      ttk::Timer t_mpi;
+      ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
       Timer tm{};
       const auto dim{this->dg_.getDimensionality()};
       if(dim > 3 || dim < 1) {
@@ -528,8 +532,17 @@ namespace ttk {
             this->dg_.getNumberOfCells(i, triangulation), -1);
         }
       }
-      this->printMsg("Memory allocations", 1.0, tm.getElapsedTime(), 1,
-                     debug::LineMode::NEW, debug::Priority::DETAIL);
+#ifdef TTK_ENABLE_MPI_TIME
+      double elapsedTime
+        = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+      if(ttk::MPIrank_ == 0) {
+        printMsg("Memory allocations performed using "
+                 + std::to_string(ttk::MPIsize_)
+                 + " MPI processes lasted :" + std::to_string(elapsedTime));
+      }
+#endif
+      /*this->printMsg("Memory allocations", 1.0, tm.getElapsedTime(), 1,
+                     debug::LineMode::NEW, debug::Priority::DETAIL);*/
     }
 
     void clear() {
@@ -1240,9 +1253,9 @@ void ttk::DiscreteMorseSandwich::extractCriticalCells(
     }
   }
 
-  this->printMsg("Extracted & sorted critical cells", 1.0, tm.getElapsedTime(),
-                 this->threadNumber_, debug::LineMode::NEW,
-                 debug::Priority::DETAIL);
+  /*this->printMsg("Extracted & sorted critical cells", 1.0,
+     tm.getElapsedTime(), this->threadNumber_, debug::LineMode::NEW,
+                 debug::Priority::DETAIL);*/
 }
 
 template <typename triangulationType>
@@ -1255,7 +1268,10 @@ int ttk::DiscreteMorseSandwich::computePersistencePairs(
 
   // allocate memory
   this->alloc(triangulation);
-
+#ifdef TTK_ENABLE_MPI_TIME
+  ttk::Timer t_mpi;
+  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
   Timer tm{};
   pairs.clear();
   const auto dim = this->dg_.getDimensionality();
@@ -1269,6 +1285,14 @@ int ttk::DiscreteMorseSandwich::computePersistencePairs(
   this->extractCriticalCells(
     criticalCellsByDim, critCellsOrder, offsets, triangulation, dim == 3);
 
+#ifdef TTK_ENABLE_MPI_TIME
+  double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Extract critical cells performed using "
+             + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
+  }
+#endif
   // if minima are paired
   auto &pairedMinima{this->pairedCritCells_[0]};
   // if 1-saddles are paired
@@ -1307,7 +1331,7 @@ int ttk::DiscreteMorseSandwich::computePersistencePairs(
     nConnComp++;
   }
 
-  if(dim > 1 && this->ComputeSadMax) {
+  /*if(dim > 1 && this->ComputeSadMax) {
     // saddle - maxima pairs
     this->getMaxSaddlePairs(
       pairs, pairedMaxima, paired2Saddles, criticalCellsByDim[dim - 1],
@@ -1402,10 +1426,17 @@ int ttk::DiscreteMorseSandwich::computePersistencePairs(
     tm.getElapsedTime(), this->threadNumber_);
 
   this->displayStats(pairs, criticalCellsByDim, pairedMinima, paired1Saddles,
-                     paired2Saddles, pairedMaxima);
+                     paired2Saddles, pairedMaxima);*/
 
   // free memory
   this->clear();
-
+#ifdef TTK_ENABLE_MPI_TIME
+  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Computation of persistence pairs performed using "
+             + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
+  }
+#endif
   return 0;
 }
