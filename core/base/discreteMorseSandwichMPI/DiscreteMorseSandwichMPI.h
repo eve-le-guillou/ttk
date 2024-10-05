@@ -1125,6 +1125,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
   std::vector<std::vector<std::vector<ttk::SimplexId>>> ghostPresenceVector;
   std::vector<char> saddleAtomic;
   std::vector<Lock> extremaLocks(criticalExtremasNumber);
+  MPI_Datatype MPI_SimplexId = getMPIType(static_cast<ttk::SimplexId>(0));
   // TODO: PUT IN ALLOC?
 #pragma omp parallel master num_threads(threadNumber_)
   {
@@ -1140,15 +1141,19 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
       sendFinishedVPathBufferThread[i].resize(ttk::MPIsize_);
     }
   }
-  ttk::SimplexId localElementNumber = 2 * criticalEdges.size();
+  ttk::SimplexId localElementNumber{0};
+  ttk::SimplexId totalFinishedElement{2 * criticalEdges.size()};
   ttk::SimplexId totalElement{0};
-  const auto followVPath = [this, &triangulation, &neighborsToId,
-                            &localElementNumber, &extremaLocks, &res,
-                            &saddleAtomic, &ghostPresenceVector,
+  MPI_Allreduce(MPI_IN_PLACE, &totalFinishedElement, 1, MPI_SimplexId, MPI_SUM,
+                ttk::MPIcomm_);
+  localElementNumber = 0;
+  const auto followVPath = [this, &triangulation, &neighborsToId, &extremaLocks,
+                            &res, &saddleAtomic, &ghostPresenceVector,
                             &sendBufferThread, &sendFinishedVPathBufferThread,
                             offsets, &localTriangToLocalVectExtrema](
                              const SimplexId v, ttk::SimplexId saddleId,
-                             char saddleRank, int threadNumber) {
+                             char saddleRank, int threadNumber,
+                             ttk::SimplexId &elementNumber) {
     std::vector<Cell> vpath{};
     this->dg_.getDescendingPath(Cell{0, v}, vpath, triangulation);
     const Cell &lastCell = vpath.back();
@@ -1161,8 +1166,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
                                     .extremaId_ = extremaId,
                                     .saddleRank_ = saddleRank});
       } else {
-#pragma omp atomic update
-        localElementNumber--;
+        elementNumber++;
         if(this->dg_.isCellCritical(lastCell)) {
           ttk::SimplexId id
             = localTriangToLocalVectExtrema.find(lastCell.id_)->second;
@@ -1193,8 +1197,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
         }
       }
     } else {
-#pragma omp atomic update
-      localElementNumber--;
+      elementNumber++;
     }
   };
 #ifdef TTK_ENABLE_MPI_TIME
@@ -1206,8 +1209,9 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
   }
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
+  ttk::SimplexId elementNumber = 0;
   // follow vpaths from 1-saddles to minima
-#pragma omp parallel shared(extremaLocks, localElementNumber) \
+#pragma omp parallel shared(extremaLocks) reduction(+: elementNumber) \
   num_threads(threadNumber_)
   {
     int threadNumber = omp_get_thread_num();
@@ -1219,11 +1223,12 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
       triangulation.getEdgeVertex(criticalEdges[i], 1, v1);
 
       // follow vpath from each vertex of the critical edge
-      followVPath(v0, i, ttk::MPIrank_, threadNumber);
-      followVPath(v1, i, ttk::MPIrank_, threadNumber);
+      followVPath(v0, i, ttk::MPIrank_, threadNumber, elementNumber);
+      followVPath(v1, i, ttk::MPIrank_, threadNumber, elementNumber);
     }
   }
-
+  localElementNumber += elementNumber;
+  elementNumber = 0;
 #ifdef TTK_ENABLE_MPI_TIME
   elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
   if(ttk::MPIrank_ == 0) {
@@ -1234,14 +1239,13 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
   // Send receive elements
-  MPI_Datatype MPI_SimplexId = getMPIType(static_cast<ttk::SimplexId>(0));
   MPI_Datatype MPI_MessageType;
   this->createVpathMPIType(MPI_MessageType);
   MPI_Allreduce(&localElementNumber, &totalElement, 1, MPI_SimplexId, MPI_SUM,
                 ttk::MPIcomm_);
   std::vector<std::vector<vpathToSend>> sendBuffer(neighborNumber);
   std::vector<std::vector<vpathToSend>> recvBuffer(neighborNumber);
-  bool keepWorking = (totalElement != 0);
+  bool keepWorking = (totalElement != totalFinishedElement);
   while(keepWorking) {
 #pragma omp parallel for schedule(static, 1)
     for(int j = 0; j < neighborNumber; j++) {
@@ -1330,15 +1334,17 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
 #pragma omp parallel
           {
             int threadNumber = omp_get_thread_num();
-#pragma omp for schedule(static)
+#pragma omp for schedule(static) reduction(+ : elementNumber)
             for(ttk::SimplexId j = 0; j < recvMessageSize[rankId]; j++) {
               struct vpathToSend element = recvBuffer[rankId][j];
               ttk::SimplexId v
                 = triangulation.getVertexLocalId(element.extremaId_);
-              followVPath(
-                v, element.saddleId_, element.saddleRank_, threadNumber);
+              followVPath(v, element.saddleId_, element.saddleRank_,
+                          threadNumber, elementNumber);
             }
           }
+          localElementNumber += elementNumber;
+          elementNumber = 0;
         }
         recvPerformedCountTotal += recvPerformedCount;
       }
@@ -1347,7 +1353,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
     // Stop condition computation
     MPI_Allreduce(&localElementNumber, &totalElement, 1, MPI_SimplexId, MPI_SUM,
                   ttk::MPIcomm_);
-    keepWorking = (totalElement != 0);
+    keepWorking = (totalElement != totalFinishedElement);
   }
 #ifdef TTK_ENABLE_MPI_TIME
   elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
