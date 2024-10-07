@@ -2439,6 +2439,15 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
     }
     return elt0.t1Order_[0] > elt1.t1Order_[0];
   };
+
+  const auto equalSadMin
+    = [=](const messageType<sizeExtr, sizeSad> &elt0,
+          const messageType<sizeExtr, sizeSad> &elt1) -> bool {
+    return (elt0.s_ == elt1.s_) && (elt0.t1_ == elt1.t1_)
+           && (elt0.t2_ == elt1.t2_) && (elt0.s1_ == elt1.s1_)
+           && (elt0.s2_ == elt1.s2_)
+           && (elt0.hasBeenModified_ == elt1.hasBeenModified_);
+  };
   // Receive elements
   std::vector<std::vector<messageType<sizeExtr, sizeSad>>> recvBuffer(
     ttk::MPIsize_, std::vector<messageType<sizeExtr, sizeSad>>());
@@ -2532,9 +2541,14 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
           r = recvStatusData[i].MPI_SOURCE;
           TTK_PSORT(this->threadNumber_, recvBuffer[r].begin(),
                     recvBuffer[r].end(), cmpSadMin);
+          const auto last
+            = std::unique(std::execution::par_unseq, recvBuffer[r].begin(),
+                          recvBuffer[r].end(), equalSadMin);
           // printMsg("Process: "+std::to_string(r));
           //#pragma omp parallel for schedule(static)
-          for(ttk::SimplexId j = 0; j < recvMessageSize[r]; j++) {
+          ttk::SimplexId nbMessages
+            = std::distance(recvBuffer[r].begin(), last);
+          for(ttk::SimplexId j = 0; j < nbMessages; j++) {
             receiveElement<sizeExtr, sizeSad>(
               recvBuffer[r][j], globalToLocalSaddle, globalToLocalExtrema,
               saddles, extremas, extremaToPairedSaddle, saddleToPairedExtrema,
