@@ -2541,19 +2541,16 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
           r = recvStatusData[i].MPI_SOURCE;
           TTK_PSORT(this->threadNumber_, recvBuffer[r].begin(),
                     recvBuffer[r].end(), cmpSadMin);
-          const auto last
-            = std::unique(std::execution::par_unseq, recvBuffer[r].begin(),
-                          recvBuffer[r].end(), equalSadMin);
           // printMsg("Process: "+std::to_string(r));
           //#pragma omp parallel for schedule(static)
-          ttk::SimplexId nbMessages
-            = std::distance(recvBuffer[r].begin(), last);
-          for(ttk::SimplexId j = 0; j < nbMessages; j++) {
-            receiveElement<sizeExtr, sizeSad>(
-              recvBuffer[r][j], globalToLocalSaddle, globalToLocalExtrema,
-              saddles, extremas, extremaToPairedSaddle, saddleToPairedExtrema,
-              sendBuffer[1 - currentSendBuffer], ghostPresence,
-              static_cast<char>(r), increasing);
+          for(ttk::SimplexId j = 0; j < recvMessageSize[r]; j++) {
+            if(j == 0 || !equalSadMin(recvBuffer[r][j], recvBuffer[r][j - 1])) {
+              receiveElement<sizeExtr, sizeSad>(
+                recvBuffer[r][j], globalToLocalSaddle, globalToLocalExtrema,
+                saddles, extremas, extremaToPairedSaddle, saddleToPairedExtrema,
+                sendBuffer[1 - currentSendBuffer], ghostPresence,
+                static_cast<char>(r), increasing);
+            }
           }
         }
         recvPerformedCountTotal += recvPerformedCount;
