@@ -2401,6 +2401,10 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   std::vector<std::vector<char>> ghostPresence,
   MPI_Datatype &MPI_MessageType,
   bool isFirstTime) const {
+#ifdef TTK_ENABLE_MPI_TIME
+  ttk::Timer t_mpi;
+  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
   std::array<std::vector<std::vector<messageType<sizeExtr, sizeSad>>>, 2>
     sendBuffer;
   sendBuffer[0].resize(
@@ -2427,6 +2431,15 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
       }
     }
   }
+#ifdef TTK_ENABLE_MPI_TIME
+  double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Computation of pair:init_comp performed using "
+             + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
+  }
+  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
   const auto cmpSadMin
     = [=](const messageType<sizeExtr, sizeSad> &elt0,
           const messageType<sizeExtr, sizeSad> &elt1) -> bool {
@@ -2578,6 +2591,14 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
       currentSendBuffer = 1 - currentSendBuffer;
     }
   }
+#ifdef TTK_ENABLE_MPI_TIME
+  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Computation of pair:finish_comp performed using "
+             + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
+  }
+#endif
 }
 
 template <int sizeExtr, int sizeSad>
