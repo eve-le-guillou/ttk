@@ -2514,21 +2514,6 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
         recvCount++;
       }
     }
-          sendPerformedCountTotal += sendPerformedCount;
-  }
-  sendPerformedCountTotal += sendPerformedCount;
-}
-}
-recvPerformedCountTotal += recvPerformedCount;
-        }
-      }
-      }
-      recvPerformedCountTotal = 0;
-      }
-          recvPerformedCountTotal += recvPerformedCount;
-        }
-      }
-    }
     recvPerformedCountTotal = 0;
     while(recvPerformedCountTotal < recvCount) {
       MPI_Waitsome(recvCount, recvRequestsData.data(), &recvPerformedCount,
