@@ -2490,57 +2490,41 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
       if(i != ttk::MPIrank_) {
         sendMessageSize[i] = sendBuffer[currentSendBuffer][i].size();
         localSentMessageNumber += sendMessageSize[i];
-        MPI_Isend(&sendMessageSize[i], 1, MPI_SimplexId, i, 0, ttk::MPIcomm_,
-                  &sendRequests[count]);
-        MPI_Irecv(&recvMessageSize[i], 1, MPI_SimplexId, i, 0, ttk::MPIcomm_,
-                  &recvRequests[count]);
-        count++;
       }
     }
+    MPI_Alltoall(sendMessageSize.data(), 1, MPI_SimplexId,
+                 recvMessageSize.data(), 1, MPI_SimplexId, ttk::MPIcomm_);
     std::vector<MPI_Request> sendRequestsData(ttk::MPIsize_ - 1);
     std::vector<MPI_Request> recvRequestsData(ttk::MPIsize_ - 1);
     std::vector<MPI_Status> recvStatusData(ttk::MPIsize_ - 1);
     int recvCount = 0;
     int sendCount = 0;
-    int r;
-    while((sendPerformedCountTotal < ttk::MPIsize_ - 1
-           || recvPerformedCountTotal < ttk::MPIsize_ - 1)) {
-      if(sendPerformedCountTotal < ttk::MPIsize_ - 1) {
-        MPI_Waitsome(ttk::MPIsize_ - 1, sendRequests.data(),
-                     &sendPerformedCount, sendCompleted.data(),
-                     sendStatus.data());
-        if(sendPerformedCount > 0) {
-          for(int i = 0; i < sendPerformedCount; i++) {
-            r = sendCompleted[i];
-            if(ttk::MPIrank_ <= sendCompleted[i]) {
-              r++;
-            }
-            if((sendMessageSize[r] > 0)) {
-              MPI_Isend(sendBuffer[currentSendBuffer][r].data(),
-                        sendMessageSize[r], MPI_MessageType, r, 1,
-                        ttk::MPIcomm_, &sendRequestsData[sendCount]);
-              sendCount++;
-            }
-          }
+    int r = 0;
+    for(int i = 0; i < ttk::MPIsize_; i++) {
+      if((sendMessageSize[i] > 0)) {
+        MPI_Isend(sendBuffer[currentSendBuffer][i].data(), sendMessageSize[i],
+                  MPI_MessageType, i, 1, ttk::MPIcomm_,
+                  &sendRequestsData[sendCount]);
+        sendCount++;
+      }
+      if((recvMessageSize[i] > 0)) {
+        recvBuffer[i].resize(recvMessageSize[i]);
+        MPI_Irecv(recvBuffer[i].data(), recvMessageSize[i], MPI_MessageType, i,
+                  1, ttk::MPIcomm_, &recvRequestsData[recvCount]);
+        recvCount++;
+      }
+    }
           sendPerformedCountTotal += sendPerformedCount;
+  }
+  sendPerformedCountTotal += sendPerformedCount;
+}
+}
+recvPerformedCountTotal += recvPerformedCount;
         }
       }
-      if(recvPerformedCountTotal < ttk::MPIsize_ - 1) {
-        MPI_Waitsome(ttk::MPIsize_ - 1, recvRequests.data(),
-                     &recvPerformedCount, recvCompleted.data(),
-                     recvStatus.data());
-        if(recvPerformedCount > 0) {
-          for(int i = 0; i < recvPerformedCount; i++) {
-            r = recvStatus[i].MPI_SOURCE;
-            if((recvMessageSize[r] > 0)) {
-              recvBuffer[r].resize(recvMessageSize[r]);
-              MPI_Irecv(recvBuffer[r].data(), recvMessageSize[r],
-                        MPI_MessageType, r, 1, ttk::MPIcomm_,
-                        &recvRequestsData[recvCount]);
-
-              recvCount++;
-            }
-          }
+      }
+      recvPerformedCountTotal = 0;
+      }
           recvPerformedCountTotal += recvPerformedCount;
         }
       }
