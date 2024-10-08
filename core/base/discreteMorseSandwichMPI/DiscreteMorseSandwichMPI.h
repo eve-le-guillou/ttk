@@ -562,7 +562,9 @@ namespace ttk {
                            std::vector<std::array<extremaNode<1>, 2>> &res,
                            std::vector<std::vector<char>> &ghostPresence,
                            std::unordered_map<ttk::SimplexId, std::vector<char>>
-                             &localGhostPresenceMap) const;
+                             &localGhostPresenceMap,
+                           std::vector<std::vector<std::vector<ttk::SimplexId>>>
+                             &ghostPresenceVector) const;
 
     /**
      * @brief Follow the ascending 1-separatrices to compute the saddles ->
@@ -1106,7 +1108,8 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
   const SimplexId *const offsets,
   std::vector<std::array<extremaNode<1>, 2>> &res,
   std::vector<std::vector<char>> &ghostPresence,
-  std::unordered_map<ttk::SimplexId, std::vector<char>> &localGhostPresenceMap)
+  std::unordered_map<ttk::SimplexId, std::vector<char>> &localGhostPresenceMap,
+  std::vector<std::vector<std::vector<ttk::SimplexId>>> &ghostPresenceVector)
   const {
 
   Timer tm{};
@@ -1122,24 +1125,13 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
     threadNumber_);
   std::vector<std::vector<std::vector<vpathFinished<1>>>>
     sendFinishedVPathBufferThread(threadNumber_);
-  std::vector<std::vector<std::vector<ttk::SimplexId>>> ghostPresenceVector;
-  std::vector<char> saddleAtomic;
+  std::vector<char> saddleAtomic(criticalEdges.size(), 0);
+  ;
   std::vector<Lock> extremaLocks(criticalExtremasNumber);
   MPI_Datatype MPI_SimplexId = getMPIType(static_cast<ttk::SimplexId>(0));
-  // TODO: PUT IN ALLOC?
-#pragma omp parallel master num_threads(threadNumber_)
-  {
-#pragma omp task
-    saddleAtomic.resize(criticalEdges.size(), 0);
-#pragma omp task
-    ghostPresenceVector.resize(
-      criticalExtremasNumber, std::vector<std::vector<ttk::SimplexId>>(
-                                ttk::MPIsize_, std::vector<ttk::SimplexId>()));
-#pragma omp task
-    for(int i = 0; i < this->threadNumber_; i++) {
-      sendBufferThread[i].resize(neighborNumber);
-      sendFinishedVPathBufferThread[i].resize(ttk::MPIsize_);
-    }
+  for(int i = 0; i < this->threadNumber_; i++) {
+    sendBufferThread[i].resize(neighborNumber);
+    sendFinishedVPathBufferThread[i].resize(ttk::MPIsize_);
   }
   ttk::SimplexId localElementNumber{0};
   ttk::SimplexId totalFinishedElement{2 * criticalEdges.size()};
@@ -1587,7 +1579,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
 
   sendBufferThread = {};
   sendFinishedVPathBufferThread = {};
-  ghostPresenceVector = {};
+  ghostPresenceVector.clear();
   saddleAtomic = {};
   extremaLocks.clear();
   sendBuffer = {};
@@ -1718,6 +1710,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     // minima - saddle pairs
     Timer tm{};
     std::vector<std::array<extremaNode<1>, 2>> saddle1ToMinima;
+    std::vector<std::vector<std::vector<ttk::SimplexId>>> ghostPresenceVector;
     std::unordered_map<ttk::SimplexId, std::vector<char>> localGhostPresenceMap;
     std::vector<std::vector<char>> localGhostPresenceVector;
     std::unordered_map<ttk::SimplexId, ttk::SimplexId>
@@ -1731,6 +1724,11 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       for(ttk::SimplexId i = 0; i < criticalExtremasNumber; i++) {
         localTriangToLocalVectExtrema[criticalExtremas[i]] = i;
       }
+#pragma omp task
+      ghostPresenceVector.resize(
+        criticalExtremasNumber,
+        std::vector<std::vector<ttk::SimplexId>>(
+          ttk::MPIsize_, std::vector<ttk::SimplexId>()));
 #pragma omp task
       saddle1ToMinima.resize(
         criticalEdges.size(), std::array<extremaNode<1>, 2>());
@@ -1752,7 +1750,8 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
 #endif
     this->getSaddle1ToMinima(criticalEdges, localTriangToLocalVectExtrema,
                              triangulation, offsets, saddle1ToMinima,
-                             localGhostPresenceVector, localGhostPresenceMap);
+                             localGhostPresenceVector, localGhostPresenceMap,
+                             ghostPresenceVector);
 #ifdef TTK_ENABLE_MPI_TIME
     elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
     if(ttk::MPIrank_ == 0) {
