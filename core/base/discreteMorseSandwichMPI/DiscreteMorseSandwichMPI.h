@@ -390,6 +390,11 @@ namespace ttk {
       }
     };
 
+    struct saddleIdPerProcess {
+      std::vector<ttk::SimplexId> saddleIds_;
+      char rank_;
+    };
+
     template <int size>
     struct saddleEdge {
       ttk::SimplexId gid_{-1};
@@ -554,17 +559,17 @@ namespace ttk {
      * @return a vector of minima per 1-saddle
      */
     template <typename triangulationType>
-    int getSaddle1ToMinima(const std::vector<SimplexId> &criticalEdges,
-                           std::unordered_map<ttk::SimplexId, ttk::SimplexId>
-                             &localTriangToLocalVectExtrema,
-                           const triangulationType &triangulation,
-                           const SimplexId *const offsets,
-                           std::vector<std::array<extremaNode<1>, 2>> &res,
-                           std::vector<std::vector<char>> &ghostPresence,
-                           std::unordered_map<ttk::SimplexId, std::vector<char>>
-                             &localGhostPresenceMap,
-                           std::vector<std::vector<std::vector<ttk::SimplexId>>>
-                             &ghostPresenceVector) const;
+    int getSaddle1ToMinima(
+      const std::vector<SimplexId> &criticalEdges,
+      std::unordered_map<ttk::SimplexId, ttk::SimplexId>
+        &localTriangToLocalVectExtrema,
+      const triangulationType &triangulation,
+      const SimplexId *const offsets,
+      std::vector<std::array<extremaNode<1>, 2>> &res,
+      std::vector<std::vector<char>> &ghostPresence,
+      std::unordered_map<ttk::SimplexId, std::vector<char>>
+        &localGhostPresenceMap,
+      std::vector<std::vector<saddleIdPerProcess>> &ghostPresenceVector) const;
 
     /**
      * @brief Follow the ascending 1-separatrices to compute the saddles ->
@@ -1109,8 +1114,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
   std::vector<std::array<extremaNode<1>, 2>> &res,
   std::vector<std::vector<char>> &ghostPresence,
   std::unordered_map<ttk::SimplexId, std::vector<char>> &localGhostPresenceMap,
-  std::vector<std::vector<std::vector<ttk::SimplexId>>> &ghostPresenceVector)
-  const {
+  std::vector<std::vector<saddleIdPerProcess>> &ghostPresenceVector) const {
 
   Timer tm{};
 #ifdef TTK_ENABLE_MPI_TIME
@@ -1162,9 +1166,20 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
         if(this->dg_.isCellCritical(lastCell)) {
           ttk::SimplexId id
             = localTriangToLocalVectExtrema.find(lastCell.id_)->second;
+          int r{0};
           extremaLocks[id].lock();
           auto &ghost{ghostPresenceVector[id]};
-          ghost[saddleRank].emplace_back(saddleId);
+          while(r < ghost.size()) {
+            if(ghost[r].rank_ == saddleRank) {
+              ghost[r].saddleIds_.emplace_back(saddleId);
+              break;
+            }
+            r++;
+          }
+          if(r == ghost.size()) {
+            ghost.emplace_back(saddleIdPerProcess{
+              std::vector<ttk::SimplexId>{saddleId}, saddleRank});
+          }
           extremaLocks[id].unlock();
           if(saddleRank == ttk::MPIrank_) {
             ttk::SimplexId vOrd[] = {offsets[lastCell.id_]};
@@ -1375,19 +1390,21 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
     auto &ghost{ghostPresenceVector[i]};
     auto &ranks{ghostPresence[i]};
     // Check if some saddleId appear twice for the same rank
-    for(int j = 0; j < ttk::MPIsize_; j++) {
-      ttk::SimplexId ghostSize = ghost[j].size();
+    for(int j = 0; j < ghost.size(); j++) {
+      ttk::SimplexId ghostSize = ghost[j].saddleIds_.size();
       // Only occurs when the number of saddles is even
       if(ghostSize > 0) {
         if(ghostSize % 2 == 0) {
-          std::sort(ghost[j].begin(), ghost[j].end());
-          const auto last = std::unique(ghost[j].begin(), ghost[j].end());
-          ttk::SimplexId newSize = std::distance(ghost[j].begin(), last);
+          std::sort(ghost[j].saddleIds_.begin(), ghost[j].saddleIds_.end());
+          const auto last = std::unique(
+            ghost[j].saddleIds_.begin(), ghost[j].saddleIds_.end());
+          ttk::SimplexId newSize
+            = std::distance(ghost[j].saddleIds_.begin(), last);
           if(!(ghostSize % newSize == 0 && ghostSize / newSize == 2)) {
-            ranks.emplace_back(j);
+            ranks.emplace_back(ghost[j].rank_);
           }
         } else {
-          ranks.emplace_back(j);
+          ranks.emplace_back(ghost[j].rank_);
         }
       }
     }
@@ -1710,7 +1727,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     // minima - saddle pairs
     Timer tm{};
     std::vector<std::array<extremaNode<1>, 2>> saddle1ToMinima;
-    std::vector<std::vector<std::vector<ttk::SimplexId>>> ghostPresenceVector;
+    std::vector<std::vector<saddleIdPerProcess>> ghostPresenceVector;
     std::unordered_map<ttk::SimplexId, std::vector<char>> localGhostPresenceMap;
     std::vector<std::vector<char>> localGhostPresenceVector;
     std::unordered_map<ttk::SimplexId, ttk::SimplexId>
@@ -1726,9 +1743,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       }
 #pragma omp task
       ghostPresenceVector.resize(
-        criticalExtremasNumber,
-        std::vector<std::vector<ttk::SimplexId>>(
-          ttk::MPIsize_, std::vector<ttk::SimplexId>()));
+        criticalExtremasNumber, std::vector<saddleIdPerProcess>());
 #pragma omp task
       saddle1ToMinima.resize(
         criticalEdges.size(), std::array<extremaNode<1>, 2>());
