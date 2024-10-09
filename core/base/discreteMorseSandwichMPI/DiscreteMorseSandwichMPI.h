@@ -1117,10 +1117,6 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
   std::vector<std::vector<saddleIdPerProcess>> &ghostPresenceVector) const {
 
   Timer tm{};
-#ifdef TTK_ENABLE_MPI_TIME
-  ttk::Timer t_mpi;
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
   ttk::SimplexId criticalExtremasNumber = localTriangToLocalVectExtrema.size();
   const std::vector<int> neighbors = triangulation.getNeighborRanks();
   const std::map<int, int> neighborsToId = triangulation.getNeighborsToId();
@@ -1207,15 +1203,6 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
       elementNumber++;
     }
   };
-#ifdef TTK_ENABLE_MPI_TIME
-  double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation of sep:init_mem performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
   ttk::SimplexId elementNumber = 0;
   // follow vpaths from 1-saddles to minima
 #pragma omp parallel shared(extremaLocks) reduction(+: elementNumber) \
@@ -1236,15 +1223,6 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
   }
   localElementNumber += elementNumber;
   elementNumber = 0;
-#ifdef TTK_ENABLE_MPI_TIME
-  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation of sep:init_comp performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
   // Send receive elements
   MPI_Datatype MPI_MessageType;
   this->createVpathMPIType(MPI_MessageType);
@@ -1362,15 +1340,6 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
                   ttk::MPIcomm_);
     keepWorking = (totalElement != totalFinishedElement);
   }
-#ifdef TTK_ENABLE_MPI_TIME
-  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation of sep:finish_comp performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
   // Create ghostPresence and send finished VPath back
   std::vector<std::vector<char>> ghostPresenceToSend(ttk::MPIsize_);
   std::vector<std::vector<vpathFinished<1>>> finishedVPathToSend(ttk::MPIsize_);
@@ -1454,15 +1423,6 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
       sendFinishedVPathBufferThread[j][i].clear();
     }
   }
-#ifdef TTK_ENABLE_MPI_TIME
-  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation of sep:create_ghost performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
   // Merge the vectors
 #pragma omp parallel for schedule(static, 1)
   for(int j = 0; j < ttk::MPIsize_; j++) {
@@ -1486,15 +1446,6 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
       finishedVPathToSendThread[i][j].clear();
     }
   }
-#ifdef TTK_ENABLE_MPI_TIME
-  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation of sep:merge_vec performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
   // Send/Recv them
   std::vector<ttk::SimplexId> recvMessageSize(2 * ttk::MPIsize_, 0);
   std::vector<ttk::SimplexId> sendMessageSize(2 * ttk::MPIsize_, 0);
@@ -1581,15 +1532,6 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
       }
     }
   }
-#ifdef TTK_ENABLE_MPI_TIME
-  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation of sep:sendrecv_data performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
   /*this->printMsg("Computed the descending 1-separatrices", 1.0,
                  tm.getElapsedTime(), this->threadNumber_,
                  debug::LineMode::NEW);*/
@@ -1608,14 +1550,6 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
   ghostCounterThread = {};
   recvVPathFinished = {};
   recvGhostPresence = {};
-#ifdef TTK_ENABLE_MPI_TIME
-  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation of sep:clear performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-#endif
   return 0;
 }
 
@@ -1683,10 +1617,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
   const SimplexId *const offsets,
   size_t &nConnComp,
   const triangulationType &triangulation) const {
-#ifdef TTK_ENABLE_MPI_TIME
-  ttk::Timer t_mpi;
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
+
   ttk::SimplexId totalNumberOfVertices{-1};
   ttk::SimplexId criticalExtremasNumber = criticalExtremas.size();
   ttk::SimplexId criticalEdgesNumber = criticalEdges.size();
@@ -1714,15 +1645,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
 
   MPI_Allreduce(&localMin.second, &globalMinOffset, 1, MPI_SimplexId, MPI_MIN,
                 ttk::MPIcomm_);
-#ifdef TTK_ENABLE_MPI_TIME
-  double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation of min_element performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
   if(this->ComputeMinSad) {
     // minima - saddle pairs
     Timer tm{};
@@ -1754,33 +1676,11 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       saddles.resize(criticalEdgesNumber);
     }
 
-#ifdef TTK_ENABLE_MPI_TIME
-    double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-    if(ttk::MPIrank_ == 0) {
-      printMsg("Computation of init_mem performed using "
-               + std::to_string(ttk::MPIsize_)
-               + " MPI processes lasted :" + std::to_string(elapsedTime));
-    }
-    ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
     this->getSaddle1ToMinima(criticalEdges, localTriangToLocalVectExtrema,
                              triangulation, offsets, saddle1ToMinima,
                              localGhostPresenceVector, localGhostPresenceMap,
                              ghostPresenceVector);
-#ifdef TTK_ENABLE_MPI_TIME
-    elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-    if(ttk::MPIrank_ == 0) {
-      printMsg("Computation of separatrices performed using "
-               + std::to_string(ttk::MPIsize_)
-               + " MPI processes lasted :" + std::to_string(elapsedTime));
-    }
-    ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
     // Timer tmseq{};
-#ifdef TTK_ENABLE_MPI_TIME
-    ttk::Timer tint_mpi;
-    ttk::startMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
     auto &saddleToPairedExtrema{this->saddleToPairedMin_};
     auto &extremaToPairedSaddle{this->minToPairedSaddle_};
     auto &globalToLocalSaddle{this->globalToLocalSaddle1_};
@@ -1791,15 +1691,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     globalToLocalSaddle.reserve(criticalEdgesNumber);
     ttk::SimplexId elementPerThread = std::min(
       criticalEdgesNumber, (criticalEdgesNumber + 1) / threadNumber_);
-#ifdef TTK_ENABLE_MPI_TIME
-    elapsedTime = ttk::endMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-    if(ttk::MPIrank_ == 0) {
-      printMsg("Computation of pairing:init_mem performed using "
-               + std::to_string(ttk::MPIsize_)
-               + " MPI processes lasted :" + std::to_string(elapsedTime));
-    }
-    ttk::startMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
 
 #pragma omp declare reduction (merge : std::vector<ttk::SimplexId>: omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge                           \
@@ -1898,15 +1789,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       }
       }
     }
-#ifdef TTK_ENABLE_MPI_TIME
-    elapsedTime = ttk::endMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-    if(ttk::MPIrank_ == 0) {
-      printMsg("Computation of pairing:preproc performed using "
-               + std::to_string(ttk::MPIsize_)
-               + " MPI processes lasted :" + std::to_string(elapsedTime));
-    }
-    ttk::startMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
     const auto cmpSadMin
       = [=, &extremas, &saddles](
           const ttk::SimplexId &id1, const ttk::SimplexId &id2) -> bool {
@@ -1931,41 +1813,14 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     TTK_PSORT(
       this->threadNumber_, saddleIds.begin(), saddleIds.end(), cmpSadMin);
     // Mise en place des lid des arcs
-#ifdef TTK_ENABLE_MPI_TIME
-    elapsedTime = ttk::endMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-    if(ttk::MPIrank_ == 0) {
-      printMsg("Computation of pairing:sort performed using "
-               + std::to_string(ttk::MPIsize_)
-               + " MPI processes lasted :" + std::to_string(elapsedTime));
-    }
-    ttk::startMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
     extremaToPairedSaddle.resize(globalToLocalExtrema.size(), -1);
     saddleToPairedExtrema.resize(saddles.size(), -1);
-#ifdef TTK_ENABLE_MPI_TIME
-    elapsedTime = ttk::endMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-    if(ttk::MPIrank_ == 0) {
-      printMsg("Computation of pairing:resize performed using "
-               + std::to_string(ttk::MPIsize_)
-               + " MPI processes lasted :" + std::to_string(elapsedTime));
-    }
-    ttk::startMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
     MPI_Datatype MPI_MessageType;
     createMPIMessageType<1, 2>(MPI_MessageType);
     tripletsToPersistencePairs<1, 2>(
       pairs, 0, extremas, saddles, saddleIds, saddleToPairedExtrema,
       extremaToPairedSaddle, globalToLocalSaddle, globalToLocalExtrema,
       ghostPresence, MPI_MessageType, true);
-#ifdef TTK_ENABLE_MPI_TIME
-    elapsedTime = ttk::endMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-    if(ttk::MPIrank_ == 0) {
-      printMsg("Computation of pairing:triplets performed using "
-               + std::to_string(ttk::MPIsize_)
-               + " MPI processes lasted :" + std::to_string(elapsedTime));
-    }
-    ttk::startMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
     ttk::SimplexId nMinSadPairs
       = computePairNumbers<1, 2>(saddles, saddleToPairedExtrema);
     char rerunNeeded{0};
@@ -2038,24 +1893,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
         nConnComp++;
       }
     }
-#ifdef TTK_ENABLE_MPI_TIME
-    elapsedTime = ttk::endMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-    if(ttk::MPIrank_ == 0) {
-      printMsg("Computation of pairing:postproc performed using "
-               + std::to_string(ttk::MPIsize_)
-               + " MPI processes lasted :" + std::to_string(elapsedTime));
-    }
-    ttk::startMPITimer(tint_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
-#ifdef TTK_ENABLE_MPI_TIME
-    elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-    if(ttk::MPIrank_ == 0) {
-      printMsg("Pairing of min-saddles performed using "
-               + std::to_string(ttk::MPIsize_)
-               + " MPI processes lasted :" + std::to_string(elapsedTime));
-    }
-    ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
     /*this->printMsg("min-saddle pairs sequential part", 1.0,
                    tmseq.getElapsedTime(), 1, debug::LineMode::NEW);
     */
@@ -2415,10 +2252,6 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   std::vector<std::vector<char>> ghostPresence,
   MPI_Datatype &MPI_MessageType,
   bool isFirstTime) const {
-#ifdef TTK_ENABLE_MPI_TIME
-  ttk::Timer t_mpi;
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
   std::array<std::vector<std::vector<messageType<sizeExtr, sizeSad>>>, 2>
     sendBuffer;
   sendBuffer[0].resize(
@@ -2445,15 +2278,6 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
       }
     }
   }
-#ifdef TTK_ENABLE_MPI_TIME
-  double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation of pair:init_comp performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
   const auto cmpSadMin
     = [=](const messageType<sizeExtr, sizeSad> &elt0,
           const messageType<sizeExtr, sizeSad> &elt1) -> bool {
@@ -2482,9 +2306,6 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   MPI_Datatype MPI_SimplexId = getMPIType(hasSentMessages);
   char currentSendBuffer{0};
   while(hasSentMessages > 0) {
-    if(ttk::MPIrank_ == 0) {
-      printMsg("In while loop: " + std::to_string(hasSentMessages));
-    }
     ttk::SimplexId localSentMessageNumber{0};
     std::vector<MPI_Request> sendRequests(ttk::MPIsize_ - 1);
     std::vector<MPI_Request> recvRequests(ttk::MPIsize_ - 1);
@@ -2574,14 +2395,6 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
       currentSendBuffer = 1 - currentSendBuffer;
     }
   }
-#ifdef TTK_ENABLE_MPI_TIME
-  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation of pair:finish_comp performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-#endif
 }
 
 template <int sizeExtr, int sizeSad>
@@ -2665,11 +2478,6 @@ ttk::SimplexId ttk::DiscreteMorseSandwichMPI::getUpdatedT1(
     auto e{extremas[lid]};
     ttk::SimplexId repLid
       = getRep(extremas[lid], s, increasing, extremas, saddles);
-    if((extremas[repLid].gid_ != e.gid_)
-       && !(compareArray(s.vOrder_, saddles[e.rep_.saddleId_].vOrder_, sizeSad)
-            == increasing)) {
-      printErr("YES IT HAPPENS");
-    }
     if(extremas[repLid].gid_ != e.gid_) {
       lid = repLid;
       elt.t1_ = extremas[repLid].gid_;
@@ -2722,11 +2530,6 @@ ttk::SimplexId ttk::DiscreteMorseSandwichMPI::getUpdatedT2(
     lid = it->second;
     auto e{extremas[lid]};
     ttk::SimplexId repLid = getRep(e, s, increasing, extremas, saddles);
-    if((extremas[repLid].gid_ != e.gid_)
-       && !(compareArray(s.vOrder_, saddles[e.rep_.saddleId_].vOrder_, sizeSad)
-            == increasing)) {
-      printErr("YES IT HAPPENS");
-    }
     if(extremas[repLid].gid_ != e.gid_) {
       lid = repLid;
       elt.t2_ = extremas[repLid].gid_;
@@ -3258,7 +3061,7 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
 
   bool pairedR1 = extremaToPairedSaddle[r1Lid] > -1;
   bool isR1Invalid
-    = ((extremaToPairedSaddle[r1Lid] > -1)
+    = (pairedR1
        && ((saddles[extremaToPairedSaddle[r1Lid]] < sv) == increasing));
   ttk::SimplexId oldSaddle{-1};
   if(isR1Invalid)
@@ -3311,7 +3114,7 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
     = getRep(extremas[sv.t_[1]], sv, increasing, extremas, saddles);
   bool pairedR2 = extremaToPairedSaddle[r2Lid] > -1;
   bool isR2Invalid
-    = ((extremaToPairedSaddle[r2Lid] > -1)
+    = (pairedR2
        && ((saddles[extremaToPairedSaddle[r2Lid]] < sv) == increasing));
   if(isR2Invalid)
     pairedR2 = false;
