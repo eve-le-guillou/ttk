@@ -2377,11 +2377,13 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
     // Stop condition computation
     /*for(int i = 0; i < ttk::MPIsize_; i++) {
       for(ttk::SimplexId j = 0; j < recvMessageSize[i]; j++) {
-        receiveElement<sizeExtr, sizeSad>(
-          recvBuffer[i][j], globalToLocalSaddle, globalToLocalExtrema,
-          saddles, extremas, extremaToPairedSaddle, saddleToPairedExtrema,
-          sendBuffer[currentSendBuffer], ghostPresence, static_cast<char>(i),
-    increasing);
+        if(j == 0 || !equalSadMin(recvBuffer[i][j], recvBuffer[i][j - 1])) {
+          receiveElement<sizeExtr, sizeSad>(
+            recvBuffer[i][j], globalToLocalSaddle, globalToLocalExtrema,
+            saddles, extremas, extremaToPairedSaddle, saddleToPairedExtrema,
+            sendBuffer[1 - currentSendBuffer], ghostPresence,
+    static_cast<char>(i), increasing);
+        }
       }
     }*/
 
@@ -2980,9 +2982,7 @@ void ttk::DiscreteMorseSandwichMPI::storeMessageToSend(
     sendBuffer[rep1.rank_].emplace_back(m);
   } else {
     for(auto r : ghostPresence[rep1.lid_]) {
-      if(sender != r || hasBeenModified) {
-        sendBuffer[r].emplace_back(m);
-      }
+      sendBuffer[r].emplace_back(m);
     }
   }
 };
@@ -3006,9 +3006,7 @@ void ttk::DiscreteMorseSandwichMPI::storeMessageToSend(
     sendBuffer[rep1.rank_].emplace_back(m);
   } else {
     for(auto r : ghostPresence[rep1.lid_]) {
-      if(sender != r || hasBeenModified) {
-        sendBuffer[r].emplace_back(m);
-      }
+      sendBuffer[r].emplace_back(m);
     }
   }
 };
