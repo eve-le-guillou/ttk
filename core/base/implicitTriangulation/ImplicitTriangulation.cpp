@@ -3175,47 +3175,9 @@ int ttk::ImplicitTriangulation::getCellRankInternal(
 #endif // TTK_ENABLE_KAMIKAZE
 
   float p[3];
-  float p1[9];
   ttk::SimplexId gid = this->getCellGlobalId(lcid);
-  if(gid == 20) {
-    printMsg("Before getCellInCenter for " + std::to_string(gid)
-             + " with local id: " + std::to_string(this->getCellLocalId(gid))
-             + ", lcid: " + std::to_string(lcid)
-             + ", tshift: " + std::to_string(tshift_[0]));
-  }
   this->metaGrid_->getCellIncenter(
     this->getCellGlobalId(lcid), this->dimensionality_, p);
-  if(gid == 20) {
-    printMsg("Center of cell " + std::to_string(gid) + ": "
-             + std::to_string(p[0]) + ", " + std::to_string(p[1]) + ", "
-             + std::to_string(p[2]) + " with dimensionality_: "
-             + std::to_string(this->dimensionality_));
-    ttk::SimplexId id1, id2, id3;
-    this->getTriangleVertex(lcid, 0, id1);
-    this->getTriangleVertex(lcid, 1, id2);
-    this->getTriangleVertex(lcid, 2, id3);
-    printMsg("Point local ids: " + std::to_string(id1));
-    printMsg("Point local ids: " + std::to_string(id2));
-    printMsg("Point local ids: " + std::to_string(id3));
-    getVertexPoint(id1, p1[0], p1[1], p1[2]);
-    getVertexPoint(id2, p1[3], p1[4], p1[5]);
-    getVertexPoint(id3, p1[6], p1[7], p1[8]);
-    id1 = this->getVertexGlobalId(id1);
-    id2 = this->getVertexGlobalId(id2);
-    id3 = this->getVertexGlobalId(id3);
-
-    printMsg("Vertices: " + std::to_string(id1) + ", " + std::to_string(id2)
-             + ", " + std::to_string(id3));
-    printMsg("Point coordinates: " + std::to_string(id1) + ": "
-             + std::to_string(p1[0]) + ", " + std::to_string(p1[1]) + ", "
-             + std::to_string(p1[2]));
-    printMsg("Point coordinates: " + std::to_string(id2) + ": "
-             + std::to_string(p1[3]) + ", " + std::to_string(p1[4]) + ", "
-             + std::to_string(p1[5]));
-    printMsg("Point coordinates: " + std::to_string(id3) + ": "
-             + std::to_string(p1[6]) + ", " + std::to_string(p1[7]) + ", "
-             + std::to_string(p1[8]));
-  }
   for(const auto neigh : this->neighborRanks_) {
     const auto &bbox{this->neighborCellBBoxes_[neigh]};
     if(p[0] >= bbox[0] && p[0] <= bbox[1] && p[1] >= bbox[2] && p[1] <= bbox[3]

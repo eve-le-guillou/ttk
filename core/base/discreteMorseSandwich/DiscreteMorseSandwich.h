@@ -325,10 +325,7 @@ namespace ttk {
       const SimplexId *const extremaOrder,
       const SimplexId pairDim,
       const std::vector<std::array<ttk::SimplexId, 2>> &svToR,
-      std::vector<ttk::SimplexId> &saddleToPairedExtrema,
-      float &getRepTime,
-      float &postTreatmentTime,
-      float &saddleToPairedExtremaTime) const;
+      std::vector<ttk::SimplexId> &saddleToPairedExtrema) const;
 
     /**
      * @brief Detect 1-saddles paired to a given 2-saddle
@@ -725,12 +722,10 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
     svToR[s1][1] = mins[1];
     sadMinTriplets.emplace_back(tripletType{s1, mins[0], mins[1]});
   }
-  float getRepTime{0}, postTreatmentTime{0}, saddleToPairedExtremaTime{0};
   // float preTreatmentTime = t.getElapsedTime();
   tripletsToPersistencePairs(pairs, pairedMinima, paired1Saddles, firstRep,
                              sadMinTriplets, critEdgesOrder.data(), offsets, 0,
-                             svToR, saddleToPairedExtrema, getRepTime,
-                             postTreatmentTime, saddleToPairedExtremaTime);
+                             svToR, saddleToPairedExtrema);
   const auto nMinSadPairs = pairs.size();
 
   this->printMsg(
@@ -839,14 +834,12 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
       sadMaxTriplets.emplace_back(tripletType{s2, maxs[0], maxs[1]});
     }
   }
-  float getRepTime{0}, postTreatmentTime{0}, saddleToPairedExtremaTime{0};
   const auto nMinSadPairs = pairs.size();
   // float preTreatmentTime = t.getElapsedTime();
   tripletsToPersistencePairs(pairs, pairedMaxima, pairedSaddles, firstRep,
                              sadMaxTriplets, critSaddlesOrder.data(),
                              critMaxsOrder.data(), dim - 1, svToR,
-                             saddleToPairedExtrema, getRepTime,
-                             postTreatmentTime, saddleToPairedExtremaTime);
+                             saddleToPairedExtrema);
 
   const auto nSadMaxPairs = pairs.size() - nMinSadPairs;
 

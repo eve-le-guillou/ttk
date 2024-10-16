@@ -19,10 +19,7 @@ void ttk::DiscreteMorseSandwich::tripletsToPersistencePairs(
   const SimplexId *const extremaOrder,
   const SimplexId pairDim,
   const std::vector<std::array<ttk::SimplexId, 2>> &svToR,
-  std::vector<ttk::SimplexId> &saddleToPairedExtrema,
-  float &getRepTime,
-  float &postTreatmentTime,
-  float &saddleToPairedExtremaTime) const {
+  std::vector<ttk::SimplexId> &saddleToPairedExtrema) const {
   // comparison functions
   const auto cmpSadMax
     = [=](const tripletType &t0, const tripletType &t1) -> bool {

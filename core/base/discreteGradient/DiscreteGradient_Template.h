@@ -928,7 +928,8 @@ int DiscreteGradient::getAscendingPath(const Cell &cell,
         const Cell triangle(2, currentId);
         vpath.push_back(triangle);
 
-        if(isCellCritical(triangle)) {
+        if(isCellCritical(triangle)
+           || triangulation.getTriangleRank(currentId) != ttk::MPIrank_) {
           break;
         }
 
@@ -985,7 +986,8 @@ int DiscreteGradient::getAscendingPath(const Cell &cell,
         const Cell tetra(3, currentId);
         vpath.push_back(tetra);
 
-        if(isCellCritical(tetra)) {
+        if(isCellCritical(tetra)
+           || triangulation.getCellRank(currentId) != ttk::MPIrank_) {
           break;
         }
 
