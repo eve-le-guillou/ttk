@@ -2935,7 +2935,7 @@ namespace ttk {
       }
 #endif // TTK_ENABLE_KAMIKAZE
       if(!ttk::isRunningWithMPI()) {
-        return lcid;
+        return ttk::MPIrank_;
       }
       return this->getCellRankInternal(lcid);
     }
