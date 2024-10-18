@@ -712,12 +712,6 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
       // Add all the other stuff
       fillBirthData(CTDiagram[i], pair, pair.birth);
       augmentBirthPersistence(CTDiagram[i], lid, inputScalars);
-      if(pair.birth == 326) {
-        printErr("LOCATED3");
-        printMsg("sfValue: " + std::to_string(CTDiagram[i].birth.sfValue) + ", "
-                 + std::to_string(inputScalars[lid]) + ", "
-                 + std::to_string(CTDiagram[i].birth.offset));
-      }
     } else {
       sendRecvBuffer[ttk::MPIrank_].emplace_back(
         dataRequest{pair.birth, i, pair.type, 1});
@@ -781,26 +775,19 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
           simplexType = getBirthSimplexType(element.dim_);
         } else {
           simplexType = getDeathSimplexType(element.dim_);
-          printMsg("simplexType for death: " + std::to_string(simplexType));
         }
         ttk::SimplexId lid
           = triangulation->getSimplexLocalId(element.gid_, simplexType);
-        if(element.gid_ == 211) {
-          printMsg("Local id: " + std::to_string(lid));
-        }
 
         if(lid != -1
            && triangulation->getSimplexRank(lid, simplexType)
                 == ttk::MPIrank_) {
-          if(element.gid_ == 211) {
-            printMsg("HERE");
-          }
           // Add the relevant data
           struct dataResponse res {
             .lid_ = element.lid_, .isBirth_ = element.isBirth_
           };
           ttk::SimplexId vLid = dms_.getCellGreaterVertex(
-            Cell{element.dim_, lid}, *triangulation);
+            Cell{element.dim_ + (1 - element.isBirth_), lid}, *triangulation);
           res.vertexGid_ = triangulation->getVertexGlobalId(vLid);
           res.offset_ = inputOffsets[vLid];
           triangulation->getVertexPoint(
