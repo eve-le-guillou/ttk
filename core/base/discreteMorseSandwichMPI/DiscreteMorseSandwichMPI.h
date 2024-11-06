@@ -2505,9 +2505,9 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
     for(ttk::SimplexId i = 0; i < criticalSaddlesNumber; ++i) {
       auto &maxs = saddle2ToMaxima[i];
       const auto s2 = criticalSaddles[i];
-      const auto last = std::unique(maxs.begin(), maxs.end());
+      // const auto last = std::unique(maxs.begin(), maxs.end());
       // mins.erase(last, mins.end());
-      if(last != maxs.end()) {
+      if(maxs.size() != 2) {
         continue;
       }
       saddleEdge<sizeSad> &e{saddles[i]};
