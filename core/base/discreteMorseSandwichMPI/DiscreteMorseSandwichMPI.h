@@ -4594,7 +4594,7 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
                           critCellsOrder[dim], triangulation, ignoreBoundary,
                           offsets);
 #ifdef TTK_ENABLE_MPI_TIME
-  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+  elapsedTime = ttk::endMPITimer(t_int, ttk::MPIrank_, ttk::MPIsize_);
   if(ttk::MPIrank_ == 0) {
     printMsg("Pairing of saddle-maxs performed using "
              + std::to_string(ttk::MPIsize_)
