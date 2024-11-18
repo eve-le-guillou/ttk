@@ -1990,6 +1990,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
                 ghost.end());
             }
           }
+        } else {
+          vp.ghostPresenceSize_ = ghostCounterThread[j][i];
         }
         finishedVPathToSendThread[j][i].emplace_back(vp);
       }
@@ -2785,9 +2787,11 @@ ttk::SimplexId ttk::DiscreteMorseSandwichMPI::getRep(
   if(currentNode.rep_.extremaId_ == -1) {
     return currentNode.lid_;
   }
+  int count{0};
   auto rep = extremas[extr.rep_.extremaId_];
   saddleEdge<sizeSad> s;
-  while(rep != currentNode) {
+  while(rep != currentNode && count < 1000) {
+    count++;
     if(currentNode.rep_.extremaId_ == -1) {
       break;
     }
@@ -2797,11 +2801,14 @@ ttk::SimplexId ttk::DiscreteMorseSandwichMPI::getRep(
         break;
       }
     }
-    /*if (sv.gid_ == 94981358 || sv.gid_ == 194488228 || sv.gid_ == 194357159 ||
-    sv.gid_ == 128160692 || sv.gid_ ==  128290752 || sv.gid_ == 128290764){
-      printMsg("for saddle: "+std::to_string(sv.gid_)+", current extr:
-    "+std::to_string(currentNode.gid_)+", rep: "+std::to_string(rep.gid_)+", by
-    "+std::to_string(s.gid_));
+    if(count >= 1000) {
+      printMsg("Overflow reached for " + std::to_string(extr.gid_));
+    }
+    /*if (sv.gid_ == 152040464 || sv.gid_ == 85788959 || sv.gid_ == 152429086 ||
+    sv.gid_ == 152951790 || sv.gid_ == 85788959 || sv.gid_ == 185853941 ||
+    sv.gid_ == 85918505){ printMsg("for saddle: "+std::to_string(sv.gid_)+",
+    current extr: "+std::to_string(currentNode.gid_)+", rep:
+    "+std::to_string(rep.gid_)+", by "+std::to_string(s.gid_));
     }  */
     currentNode = rep;
     if(currentNode.rep_.extremaId_ == -1) {
@@ -3193,9 +3200,9 @@ ttk::SimplexId ttk::DiscreteMorseSandwichMPI::getUpdatedT1(
           saddleEdge<sizeSad> s1Loc;
           if(e.rep_.saddleId_ > -1) {
             s1Loc = saddles[e.rep_.saddleId_];
-            if((elt.s1_ == -1 && s1Loc.gid_ != 1)
-               || compareArray(s1Loc.vOrder_, elt.s1Order_, sizeSad)
-                    == increasing) {
+            if((elt.s1_ == -1 && s1Loc.gid_ != -1)
+               || (compareArray(elt.s1Order_, s1Loc.vOrder_, sizeSad)
+                   == increasing)) {
               elt.s1_ = s1Loc.gid_;
               elt.s1Rank_ = s1Loc.rank_;
               for(int i = 0; i < sizeSad; i++) {
@@ -3249,8 +3256,8 @@ ttk::SimplexId ttk::DiscreteMorseSandwichMPI::getUpdatedT2(
           saddleEdge<sizeSad> s2Loc;
           if(e.rep_.saddleId_ > -1) {
             s2Loc = saddles[e.rep_.saddleId_];
-            if((elt.s2_ == -1 && s2Loc.gid_ != 1)
-               || compareArray(s2Loc.vOrder_, elt.s2Order_, sizeSad)
+            if((elt.s2_ == -1 && s2Loc.gid_ != -1)
+               || compareArray(elt.s2Order_, s2Loc.vOrder_, sizeSad)
                     == increasing) {
               elt.s2_ = s2Loc.gid_;
               elt.s2Rank_ = s2Loc.rank_;
