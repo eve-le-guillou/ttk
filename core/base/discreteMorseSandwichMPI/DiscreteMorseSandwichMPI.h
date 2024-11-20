@@ -2347,6 +2347,13 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     /*this->printMsg("min-saddle pairs sequential part", 1.0,
                    tmseq.getElapsedTime(), 1, debug::LineMode::NEW);
     */
+    MPI_Allreduce(MPI_IN_PLACE, &this->addToRecvTimer, 1, MPI_DOUBLE, MPI_MAX,
+                  ttk::MPIcomm_);
+    if(ttk::MPIrank_ == 0) {
+      printMsg("Computation of min_sad:addToRecvBuffer performed using "
+               + std::to_string(ttk::MPIsize_) + " MPI processes lasted :"
+               + std::to_string(this->addToRecvTimer));
+    }
     if(ttk::MPIrank_ == 0)
       this->printMsg(
         "Computed " + std::to_string(nMinSadPairs) + " min-saddle pairs", 1.0,
@@ -3122,8 +3129,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
           while(j < recvMessageSize.at(r)) {
             if((j == 0
                 || !equalSadMin(
-                  recvBuffer.at(r).at(j), recvBuffer.at(r).at(j - 1)))
-               && recvBuffer.at(r).at(j).s_ != sid) {
+                  recvBuffer.at(r).at(j), recvBuffer.at(r).at(j - 1)))) {
               messageType<sizeExtr, sizeSad> elt = recomputations.front();
               // Condition sur le premier élément de la liste
               if(!recomputations.empty()
@@ -3133,13 +3139,16 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
                 elt = recvBuffer.at(r).at(j);
                 j++;
               }
-              receiveElement<sizeExtr, sizeSad>(
-                elt, globalToLocalSaddle, globalToLocalExtrema, saddles,
-                extremas, extremaToPairedSaddle, saddleToPairedExtrema,
-                sendBuffer[1 - currentSendBuffer], ghostPresence,
-                static_cast<char>(r), increasing, recomputations, cmpMessages);
-              if(elt.t1_ == -1) {
-                sid = elt.s_;
+              if(elt.s_ != sid) {
+                receiveElement<sizeExtr, sizeSad>(
+                  elt, globalToLocalSaddle, globalToLocalExtrema, saddles,
+                  extremas, extremaToPairedSaddle, saddleToPairedExtrema,
+                  sendBuffer[1 - currentSendBuffer], ghostPresence,
+                  static_cast<char>(r), increasing, recomputations,
+                  cmpMessages);
+                if(elt.t1_ == -1) {
+                  sid = elt.s_;
+                }
               }
             } else {
               j++;
