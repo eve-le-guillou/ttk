@@ -2954,18 +2954,31 @@ void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
   messageType<sizeExtr, sizeSad> m
     = messageType<sizeExtr, sizeSad>(sad.gid_, sad.vOrder_, sad.rank_);
   // TODO: Only add if not already present
-  auto it = std::lower_bound(
-    recomputations.begin(), recomputations.end(), m, cmpMessages);
-  this->addToRecvIndexTimer += t_int.getElapsedTime();
-  t_int.reStart();
-  if(it->s_ != m.s_) {
-    if(it == recomputations.end()) {
+  if(recomputations.back().s_ != m.s_) {
+    if(cmpMessages(recomputations.back(), m)) {
       recomputations.push_back(m);
+      this->addToRecvInsertTimer += t_int.getElapsedTime();
     } else {
-      recomputations.insert(it, m);
+      if(recomputations.front().s_ != m.s_) {
+        if(cmpMessages(m, recomputations.front())) {
+          recomputations.push_front(m);
+          this->addToRecvInsertTimer += t_int.getElapsedTime();
+        } else {
+          t_int.reStart();
+          auto it = std::lower_bound(
+            recomputations.begin(), recomputations.end(), m, cmpMessages);
+          this->addToRecvIndexTimer += t_int.getElapsedTime();
+          t_int.reStart();
+          if(it->s_ != m.s_) {
+            t_int.reStart();
+            recomputations.insert(it, m);
+            this->addToRecvInsertTimer += t_int.getElapsedTime();
+          }
+        }
+      }
     }
   }
-  this->addToRecvInsertTimer += t_int.getElapsedTime();
+
   this->addToRecvTimer += t.getElapsedTime();
 };
 
@@ -3168,7 +3181,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
               messageType<sizeExtr, sizeSad> elt = recomputations.front();
               // Condition sur le premier élément de la liste
               if(!recomputations.empty()
-                 && (cmpMessages(elt, recvBuffer.at(r).at(j)) == increasing)) {
+                 && cmpMessages(elt, recvBuffer.at(r).at(j))) {
                 recomputations.pop_front();
               } else {
                 elt = recvBuffer.at(r).at(j);
