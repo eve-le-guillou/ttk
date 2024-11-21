@@ -2924,13 +2924,17 @@ void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
   messageType<sizeExtr, sizeSad> m
     = messageType<sizeExtr, sizeSad>(sad.gid_, sad.vOrder_, sad.rank_);
   // TODO: Only add if not already present
-  recomputations.insert(std::upper_bound(recomputations.begin(),
-                                         recomputations.end(), m, cmpMessages),
-                        m);
-  /*auto elt{recvBuffer[index - 1]};
-  if(!(elt.s_ == m.s_ && elt.t1_ == -1 && elt.t2_ == -1)) {
-    recvBuffer.insert(recvBuffer.begin() + index, m);
-  }*/
+  auto it = std::lower_bound(
+    recomputations.begin(), recomputations.end(), m, cmpMessages);
+  if(it->s_ == m.s_) {
+    printMsg("Do not add");
+  } else {
+    if(it == recomputations.end()) {
+      recomputations.push_back(m);
+    } else {
+      recomputations.insert(it, m);
+    }
+  }
   this->addToRecvTimer += t.getElapsedTime();
 };
 
