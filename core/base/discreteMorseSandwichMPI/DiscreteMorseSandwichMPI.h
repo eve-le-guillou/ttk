@@ -1169,6 +1169,8 @@ namespace ttk {
     mutable std::array<std::vector<SimplexId>, 4> critCellsOrder_{};
     mutable std::vector<std::vector<SimplexId>> s2Children_{};
     mutable double addToRecvTimer;
+    mutable double addToRecvIndexTimer;
+    mutable double addToRecvInsertTimer;
     bool ComputeMinSad{true};
     bool ComputeSadSad{true};
     bool ComputeSadMax{true};
@@ -2268,6 +2270,8 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     MPI_Datatype MPI_MessageType;
     createMPIMessageType<1, 2>(MPI_MessageType);
     this->addToRecvTimer = 0;
+    this->addToRecvIndexTimer = 0;
+    this->addToRecvInsertTimer = 0;
     tripletsToPersistencePairs<1, 2>(
       pairs, 0, extremas, saddles, saddleIds, saddleToPairedExtrema,
       extremaToPairedSaddle, globalToLocalSaddle, globalToLocalExtrema,
@@ -2349,10 +2353,21 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     */
     MPI_Allreduce(MPI_IN_PLACE, &this->addToRecvTimer, 1, MPI_DOUBLE, MPI_MAX,
                   ttk::MPIcomm_);
+    MPI_Allreduce(MPI_IN_PLACE, &this->addToRecvIndexTimer, 1, MPI_DOUBLE,
+                  MPI_MAX, ttk::MPIcomm_);
+    MPI_Allreduce(MPI_IN_PLACE, &this->addToRecvInsertTimer, 1, MPI_DOUBLE,
+                  MPI_MAX, ttk::MPIcomm_);
     if(ttk::MPIrank_ == 0) {
       printMsg("Computation of min_sad:addToRecvBuffer performed using "
                + std::to_string(ttk::MPIsize_) + " MPI processes lasted :"
                + std::to_string(this->addToRecvTimer));
+      printMsg("Computation of min_sad:addToRecvBuffer (index) performed using "
+               + std::to_string(ttk::MPIsize_) + " MPI processes lasted :"
+               + std::to_string(this->addToRecvIndexTimer));
+      printMsg(
+        "Computation of min_sad:addToRecvBuffer (insert) performed using "
+        + std::to_string(ttk::MPIsize_) + " MPI processes lasted :"
+        + std::to_string(this->addToRecvInsertTimer));
     }
     if(ttk::MPIrank_ == 0)
       this->printMsg(
@@ -2643,6 +2658,8 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
   this->addToRecvTimer = 0;
+  this->addToRecvIndexTimer = 0;
+  this->addToRecvInsertTimer = 0;
   tripletsToPersistencePairs<sizeExtr, sizeSad>(
     pairs, dim - 1, extremas, saddles, saddleIds, saddleToPairedExtrema,
     extremaToPairedSaddle, globalToLocalSaddle, globalToLocalExtrema,
@@ -2652,13 +2669,25 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
   MPI_Allreduce(
     MPI_IN_PLACE, &this->addToRecvTimer, 1, MPI_DOUBLE, MPI_MAX, ttk::MPIcomm_);
+  MPI_Allreduce(MPI_IN_PLACE, &this->addToRecvIndexTimer, 1, MPI_DOUBLE,
+                MPI_MAX, ttk::MPIcomm_);
+  MPI_Allreduce(MPI_IN_PLACE, &this->addToRecvInsertTimer, 1, MPI_DOUBLE,
+                MPI_MAX, ttk::MPIcomm_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Computation of sad_max:addToRecvBuffer performed using "
+             + std::to_string(ttk::MPIsize_) + " MPI processes lasted :"
+             + std::to_string(this->addToRecvTimer));
+    printMsg("Computation of sad_max:addToRecvBuffer (index) performed using "
+             + std::to_string(ttk::MPIsize_) + " MPI processes lasted :"
+             + std::to_string(this->addToRecvIndexTimer));
+    printMsg("Computation of sad_max:addToRecvBuffer (insert) performed using "
+             + std::to_string(ttk::MPIsize_) + " MPI processes lasted :"
+             + std::to_string(this->addToRecvInsertTimer));
+  }
   if(ttk::MPIrank_ == 0) {
     printMsg("Computation of sad_max:triplets performed using "
              + std::to_string(ttk::MPIsize_)
              + " MPI processes lasted :" + std::to_string(elapsedTime));
-    printMsg("Computation of sad_max:addToRecvBuffer performed using "
-             + std::to_string(ttk::MPIsize_) + " MPI processes lasted :"
-             + std::to_string(this->addToRecvTimer));
   }
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
@@ -2921,20 +2950,22 @@ void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
                            const messageType<sizeExtr, sizeSad> &)>
     &cmpMessages) const {
   ttk::Timer t;
+  ttk::Timer t_int;
   messageType<sizeExtr, sizeSad> m
     = messageType<sizeExtr, sizeSad>(sad.gid_, sad.vOrder_, sad.rank_);
   // TODO: Only add if not already present
   auto it = std::lower_bound(
     recomputations.begin(), recomputations.end(), m, cmpMessages);
-  if(it->s_ == m.s_) {
-    printMsg("Do not add");
-  } else {
+  this->addToRecvIndexTimer += t_int.getElapsedTime();
+  t_int.reStart();
+  if(it->s_ != m.s_) {
     if(it == recomputations.end()) {
       recomputations.push_back(m);
     } else {
       recomputations.insert(it, m);
     }
   }
+  this->addToRecvInsertTimer += t_int.getElapsedTime();
   this->addToRecvTimer += t.getElapsedTime();
 };
 
