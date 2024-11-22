@@ -3003,7 +3003,8 @@ void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
     if(recomputations.size() == 0 || beginRecomp >= recomputations.size()) {
       recomputations.emplace_back(m);
     } else {
-      if(recomputations.back().s_ != m.s_) {
+      auto &elt{recomputations.back()};
+      if(cmpMessages(m, elt)) {
         auto it = std::lower_bound(recomputations.begin() + beginRecomp,
                                    recomputations.end(), m, cmpMessages);
         if(it->s_ != m.s_) {
@@ -3011,14 +3012,20 @@ void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
           TTK_PSORT(this->threadNumber_, recomputations.begin() + beginRecomp,
                     recomputations.end(), cmpMessages);
         }
+      } else {
+        if(m.s_ != elt.s_) {
+          recomputations.emplace_back(m);
+        }
       }
     }
   } else {
-    it->t1_ = -1;
-    it->t2_ = -1;
-    for(int i = 0; i < sizeExtr; i++) {
-      it->t1Order_[i] = 0;
-      it->t2Order_[i] = 0;
+    if(it->t1_ != -1) {
+      it->t1_ = -1;
+      it->t2_ = -1;
+      for(int i = 0; i < sizeExtr; i++) {
+        it->t1Order_[i] = 0;
+        it->t2Order_[i] = 0;
+      }
     }
   }
 };
