@@ -342,6 +342,10 @@ namespace ttk {
         rep_ = Rep{-1, -1};
       };
 
+      extremaNode(ttk::SimplexId gid) : gid_{gid} {
+        rep_ = Rep{-1, -1};
+      };
+
       extremaNode(ttk::SimplexId gid,
                   ttk::SimplexId lid,
                   ttk::SimplexId order,
@@ -608,6 +612,7 @@ namespace ttk {
      * @return a vector of maxima per 2-saddle
      */
     template <int sizeExtr,
+              int sizeSad,
               typename triangulationType,
               typename GFS,
               typename GFSN,
@@ -620,7 +625,7 @@ namespace ttk {
       const OB &isOnBoundary,
       const FEO &fillExtremaOrder,
       const triangulationType &triangulation,
-      std::vector<std::vector<extremaNode<sizeExtr>>> &res,
+      std::vector<std::array<extremaNode<sizeExtr>, sizeSad + 1>> &res,
       const std::unordered_map<ttk::SimplexId, ttk::SimplexId>
         localTriangToLocalVectExtrema,
       std::vector<std::vector<char>> &ghostPresence,
@@ -1653,6 +1658,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
 }
 
 template <int sizeExtr,
+          int sizeSad,
           typename triangulationType,
           typename GFS,
           typename GFSN,
@@ -1665,7 +1671,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
   const OB &isOnBoundary,
   const FEO &fillExtremaOrder,
   const triangulationType &triangulation,
-  std::vector<std::vector<extremaNode<sizeExtr>>> &res,
+  std::vector<std::array<extremaNode<sizeExtr>, sizeSad + 1>> &res,
   const std::unordered_map<ttk::SimplexId, ttk::SimplexId>
     localTriangToLocalVectExtrema,
   std::vector<std::vector<char>> &ghostPresence,
@@ -1688,7 +1694,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
     threadNumber_);
   std::vector<std::vector<std::vector<vpathFinished<sizeExtr>>>>
     sendFinishedVPathBufferThread(threadNumber_);
-  std::vector<Lock> saddleAtomic(criticalSaddles.size());
+  std::vector<char> saddleAtomic(criticalSaddles.size(), 0);
   std::vector<Lock> extremaLocks(criticalExtremasNumber);
   MPI_Datatype MPI_SimplexId = getMPIType(static_cast<ttk::SimplexId>(0));
   for(int i = 0; i < this->threadNumber_; i++) {
@@ -1730,6 +1736,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
     std::vector<Cell> vpath{};
     this->dg_.getAscendingPath(Cell{dim, v}, vpath, triangulation);
     const Cell &lastCell = vpath.back();
+    ttk::SimplexId saddleLocalId;
     if(lastCell.dim_ == dim) {
       ttk::SimplexId extremaId = triangulation.getCellGlobalId(lastCell.id_);
       int rank = triangulation.getCellRank(lastCell.id_);
@@ -1765,9 +1772,9 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
                                     static_cast<char>(ttk::MPIrank_));
             fillExtremaOrder(lastCell.id_, n.vOrder_);
             // We store it in the current rank
-            saddleAtomic[saddleId].lock();
-            res[saddleId].emplace_back(n);
-            saddleAtomic[saddleId].unlock();
+#pragma omp atomic capture
+            saddleLocalId = saddleAtomic[saddleId]++;
+            res[saddleId][saddleLocalId] = n;
           } else {
             auto vp{vpathFinished<sizeExtr>{
               .saddleId_ = saddleId,
@@ -1787,9 +1794,9 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
           extremaNode<sizeExtr> n(
             -1, -1, -1, Rep{-1, -1}, static_cast<char>(ttk::MPIrank_));
           // We store it in the current rank
-          saddleAtomic[saddleId].lock();
-          res[saddleId].emplace_back(n);
-          saddleAtomic[saddleId].unlock();
+#pragma omp atomic capture
+          saddleLocalId = saddleAtomic[saddleId]++;
+          res[saddleId][saddleLocalId] = n;
         } else {
           // We store it to send it back to whoever will own the extrema
           sendFinishedVPathBufferThread[threadNumber][saddleRank].emplace_back(
@@ -1805,6 +1812,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
     }
   };
   // follow vpaths from 2-saddles to maxima
+  ttk::SimplexId saddleLocalId;
 #pragma omp parallel shared(extremaLocks) reduction(+: elementNumber) \
   num_threads(threadNumber_)
   {
@@ -1825,9 +1833,9 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
         // critical saddle is on boundary
         extremaNode<sizeExtr> n(
           -1, -1, -1, Rep{-1, -1}, static_cast<char>(ttk::MPIrank_));
-        saddleAtomic[i].lock();
-        res[i].emplace_back(n);
-        saddleAtomic[i].unlock();
+#pragma omp atomic capture
+        saddleLocalId = saddleAtomic[i]++;
+        res[i][saddleLocalId] = n;
       }
     }
   }
@@ -2050,9 +2058,9 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
       extremaNode<sizeExtr> n(
         vp.extremaId_, -1, -1, Rep{-1, -1}, vp.extremaRank_, vp.vOrder_);
       // We store it in the current rank
-      saddleAtomic[vp.saddleId_].lock();
-      res[vp.saddleId_].emplace_back(n);
-      saddleAtomic[vp.saddleId_].unlock();
+#pragma omp atomic capture
+      saddleLocalId = saddleAtomic[vp.saddleId_]++;
+      res[vp.saddleId_][saddleLocalId] = n;
       if(vp.ghostPresenceSize_ != 0) {
         // Add the received ghostPresence to the local ghostPresence
         // If there is only one process, then the extrema won't be on the
@@ -2485,7 +2493,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
   const auto dim = this->dg_.getDimensionality();
-  std::vector<std::vector<extremaNode<sizeExtr>>> saddle2ToMaxima;
+  std::vector<std::array<extremaNode<sizeExtr>, sizeSad + 1>> saddle2ToMaxima;
   std::vector<std::vector<saddleIdPerProcess>> ghostPresenceVector;
   ttk::SimplexId criticalExtremasNumber = criticalExtremas.size();
   ttk::SimplexId criticalSaddlesNumber = criticalSaddles.size();
@@ -2508,12 +2516,17 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
       criticalExtremasNumber, std::vector<saddleIdPerProcess>());
 #pragma omp task
     saddle2ToMaxima.resize(
-      criticalSaddles.size(), std::vector<extremaNode<sizeExtr>>());
+      criticalSaddles.size(), std::array<extremaNode<sizeExtr>, sizeSad + 1>());
 #pragma omp task
     localGhostPresenceVector.resize(
       criticalExtremasNumber, std::vector<char>());
 #pragma omp task
     saddles.resize(criticalSaddlesNumber);
+  }
+#pragma omp parallel for num_threads(threadNumber_)
+  for(ttk::SimplexId i = 0; i < criticalSaddles.size(); i++) {
+    std::fill(saddle2ToMaxima[i].begin(), saddle2ToMaxima[i].end(),
+              extremaNode<sizeExtr>(-2));
   }
 #ifdef TTK_ENABLE_MPI_TIME
   double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
@@ -2524,7 +2537,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   }
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
-  this->getSaddle2ToMaxima<sizeExtr>(
+  this->getSaddle2ToMaxima<sizeExtr, sizeSad>(
     criticalSaddles, getFaceStar, getFaceStarNumber, isOnBoundary,
     fillExtremaOrder, triangulation, saddle2ToMaxima,
     localTriangToLocalVectExtrema, localGhostPresenceVector,
@@ -2566,22 +2579,28 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   for(ttk::SimplexId i = 0; i < criticalSaddlesNumber; ++i) {
     auto &maxs = saddle2ToMaxima[i];
     const auto s2 = criticalSaddles[i];
-    std::sort(maxs.begin(), maxs.end(),
-              [](const extremaNode<sizeExtr> a, const extremaNode<sizeExtr> b) {
-                // positive values (actual maxima) before negative ones
-                // (boundary component id)
-                if(a.gid_ * b.gid_ >= 0) {
-                  return a.gid_ < b.gid_;
-                } else {
-                  return a.gid_ > b.gid_;
-                }
-              });
-    const auto last = std::unique(maxs.begin(), maxs.end());
-    maxs.erase(last, maxs.end());
+    std::sort(
+      maxs.begin(), maxs.end(),
+      [](const extremaNode<sizeExtr> &a, const extremaNode<sizeExtr> &b) {
+        // positive values (actual maxima) before negative ones
+        // (boundary component id)
+        if(a.gid_ * b.gid_ >= 0) {
+          return std::abs(a.gid_) < std::abs(b.gid_);
+        } else {
+          return a.gid_ > b.gid_;
+        }
+      });
+    auto last = std::unique(maxs.begin(), maxs.end());
+
+    if(last->gid_ == -2) {
+      last--;
+    }
+    // store the size to reuse later
+    maxs[sizeSad].gid_ = std::distance(maxs.begin(), last);
 
     // remove "doughnut" configurations: two ascending separatrices
     // leading to the same maximum/boundary component
-    if(maxs.size() != 2) {
+    if(maxs[sizeSad].gid_ != 2) {
       continue;
     }
     // TODO: modify for 2D (exclude saddle already paired?)
@@ -2629,7 +2648,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
       const auto s2 = criticalSaddles[i];
       // const auto last = std::unique(maxs.begin(), maxs.end());
       // mins.erase(last, mins.end());
-      if(maxs.size() != 2) {
+      if(maxs[sizeSad].gid_ != 2) {
         continue;
       }
       saddleEdge<sizeSad> &e{saddles[i]};
