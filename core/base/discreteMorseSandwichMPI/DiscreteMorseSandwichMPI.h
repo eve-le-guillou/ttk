@@ -3022,18 +3022,13 @@ void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
     if(recomputations.size() == 0 || beginRecomp >= recomputations.size()) {
       recomputations.emplace_back(m);
     } else {
-      auto &elt{recomputations.back()};
-      if(cmpMessages(m, elt)) {
+      if(recomputations.back().s_ != m.s_) {
         auto it = std::lower_bound(recomputations.begin() + beginRecomp,
                                    recomputations.end(), m, cmpMessages);
         if(it->s_ != m.s_) {
           recomputations.emplace_back(m);
           TTK_PSORT(this->threadNumber_, recomputations.begin() + beginRecomp,
                     recomputations.end(), cmpMessages);
-        }
-      } else {
-        if(m.s_ != elt.s_) {
-          recomputations.emplace_back(m);
         }
       }
     }
