@@ -2968,10 +2968,10 @@ void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
   auto it = std::lower_bound(
     recvBuffer.begin() + beginVect, recvBuffer.end(), m, cmpMessages);
   if(it == recvBuffer.end() || it->s_ != m.s_) {
-    if(recomputations.back().s_ != m.s_) {
-      if(beginRecomp >= recomputations.size()) {
-        recomputations.emplace_back(m);
-      } else {
+    if(recomputations.size() == 0 || beginRecomp >= recomputations.size()) {
+      recomputations.emplace_back(m);
+    } else {
+      if(recomputations.back().s_ != m.s_) {
         auto it = std::lower_bound(recomputations.begin() + beginRecomp,
                                    recomputations.end(), m, cmpMessages);
         if(it->s_ != m.s_) {
@@ -2980,8 +2980,6 @@ void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
           TTK_PSORT(this->threadNumber_, recomputations.begin() + beginRecomp,
                     recomputations.end(), cmpMessages);
           this->addToRecvInsertTimer += t_int.getElapsedTime();
-          // std::sort(recomputations.begin()+beginRecomp, recomputations.end(),
-          // cmpMessages);
         }
       }
     }
@@ -3040,7 +3038,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   std::array<std::vector<std::vector<messageType<sizeExtr, sizeSad>>>, 2>
     sendBuffer;
   std::vector<messageType<sizeExtr, sizeSad>> recomputations;
-  recomputations.reserve(static_cast<ttk::SimplexId>(saddleIds.size() * 0.1));
+  recomputations.reserve(static_cast<ttk::SimplexId>(saddleIds.size() * 0.2));
   sendBuffer[0].resize(
     ttk::MPIsize_, std::vector<messageType<sizeExtr, sizeSad>>());
   sendBuffer[1].resize(
@@ -3207,6 +3205,10 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
               } else {
                 elt = recvBuffer.at(r).at(j);
                 j++;
+                if(recomputations.size() > 0) {
+                  recomp = 0;
+                  recomputations.clear();
+                }
               }
               // Condition sur le premier élément de la liste
               if(elt.s_ != sid) {
