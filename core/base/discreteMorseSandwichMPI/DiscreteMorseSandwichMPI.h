@@ -1789,7 +1789,9 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
 #pragma omp for schedule(static)
     for(size_t i = 0; i < criticalSaddles.size(); ++i) {
       const auto sid = criticalSaddles[i];
-
+      for(int j = 0; j < sizeSad + 1; j++) {
+        res[i][j].gid_ = -2;
+      }
       const auto starNumber = getFaceStarNumber(sid);
 
       for(SimplexId j = 0; j < starNumber; ++j) {
@@ -2548,11 +2550,6 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
       criticalExtremasNumber, std::vector<char>());
 #pragma omp task
     saddles.resize(criticalSaddlesNumber);
-  }
-#pragma omp parallel for num_threads(threadNumber_)
-  for(ttk::SimplexId i = 0; i < criticalSaddles.size(); i++) {
-    std::fill(saddle2ToMaxima[i].begin(), saddle2ToMaxima[i].end(),
-              extremaNode<sizeExtr>(-2));
   }
 #ifdef TTK_ENABLE_MPI_TIME
   double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
