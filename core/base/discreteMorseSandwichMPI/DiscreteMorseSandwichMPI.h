@@ -3244,12 +3244,12 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
 
       if(recvPerformedCount > 0) {
         for(int i = 0; i < recvPerformedCount; i++) {
-          ttk::SimplexId sid{-1};
+          // ttk::SimplexId sid{-1};
           r = recvStatusData[i].MPI_SOURCE;
-          recomputations.clear();
+          // recomputations.clear();
           TTK_PSORT(this->threadNumber_, recvBuffer.at(r).begin(),
                     recvBuffer.at(r).end(), cmpMessages);
-          ttk::SimplexId j{0};
+          /*ttk::SimplexId j{0};
           ttk::SimplexId recomp{0};
           while(j < recvBuffer.at(r).size()) {
             if((j == 0
@@ -3296,31 +3296,65 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
               static_cast<char>(r), increasing, recomputations, cmpMessages,
               recvBuffer[r], recvBuffer.at(r).size(), j + 1);
           }
-          recomputations.clear();
+          recomputations.clear();*/
         }
         recvPerformedCountTotal += recvPerformedCount;
       }
     }
     MPI_Waitall(sendCount, sendRequestsData.data(), MPI_STATUSES_IGNORE);
     // Stop condition computation
-    /*for(int i = ttk::MPIsize_ -1; i >= 0; i--) {
+    for(int i = 0; i < ttk::MPIsize_; i++) {
       ttk::SimplexId sid{-1};
-      for(ttk::SimplexId j = 0; j < recvBuffer.at(i).size(); j++) {
+      ttk::SimplexId j{0};
+      ttk::SimplexId recomp{0};
+      recomputations.clear();
+      while(j < recvBuffer.at(i).size()) {
         if((j == 0
-            || !equalSadMin(recvBuffer.at(i).at(j), recvBuffer.at(i).at(j - 1)))
-           && recvBuffer.at(i).at(j).s_ != sid) {
-          receiveElement<sizeExtr, sizeSad>(
-            recvBuffer.at(i).at(j), globalToLocalSaddle, globalToLocalExtrema,
-            saddles, extremas, extremaToPairedSaddle, saddleToPairedExtrema,
-            sendBuffer[1 - currentSendBuffer], ghostPresence,
-            static_cast<char>(i), increasing, recvBuffer[i], cmpMessages,
-            j + 1);
-          if(recvBuffer.at(i).at(j).t1_ == -1) {
-            sid = recvBuffer.at(i).at(j).s_;
+            || !equalSadMin(
+              recvBuffer.at(i).at(j), recvBuffer.at(i).at(j - 1)))) {
+          messageType<sizeExtr, sizeSad> elt;
+          if(recomp < recomputations.size()) {
+            elt = recomputations.at(recomp);
+            if(cmpMessages(elt, recvBuffer.at(i).at(j))) {
+              recomp++;
+            } else {
+              elt = recvBuffer.at(i).at(j);
+              j++;
+            }
+          } else {
+            elt = recvBuffer.at(i).at(j);
+            j++;
+            if(recomputations.size() > 0) {
+              recomp = 0;
+              recomputations.clear();
+            }
           }
+          // Condition sur le premier élément de la liste
+          if(elt.s_ != sid) {
+            receiveElement<sizeExtr, sizeSad>(
+              elt, globalToLocalSaddle, globalToLocalExtrema, saddles, extremas,
+              extremaToPairedSaddle, saddleToPairedExtrema,
+              sendBuffer[1 - currentSendBuffer], ghostPresence,
+              static_cast<char>(i), increasing, recomputations, cmpMessages,
+              recvBuffer[i], j + 1, recomp);
+            if(elt.t1_ == -1) {
+              sid = elt.s_;
+            }
+          }
+        } else {
+          j++;
         }
       }
-    }*/
+      for(j = recomp; j < recomputations.size(); j++) {
+        receiveElement<sizeExtr, sizeSad>(
+          recomputations.at(j), globalToLocalSaddle, globalToLocalExtrema,
+          saddles, extremas, extremaToPairedSaddle, saddleToPairedExtrema,
+          sendBuffer[1 - currentSendBuffer], ghostPresence,
+          static_cast<char>(i), increasing, recomputations, cmpMessages,
+          recvBuffer[i], recvBuffer.at(i).size(), j + 1);
+      }
+      recomputations.clear();
+    }
 
     MPI_Allreduce(&localSentMessageNumber, &hasSentMessages, 1, MPI_SimplexId,
                   MPI_SUM, ttk::MPIcomm_);
