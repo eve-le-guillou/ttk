@@ -3017,12 +3017,11 @@ void ttk::DiscreteMorseSandwichMPI::addPair(
   const extremaNode<sizeExtr> &extr,
   std::vector<ttk::SimplexId> &saddleToPairedExtrema,
   std::vector<ttk::SimplexId> &extremaToPairedSaddle) const {
-  /*if(/*sad.gid_ == 94981358 || sad.gid_ == 194488228 || sad.gid_ == 194357159
-  || sad.gid_ == 128160692 || sad.gid_ == 128290752 || sad.gid_ == 128290764) {
+  if(sad.gid_ == 71029541 || sad.gid_ == 41263361 || extr.gid_ == 27340397) {
     printMsg("AddPair: " + std::to_string(sad.gid_) + ", "
              + std::to_string(extr.gid_));
     //kill(getpid(), SIGINT);
-  }*/
+  }
   saddleToPairedExtrema[sad.lid_] = extr.lid_;
   extremaToPairedSaddle[extr.lid_] = sad.lid_;
 };
@@ -3045,11 +3044,11 @@ void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
     if(recomputations.size() == 0 || beginRecomp >= recomputations.size()) {
       recomputations.emplace_back(m);
     } else {
-      if(recomputations.back().s_ != m.s_) {
-        auto it = std::lower_bound(recomputations.begin() + beginRecomp,
-                                   recomputations.end(), m, cmpMessages);
-        if(it->s_ != m.s_) {
-          recomputations.emplace_back(m);
+      auto it = std::lower_bound(recomputations.begin() + beginRecomp,
+                                 recomputations.end(), m, cmpMessages);
+      if(it == recomputations.end() || it->s_ != m.s_) {
+        recomputations.emplace_back(m);
+        if(it != recomputations.end()) {
           TTK_PSORT(this->threadNumber_, recomputations.begin() + beginRecomp,
                     recomputations.end(), cmpMessages);
         }
@@ -3620,11 +3619,11 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
   std::vector<messageType<sizeExtr, sizeSad>> &recvBuffer,
   ttk::SimplexId beginVect,
   ttk::SimplexId beginRecomp) const {
-  if(element.s_ == 85918505) {
+  /*if(element.s_ == 71029541) {
     printMsg("ReceiveElement: " + std::to_string(element.s_) + ", "
              + std::to_string(element.t1_) + ", " + std::to_string(element.t2_)
              + " from " + std::to_string(sender));
-  }
+  }*/
   struct saddleEdge<sizeSad> s;
   auto it = globalToLocalSaddle.find(element.s_);
   if(it != globalToLocalSaddle.end()) {
@@ -4190,10 +4189,10 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
   ttk::SimplexId beginRecomp) const {
   // TODO: enlever les .at
   // rep1 is either last correct in local or a ghost
-  if(sv.gid_ == 4900) {
+  /*if(sv.gid_ == 71029541) {
     printMsg("ProcessTriplet: " + std::to_string(sv.gid_));
     //kill(getpid(), SIGINT);
-  }
+  }*/
   ttk::SimplexId r1Lid
     = getRep(extremas[sv.t_[0]], sv, increasing, extremas, saddles);
 
