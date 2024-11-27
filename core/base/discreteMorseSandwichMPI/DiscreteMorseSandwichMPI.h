@@ -813,7 +813,10 @@ namespace ttk {
       bool increasing,
       std::vector<std::vector<char>> &ghostPresence,
       std::vector<std::vector<messageType<sizeExtr, sizeSad>>> &sendBuffer,
-      std::vector<messageType<sizeExtr, sizeSad>> &recomputations,
+      std::set<messageType<sizeExtr, sizeSad>,
+               std::function<bool(const messageType<sizeExtr, sizeSad> &,
+                                  const messageType<sizeExtr, sizeSad> &)>>
+        &recomputations,
       const std::function<bool(const messageType<sizeExtr, sizeSad> &,
                                const messageType<sizeExtr, sizeSad> &)>
         &cmpMessages,
@@ -872,7 +875,10 @@ namespace ttk {
     template <int sizeExtr, int sizeSad>
     void addToRecvBuffer(
       saddleEdge<sizeSad> &sad,
-      std::vector<messageType<sizeExtr, sizeSad>> &recomputations,
+      std::set<messageType<sizeExtr, sizeSad>,
+               std::function<bool(const messageType<sizeExtr, sizeSad> &,
+                                  const messageType<sizeExtr, sizeSad> &)>>
+        &recomputations,
       const std::function<bool(const messageType<sizeExtr, sizeSad> &,
                                const messageType<sizeExtr, sizeSad> &)>
         &cmpMessages,
@@ -949,7 +955,10 @@ namespace ttk {
       std::vector<std::vector<char>> &ghostPresence,
       char sender,
       bool increasing,
-      std::vector<messageType<sizeExtr, sizeSad>> &recomputations,
+      std::set<messageType<sizeExtr, sizeSad>,
+               std::function<bool(const messageType<sizeExtr, sizeSad> &,
+                                  const messageType<sizeExtr, sizeSad> &)>>
+        &recomputations,
       const std::function<bool(const messageType<sizeExtr, sizeSad> &,
                                const messageType<sizeExtr, sizeSad> &)>
         &cmpMessages,
@@ -3029,7 +3038,10 @@ void ttk::DiscreteMorseSandwichMPI::addPair(
 template <int sizeExtr, int sizeSad>
 void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
   saddleEdge<sizeSad> &sad,
-  std::vector<messageType<sizeExtr, sizeSad>> &recomputations,
+  std::set<messageType<sizeExtr, sizeSad>,
+           std::function<bool(const messageType<sizeExtr, sizeSad> &,
+                              const messageType<sizeExtr, sizeSad> &)>>
+    &recomputations,
   const std::function<bool(const messageType<sizeExtr, sizeSad> &,
                            const messageType<sizeExtr, sizeSad> &)>
     &cmpMessages,
@@ -3041,19 +3053,7 @@ void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
   auto it = std::lower_bound(
     recvBuffer.begin() + beginVect, recvBuffer.end(), m, cmpMessages);
   if(it == recvBuffer.end() || it->s_ != m.s_) {
-    if(recomputations.size() == 0 || beginRecomp >= recomputations.size()) {
-      recomputations.emplace_back(m);
-    } else {
-      auto it = std::lower_bound(recomputations.begin() + beginRecomp,
-                                 recomputations.end(), m, cmpMessages);
-      if(it == recomputations.end() || it->s_ != m.s_) {
-        recomputations.emplace_back(m);
-        if(it != recomputations.end()) {
-          TTK_PSORT(this->threadNumber_, recomputations.begin() + beginRecomp,
-                    recomputations.end(), cmpMessages);
-        }
-      }
-    }
+    recomputations.insert(m);
   } else {
     if(it->t1_ != -1) {
       it->t1_ = -1;
@@ -3108,8 +3108,8 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
 #endif
   std::array<std::vector<std::vector<messageType<sizeExtr, sizeSad>>>, 2>
     sendBuffer;
-  std::vector<messageType<sizeExtr, sizeSad>> recomputations;
-  recomputations.reserve(static_cast<ttk::SimplexId>(saddleIds.size() * 0.2));
+  // recomputations.reserve(static_cast<ttk::SimplexId>(saddleIds.size() *
+  // 0.2));
   sendBuffer[0].resize(
     ttk::MPIsize_, std::vector<messageType<sizeExtr, sizeSad>>());
   sendBuffer[1].resize(
@@ -3145,7 +3145,10 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
       return elt0.t1Order_[0] > elt1.t1Order_[0];
     };
   }
-
+  std::set<messageType<sizeExtr, sizeSad>,
+           std::function<bool(const messageType<sizeExtr, sizeSad> &,
+                              const messageType<sizeExtr, sizeSad> &)>>
+    recomputations(cmpMessages);
   if(isFirstTime) {
     for(const auto &sid : saddleIds) {
       if(saddles[sid].gid_ != -1) {
@@ -3305,17 +3308,17 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
     for(int i = 0; i < ttk::MPIsize_; i++) {
       ttk::SimplexId sid{-1};
       ttk::SimplexId j{0};
-      ttk::SimplexId recomp{0};
+      // ttk::SimplexId recomp{0};
       recomputations.clear();
       while(j < recvBuffer.at(i).size()) {
         if((j == 0
             || !equalSadMin(
               recvBuffer.at(i).at(j), recvBuffer.at(i).at(j - 1)))) {
           messageType<sizeExtr, sizeSad> elt;
-          if(recomp < recomputations.size()) {
-            elt = recomputations.at(recomp);
+          if(!recomputations.empty()) {
+            elt = (*recomputations.begin());
             if(cmpMessages(elt, recvBuffer.at(i).at(j))) {
-              recomp++;
+              recomputations.erase(recomputations.begin());
             } else {
               elt = recvBuffer.at(i).at(j);
               j++;
@@ -3323,10 +3326,6 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
           } else {
             elt = recvBuffer.at(i).at(j);
             j++;
-            if(recomputations.size() > 0) {
-              recomp = 0;
-              recomputations.clear();
-            }
           }
           // Condition sur le premier élément de la liste
           if(elt.s_ != sid) {
@@ -3335,7 +3334,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
               extremaToPairedSaddle, saddleToPairedExtrema,
               sendBuffer[1 - currentSendBuffer], ghostPresence,
               static_cast<char>(i), increasing, recomputations, cmpMessages,
-              recvBuffer[i], j + 1, recomp);
+              recvBuffer[i], j + 1, 0);
             if(elt.t1_ == -1) {
               sid = elt.s_;
             }
@@ -3344,13 +3343,15 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
           j++;
         }
       }
-      for(j = recomp; j < recomputations.size(); j++) {
+      auto it = recomputations.begin();
+      while(it != recomputations.end()) {
         receiveElement<sizeExtr, sizeSad>(
-          recomputations.at(j), globalToLocalSaddle, globalToLocalExtrema,
-          saddles, extremas, extremaToPairedSaddle, saddleToPairedExtrema,
+          (*it), globalToLocalSaddle, globalToLocalExtrema, saddles, extremas,
+          extremaToPairedSaddle, saddleToPairedExtrema,
           sendBuffer[1 - currentSendBuffer], ghostPresence,
           static_cast<char>(i), increasing, recomputations, cmpMessages,
-          recvBuffer[i], recvBuffer.at(i).size(), j + 1);
+          recvBuffer[i], recvBuffer.at(i).size(), 0);
+        it++;
       }
       recomputations.clear();
     }
@@ -3612,7 +3613,10 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
   std::vector<std::vector<char>> &ghostPresence,
   char sender,
   bool increasing,
-  std::vector<messageType<sizeExtr, sizeSad>> &recomputations,
+  std::set<messageType<sizeExtr, sizeSad>,
+           std::function<bool(const messageType<sizeExtr, sizeSad> &,
+                              const messageType<sizeExtr, sizeSad> &)>>
+    &recomputations,
   const std::function<bool(const messageType<sizeExtr, sizeSad> &,
                            const messageType<sizeExtr, sizeSad> &)>
     &cmpMessages,
@@ -4180,7 +4184,10 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
   bool increasing,
   std::vector<std::vector<char>> &ghostPresence,
   std::vector<std::vector<messageType<sizeExtr, sizeSad>>> &sendBuffer,
-  std::vector<messageType<sizeExtr, sizeSad>> &recomputations,
+  std::set<messageType<sizeExtr, sizeSad>,
+           std::function<bool(const messageType<sizeExtr, sizeSad> &,
+                              const messageType<sizeExtr, sizeSad> &)>>
+    &recomputations,
   const std::function<bool(const messageType<sizeExtr, sizeSad> &,
                            const messageType<sizeExtr, sizeSad> &)>
     &cmpMessages,
