@@ -2709,7 +2709,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
                                   saddleToPairedExtrema, true, dim - 1,
                                   localThreadNumber);
   ttk::SimplexId nSadMaxPairs = pairs.size() - nMinSadPairs;
-  std::ofstream myfile;
+  /*std::ofstream myfile;
   myfile.open("/home/eveleguillou/experiment/DiscreteMorseSandwich/"
               + std::to_string(ttk::MPIsize_) + "_pairs_"
               + std::to_string(ttk::MPIrank_) + ".csv");
@@ -2718,7 +2718,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
     myfile << std::to_string(pairs[i].birth) + ","
                 + std::to_string(pairs[i].death) + "\n";
   }
-  myfile.close();
+  myfile.close();*/
   MPI_Allreduce(
     MPI_IN_PLACE, &nSadMaxPairs, 1, MPI_SimplexId, MPI_SUM, MPIcomm);
 
@@ -4748,8 +4748,7 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
   int taskNumber = std::min(2, threadNumber_);
   size_t nConnComp{};
   omp_set_nested(1);
-  std::vector<PersistencePair> minSadpairs;
-  std::vector<PersistencePair> sadMaxpairs;
+  std::vector<PersistencePair> sadMaxPairs;
   MPI_Comm minSadComm;
   MPI_Comm_dup(ttk::MPIcomm_, &minSadComm);
   MPI_Comm sadMaxComm;
@@ -4759,16 +4758,15 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
   {
 #pragma omp task
     {
-      this->getMinSaddlePairs(minSadpairs, criticalCellsByDim[1],
-                              critCellsOrder[1], criticalCellsByDim[0], offsets,
-                              nConnComp, triangulation, minSadComm,
-                              minSadThreadNumber);
+      this->getMinSaddlePairs(pairs, criticalCellsByDim[1], critCellsOrder[1],
+                              criticalCellsByDim[0], offsets, nConnComp,
+                              triangulation, minSadComm, minSadThreadNumber);
     }
     // saddle - maxima pairs
 #pragma omp task
     {
       this->getMaxSaddlePairs(
-        sadMaxpairs, criticalCellsByDim[dim - 1], critCellsOrder[dim - 1],
+        sadMaxPairs, criticalCellsByDim[dim - 1], critCellsOrder[dim - 1],
         criticalCellsByDim[dim], critCellsOrder[dim], triangulation,
         ignoreBoundary, offsets, sadMaxComm, maxSadThreadNumber);
     }
@@ -4776,8 +4774,7 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
   omp_set_nested(0);
   MPI_Comm_free(&minSadComm);
   MPI_Comm_free(&sadMaxComm);
-  pairs.insert(pairs.end(), minSadpairs.begin(), minSadpairs.end());
-  pairs.insert(pairs.end(), sadMaxpairs.begin(), sadMaxpairs.end());
+  pairs.insert(pairs.end(), sadMaxPairs.begin(), sadMaxPairs.end());
   /*
   // saddle - saddle pairs
   if(dim == 3 && !criticalCellsByDim[1].empty()
