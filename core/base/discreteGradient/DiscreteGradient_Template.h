@@ -103,8 +103,11 @@ int DiscreteGradient::getSimplexRank(const triangulationType &triangulation,
       return triangulation.getVertexRank(lid);
     case 1:
       return triangulation.getEdgeRank(lid);
-    case 2:
-      return triangulation.getTriangleRank(lid);
+    case 2: {
+      if(dimensionality_ == 3)
+        return triangulation.getTriangleRank(lid);
+      return triangulation.getCellRank(lid);
+    }
     case 3:
       return triangulation.getCellRank(lid);
   }

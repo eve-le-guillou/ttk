@@ -2457,7 +2457,6 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   std::vector<std::array<extremaNode<sizeExtr>, sizeSad + 1>> saddle2ToMaxima;
   std::vector<std::vector<saddleIdPerProcess>> ghostPresenceVector;
   ttk::SimplexId criticalExtremasNumber = criticalExtremas.size();
-  printMsg("criticalExtremasNumber: " + std::to_string(criticalExtremasNumber));
   ttk::SimplexId criticalSaddlesNumber = criticalSaddles.size();
   std::unordered_map<ttk::SimplexId, std::vector<char>> localGhostPresenceMap;
   std::vector<std::vector<char>> localGhostPresenceVector;

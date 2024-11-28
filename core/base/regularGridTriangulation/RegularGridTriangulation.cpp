@@ -239,7 +239,7 @@ ttk::SimplexId ttk::RegularGridTriangulation::getCellLocalIdInternal(
 
   const auto &dims{this->getGridDimensions()};
   if(p[0] < 0 || p[1] < 0 || p[2] < 0 || p[0] >= dims[0] - 1
-     || p[1] >= dims[1] - 1 || p[2] >= dims[2] - 1) {
+     || p[1] >= dims[1] - 1 || (p[2] >= dims[2] - 1 && dims[2] != 1)) {
     return -1;
   }
   // local coordinates to identifier (inverse of tetrahedronToPosition)
