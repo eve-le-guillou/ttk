@@ -603,11 +603,9 @@ namespace ttk {
 
     template <int sizeExtr,
               int sizeRes,
-              typename triangulationType,
               typename GLI,
               typename GSR>
     void unpackGhostPresence(
-      const triangulationType &triangulation,
       std::vector<std::vector<char>> &recvGhostPresence,
       std::vector<Lock> &extremaLocks,
       std::vector<std::vector<char>> &ghostPresence,
@@ -622,14 +620,12 @@ namespace ttk {
       const GSR getSimplexRank,
       int localThreadNumber) const;
 
-    template <int sizeExtr, typename GLI, typename triangulationType>
+    template <int sizeExtr, typename GLI>
     void packageGhost(
       std::vector<std::vector<std::vector<vpathFinished<sizeExtr>>>>
         &finishedVPathToSendThread,
       std::vector<std::vector<std::vector<char>>> &ghostPresenceToSendThread,
-      std::vector<std::vector<vpathFinished<sizeExtr>>> &finishedVPathToSend,
       std::vector<std::vector<ttk::SimplexId>> &ghostCounterThread,
-      const triangulationType &triangulation,
       std::vector<std::vector<std::vector<vpathFinished<sizeExtr>>>>
         &sendFinishedVPathBufferThread,
       const std::unordered_map<ttk::SimplexId, ttk::SimplexId>
@@ -739,7 +735,6 @@ namespace ttk {
       const std::vector<ttk::SimplexId> &criticalExtremas,
       const std::vector<SimplexId> &critMaxsOrder,
       const triangulationType &triangulation,
-      const bool ignoreBoundary,
       const SimplexId *const offsets,
       std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalSaddle,
       std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalExtrema,
@@ -836,9 +831,7 @@ namespace ttk {
                                const messageType<sizeExtr, sizeSad> &)>
         &cmpMessages,
       std::vector<messageType<sizeExtr, sizeSad>> &recvBuffer,
-      ttk::SimplexId beginVect,
-      ttk::SimplexId beginRecomp,
-      int localThreadNumber) const;
+      ttk::SimplexId beginVect) const;
 
     template <int sizeExtr, int sizeSad>
     void storeMessageToSend(
@@ -899,9 +892,7 @@ namespace ttk {
                                const messageType<sizeExtr, sizeSad> &)>
         &cmpMessages,
       std::vector<messageType<sizeExtr, sizeSad>> &recvBuffer,
-      ttk::SimplexId beginVect,
-      ttk::SimplexId beginRecomp,
-      int localThreadNumber) const;
+      ttk::SimplexId beginVect) const;
 
     template <int sizeExtr, int sizeSad>
     void removePair(const saddleEdge<sizeSad> &sad,
@@ -980,9 +971,7 @@ namespace ttk {
                                const messageType<sizeExtr, sizeSad> &)>
         &cmpMessages,
       std::vector<messageType<sizeExtr, sizeSad>> &recvBuffer,
-      ttk::SimplexId beginVect,
-      ttk::SimplexId beginRecomp,
-      int localThreadNumber) const;
+      ttk::SimplexId beginVect) const;
 
     /**
      * @brief Compute persistence pairs from triplets
@@ -998,7 +987,6 @@ namespace ttk {
      */
     template <int sizeExtr, int sizeSad>
     void tripletsToPersistencePairs(
-      std::vector<PersistencePair> &pairs,
       const SimplexId pairDim,
       std::vector<extremaNode<sizeExtr>> &extremas,
       std::vector<saddleEdge<sizeSad>> &saddles,
@@ -1470,7 +1458,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
   };
   ttk::SimplexId elementNumber = 0;
   // follow vpaths from 1-saddles to minima
-#pragma omp parallel shared(extremaLocks) reduction(+: elementNumber) \
+#pragma omp parallel shared(extremaLocks, saddleAtomic) reduction(+: elementNumber) \
   num_threads(localThreadNumber)
   {
     int threadNumber = omp_get_thread_num();
@@ -1581,7 +1569,8 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
         for(int i = 0; i < recvPerformedCount; i++) {
           r = recvStatusData[i].MPI_SOURCE;
           int rankId = neighborsToId.find(r)->second;
-#pragma omp parallel num_threads(localThreadNumber)
+#pragma omp parallel num_threads(localThreadNumber) \
+  shared(extremaLocks, saddleAtomic)
           {
             int threadNumber = omp_get_thread_num();
 #pragma omp for schedule(static) reduction(+ : elementNumber)
@@ -1623,9 +1612,8 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
 
   // Package the ghostPresence to send it back
   this->packageGhost<1>(
-    finishedVPathToSendThread, ghostPresenceToSendThread, finishedVPathToSend,
-    ghostCounterThread, triangulation, sendFinishedVPathBufferThread,
-    localTriangToLocalVectExtrema,
+    finishedVPathToSendThread, ghostPresenceToSendThread, ghostCounterThread,
+    sendFinishedVPathBufferThread, localTriangToLocalVectExtrema,
     [&triangulation](const SimplexId a) {
       return triangulation.getVertexLocalId(a);
     },
@@ -1644,9 +1632,8 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
 
   // Unpack the received ghostPresence
   this->unpackGhostPresence<1, 2>(
-    triangulation, recvGhostPresence, extremaLocks, ghostPresence,
-    localGhostPresenceMap, localTriangToLocalVectExtrema, recvVPathFinished,
-    saddleAtomic, res,
+    recvGhostPresence, extremaLocks, ghostPresence, localGhostPresenceMap,
+    localTriangToLocalVectExtrema, recvVPathFinished, saddleAtomic, res,
     [&triangulation](const SimplexId a) {
       return triangulation.getVertexLocalId(a);
     },
@@ -1929,7 +1916,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
         for(int i = 0; i < recvPerformedCount; i++) {
           r = recvStatusData[i].MPI_SOURCE;
           int rankId = neighborsToId.find(r)->second;
-#pragma omp parallel num_threads(localThreadNumber)
+#pragma omp parallel num_threads(localThreadNumber) \
+  shared(extremaLocks, saddleAtomic)
           {
             int threadNumber = omp_get_thread_num();
 #pragma omp for schedule(static) reduction(+ : elementNumber)
@@ -1972,9 +1960,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
 
   // Package the ghostPresence to send it back
   this->packageGhost<sizeExtr>(
-    finishedVPathToSendThread, ghostPresenceToSendThread, finishedVPathToSend,
-    ghostCounterThread, triangulation, sendFinishedVPathBufferThread,
-    localTriangToLocalVectExtrema,
+    finishedVPathToSendThread, ghostPresenceToSendThread, ghostCounterThread,
+    sendFinishedVPathBufferThread, localTriangToLocalVectExtrema,
     [&triangulation](const SimplexId a) {
       return triangulation.getCellLocalId(a);
     },
@@ -1997,9 +1984,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
 
   // Unpack the received ghostPresence
   this->unpackGhostPresence<sizeExtr, sizeSad + 1>(
-    triangulation, recvGhostPresence, extremaLocks, ghostPresence,
-    localGhostPresenceMap, localTriangToLocalVectExtrema, recvVPathFinished,
-    saddleAtomic, res,
+    recvGhostPresence, extremaLocks, ghostPresence, localGhostPresenceMap,
+    localTriangToLocalVectExtrema, recvVPathFinished, saddleAtomic, res,
     [&triangulation](const SimplexId a) {
       return triangulation.getCellLocalId(a);
     },
@@ -2016,11 +2002,9 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
 
 template <int sizeExtr,
           int sizeRes,
-          typename triangulationType,
           typename GLI,
           typename GSR>
 void ttk::DiscreteMorseSandwichMPI::unpackGhostPresence(
-  const triangulationType &triangulation,
   std::vector<std::vector<char>> &recvGhostPresence,
   std::vector<Lock> &extremaLocks,
   std::vector<std::vector<char>> &ghostPresence,
@@ -2034,8 +2018,8 @@ void ttk::DiscreteMorseSandwichMPI::unpackGhostPresence(
   const GSR getSimplexRank,
   int localThreadNumber) const {
   for(int i = 0; i < ttk::MPIsize_; i++) {
-#pragma omp parallel for schedule(static) \
-  shared(localTriangToLocalVectExtrema) num_threads(localThreadNumber)
+#pragma omp parallel for schedule(static) shared(localGhostPresenceMap) \
+  num_threads(localThreadNumber)
     for(ttk::SimplexId j = 0; j < recvVPathFinished[i].size(); j++) {
       // Receive element: create VPath and add it to the list
       auto &vp{recvVPathFinished[i][j]};
@@ -2079,14 +2063,12 @@ void ttk::DiscreteMorseSandwichMPI::unpackGhostPresence(
   }
 };
 
-template <int sizeExtr, typename GLI, typename triangulationType>
+template <int sizeExtr, typename GLI>
 void ttk::DiscreteMorseSandwichMPI::packageGhost(
   std::vector<std::vector<std::vector<vpathFinished<sizeExtr>>>>
     &finishedVPathToSendThread,
   std::vector<std::vector<std::vector<char>>> &ghostPresenceToSendThread,
-  std::vector<std::vector<vpathFinished<sizeExtr>>> &finishedVPathToSend,
   std::vector<std::vector<ttk::SimplexId>> &ghostCounterThread,
-  const triangulationType &triangulation,
   std::vector<std::vector<std::vector<vpathFinished<sizeExtr>>>>
     &sendFinishedVPathBufferThread,
   const std::unordered_map<ttk::SimplexId, ttk::SimplexId>
@@ -2193,8 +2175,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     std::vector<ttk::SimplexId> extremasGid;
     std::vector<saddleEdge<2>> saddles;
     extremasGid.reserve(criticalEdgesNumber * 2);
-#pragma omp parallel master shared(localTriangToLocalVectExtrema) \
-  num_threads(localThreadNumber)
+#pragma omp parallel master num_threads(localThreadNumber)
     {
 #pragma omp task
       for(ttk::SimplexId i = 0; i < criticalExtremasNumber; i++) {
@@ -2226,8 +2207,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     MPI_Allreduce(
       MPI_IN_PLACE, &totalNumberOfPairs, 1, MPI_SimplexId, MPI_SUM, MPIcomm);
     globalToLocalSaddle.reserve(criticalEdgesNumber);
-    ttk::SimplexId elementPerThread = std::min(
-      criticalEdgesNumber, (criticalEdgesNumber + 1) / localThreadNumber);
 
 #pragma omp declare reduction (merge : std::vector<ttk::SimplexId>: omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge                           \
@@ -2263,13 +2242,13 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
                                    ghostPresence, saddles, globalMinOffset) \
   num_threads(localThreadNumber)
     {
-#pragma omp task shared(globalToLocalExtrema)
+#pragma omp task
       {
         for(ttk::SimplexId i = 0; i < extremasGid.size(); i++) {
           globalToLocalExtrema.emplace(extremasGid[i], i);
         }
       }
-#pragma omp task shared(globalToLocalSaddle)
+#pragma omp task
       {
         for(ttk::SimplexId i = 0; i < criticalEdgesNumber; i++) {
           if(saddles[i].gid_ != -1) {
@@ -2357,7 +2336,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     MPI_Datatype MPI_MessageType;
     createMPIMessageType<1, 2>(MPI_MessageType);
     tripletsToPersistencePairs<1, 2>(
-      pairs, 0, extremas, saddles, saddleIds, saddleToPairedExtrema,
+      0, extremas, saddles, saddleIds, saddleToPairedExtrema,
       extremaToPairedSaddle, globalToLocalSaddle, globalToLocalExtrema,
       ghostPresence, MPI_MessageType, true, MPIcomm, localThreadNumber);
     ttk::SimplexId nMinSadPairs = computePairNumbers<1, 2>(
@@ -2379,7 +2358,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
                + " nMinSadPairs: " + std::to_string(nMinSadPairs) + ", "
                + std::to_string(totalNumberOfPairs));
       tripletsToPersistencePairs<1, 2>(
-        pairs, 0, extremas, saddles, saddleIds, saddleToPairedExtrema,
+        0, extremas, saddles, saddleIds, saddleToPairedExtrema,
         extremaToPairedSaddle, globalToLocalSaddle, globalToLocalExtrema,
         ghostPresence, MPI_MessageType, false, MPIcomm, localThreadNumber);
       nMinSadPairs = computePairNumbers<1, 2>(
@@ -2462,7 +2441,6 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   const std::vector<ttk::SimplexId> &criticalExtremas,
   const std::vector<SimplexId> &critMaxsOrder,
   const triangulationType &triangulation,
-  const bool ignoreBoundary,
   const SimplexId *const offsets,
   std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalSaddle,
   std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalExtrema,
@@ -2479,6 +2457,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   std::vector<std::array<extremaNode<sizeExtr>, sizeSad + 1>> saddle2ToMaxima;
   std::vector<std::vector<saddleIdPerProcess>> ghostPresenceVector;
   ttk::SimplexId criticalExtremasNumber = criticalExtremas.size();
+  printMsg("criticalExtremasNumber: " + std::to_string(criticalExtremasNumber));
   ttk::SimplexId criticalSaddlesNumber = criticalSaddles.size();
   std::unordered_map<ttk::SimplexId, std::vector<char>> localGhostPresenceMap;
   std::vector<std::vector<char>> localGhostPresenceVector;
@@ -2488,8 +2467,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   std::vector<saddleEdge<sizeSad>> saddles;
   MPI_Datatype MPI_SimplexId = getMPIType(criticalExtremasNumber);
   extremasGid.reserve(criticalSaddlesNumber * 2);
-#pragma omp parallel master shared(localTriangToLocalVectExtrema) \
-  num_threads(localThreadNumber)
+#pragma omp parallel master num_threads(localThreadNumber)
   {
 #pragma omp task
     for(ttk::SimplexId i = 0; i < criticalExtremasNumber; i++) {
@@ -2526,14 +2504,10 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
     globalToLocalSaddle.reserve(globalToLocalSaddle.size()
                                 + saddle2ToMaxima.size());
   }*/
-  ttk::SimplexId saddle2ToMaximaNumber
-    = static_cast<ttk::SimplexId>(saddle2ToMaxima.size());
   ttk::SimplexId totalNumberOfPairs = criticalExtremasNumber;
   MPI_Allreduce(
     MPI_IN_PLACE, &totalNumberOfPairs, 1, MPI_SimplexId, MPI_SUM, MPIcomm);
   globalToLocalSaddle.reserve(criticalSaddlesNumber);
-  ttk::SimplexId elementPerThread = std::min(
-    criticalSaddlesNumber, (criticalSaddlesNumber + 1) / localThreadNumber);
 #pragma omp declare reduction (merge : std::vector<ttk::SimplexId>: omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge                           \
                                    : extremasGid) schedule(static) \
@@ -2585,9 +2559,8 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   std::vector<int> extremaLocks(extremasGid.size(), 0);
   std::vector<extremaNode<sizeExtr>> extremas(
     extremasGid.size(), extremaNode<sizeExtr>());
-#pragma omp parallel master shared(                                     \
-  extremaLocks, extremas, ghostPresence, saddles, globalToLocalExtrema, \
-  globalToLocalSaddle) num_threads(localThreadNumber)
+#pragma omp parallel master shared(extremaLocks, extremas, ghostPresence, \
+                                   saddles) num_threads(localThreadNumber)
   {
 #pragma omp task
     {
@@ -2701,7 +2674,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   MPI_Datatype MPI_MessageType;
   createMPIMessageType<sizeExtr, sizeSad>(MPI_MessageType);
   tripletsToPersistencePairs<sizeExtr, sizeSad>(
-    pairs, dim - 1, extremas, saddles, saddleIds, saddleToPairedExtrema,
+    dim - 1, extremas, saddles, saddleIds, saddleToPairedExtrema,
     extremaToPairedSaddle, globalToLocalSaddle, globalToLocalExtrema,
     ghostPresence, MPI_MessageType, true, MPIcomm, localThreadNumber);
   ttk::SimplexId nMinSadPairs = pairs.size();
@@ -2797,8 +2770,8 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
     if(dim == 3) {
       computeMaxSaddlePairs<4, 3>(
         pairs, criticalSaddles, critSaddlesOrder, criticalExtremas,
-        critMaxsOrder, triangulation, ignoreBoundary, offsets,
-        globalToLocalSaddle, globalToLocalExtrema,
+        critMaxsOrder, triangulation, offsets, globalToLocalSaddle,
+        globalToLocalExtrema,
         [&triangulation](const SimplexId a, const SimplexId i, SimplexId &r) {
           return triangulation.getTriangleStar(a, i, r);
         },
@@ -2823,8 +2796,8 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
     } else {
       computeMaxSaddlePairs<3, 2>(
         pairs, criticalSaddles, critSaddlesOrder, criticalExtremas,
-        critMaxsOrder, triangulation, ignoreBoundary, offsets,
-        globalToLocalSaddle, globalToLocalExtrema,
+        critMaxsOrder, triangulation, offsets, globalToLocalSaddle,
+        globalToLocalExtrema,
         [&triangulation](const SimplexId a, const SimplexId i, SimplexId &r) {
           return triangulation.getEdgeStar(a, i, r);
         },
@@ -2946,9 +2919,7 @@ void ttk::DiscreteMorseSandwichMPI::addToRecvBuffer(
                            const messageType<sizeExtr, sizeSad> &)>
     &cmpMessages,
   std::vector<messageType<sizeExtr, sizeSad>> &recvBuffer,
-  ttk::SimplexId beginVect,
-  ttk::SimplexId beginRecomp,
-  int localThreadNumber) const {
+  ttk::SimplexId beginVect) const {
   messageType<sizeExtr, sizeSad> m
     = messageType<sizeExtr, sizeSad>(sad.gid_, sad.vOrder_, sad.rank_);
   auto it = std::lower_bound(
@@ -2990,7 +2961,6 @@ void ttk::DiscreteMorseSandwichMPI::removePair(
 
 template <int sizeExtr, int sizeSad>
 void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
-  std::vector<PersistencePair> &pairs,
   const SimplexId pairDim,
   std::vector<extremaNode<sizeExtr>> &extremas,
   std::vector<saddleEdge<sizeSad>> &saddles,
@@ -3053,7 +3023,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
         processTriplet<sizeExtr, sizeSad>(
           saddles[sid], saddleToPairedExtrema, extremaToPairedSaddle, saddles,
           extremas, increasing, ghostPresence, sendBuffer[0], recomputations,
-          cmpMessages, recvBuffer[ttk::MPIrank_], 0, 0, localThreadNumber);
+          cmpMessages, recvBuffer[ttk::MPIrank_], 0);
       }
     }
   } else {
@@ -3062,7 +3032,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
         processTriplet<sizeExtr, sizeSad>(
           saddles[sid], saddleToPairedExtrema, extremaToPairedSaddle, saddles,
           extremas, increasing, ghostPresence, sendBuffer[0], recomputations,
-          cmpMessages, recvBuffer[ttk::MPIrank_], 0, 0, localThreadNumber);
+          cmpMessages, recvBuffer[ttk::MPIrank_], 0);
       }
     }
   }
@@ -3080,11 +3050,6 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   MPI_Datatype MPI_SimplexId = getMPIType(hasSentMessages);
   char currentSendBuffer{0};
   while(hasSentMessages > 0) {
-    /*if(ttk::MPIrank_ == 0)
-      printMsg("in while loop: " + std::to_string(hasSentMessages));*/
-    /*if (hasSentMessages == 2 && increasing){
-      kill(getpid(), SIGINT);
-    }*/
     ttk::SimplexId localSentMessageNumber{0};
     std::vector<MPI_Request> sendRequests(ttk::MPIsize_ - 1);
     std::vector<MPI_Request> recvRequests(ttk::MPIsize_ - 1);
@@ -3094,11 +3059,8 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
     std::vector<ttk::SimplexId> recvMessageSize(ttk::MPIsize_, 0);
     std::vector<int> recvCompleted(ttk::MPIsize_ - 1, 0);
     std::vector<int> sendCompleted(ttk::MPIsize_ - 1, 0);
-    int sendPerformedCount = 0;
     int recvPerformedCount = 0;
-    int sendPerformedCountTotal = 0;
     int recvPerformedCountTotal = 0;
-    int count = 0;
     for(int i = 0; i < ttk::MPIsize_; i++) {
       // Send size of Sendbuffer
       if(i != ttk::MPIrank_) {
@@ -3139,54 +3101,6 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
           // recomputations.clear();
           TTK_PSORT(localThreadNumber, recvBuffer.at(r).begin(),
                     recvBuffer.at(r).end(), cmpMessages);
-          /*ttk::SimplexId j{0};
-          ttk::SimplexId recomp{0};
-          while(j < recvBuffer.at(r).size()) {
-            if((j == 0
-                || !equalSadMin(
-                  recvBuffer.at(r).at(j), recvBuffer.at(r).at(j - 1)))) {
-              messageType<sizeExtr, sizeSad> elt;
-              if(recomp < recomputations.size()) {
-                elt = recomputations.at(recomp);
-                if(cmpMessages(elt, recvBuffer.at(r).at(j))) {
-                  recomp++;
-                } else {
-                  elt = recvBuffer.at(r).at(j);
-                  j++;
-                }
-              } else {
-                elt = recvBuffer.at(r).at(j);
-                j++;
-                if(recomputations.size() > 0) {
-                  recomp = 0;
-                  recomputations.clear();
-                }
-              }
-              // Condition sur le premier élément de la liste
-              if(elt.s_ != sid) {
-                receiveElement<sizeExtr, sizeSad>(
-                  elt, globalToLocalSaddle, globalToLocalExtrema, saddles,
-                  extremas, extremaToPairedSaddle, saddleToPairedExtrema,
-                  sendBuffer[1 - currentSendBuffer], ghostPresence,
-                  static_cast<char>(r), increasing, recomputations, cmpMessages,
-                  recvBuffer[r], j + 1, recomp);
-                if(elt.t1_ == -1) {
-                  sid = elt.s_;
-                }
-              }
-            } else {
-              j++;
-            }
-          }
-          for(j = recomp; j < recomputations.size(); j++) {
-            receiveElement<sizeExtr, sizeSad>(
-              recomputations.at(j), globalToLocalSaddle, globalToLocalExtrema,
-              saddles, extremas, extremaToPairedSaddle, saddleToPairedExtrema,
-              sendBuffer[1 - currentSendBuffer], ghostPresence,
-              static_cast<char>(r), increasing, recomputations, cmpMessages,
-              recvBuffer[r], recvBuffer.at(r).size(), j + 1);
-          }
-          recomputations.clear();*/
         }
         recvPerformedCountTotal += recvPerformedCount;
       }
@@ -3222,7 +3136,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
               extremaToPairedSaddle, saddleToPairedExtrema,
               sendBuffer[1 - currentSendBuffer], ghostPresence,
               static_cast<char>(i), increasing, recomputations, cmpMessages,
-              recvBuffer[i], j + 1, 0, localThreadNumber);
+              recvBuffer[i], j + 1);
             if(elt.t1_ == -1) {
               sid = elt.s_;
             }
@@ -3238,7 +3152,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
           extremaToPairedSaddle, saddleToPairedExtrema,
           sendBuffer[1 - currentSendBuffer], ghostPresence,
           static_cast<char>(i), increasing, recomputations, cmpMessages,
-          recvBuffer[i], recvBuffer.at(i).size(), 0, localThreadNumber);
+          recvBuffer[i], recvBuffer.at(i).size());
         it++;
       }
       recomputations.clear();
@@ -3513,9 +3427,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
                            const messageType<sizeExtr, sizeSad> &)>
     &cmpMessages,
   std::vector<messageType<sizeExtr, sizeSad>> &recvBuffer,
-  ttk::SimplexId beginVect,
-  ttk::SimplexId beginRecomp,
-  int localThreadNumber) const {
+  ttk::SimplexId beginVect) const {
   /*if(element.s_ == 71029541) {
     printMsg("ReceiveElement: " + std::to_string(element.s_) + ", "
              + std::to_string(element.t1_) + ", " + std::to_string(element.t2_)
@@ -3541,7 +3453,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
     processTriplet<sizeExtr>(
       saddles[s.lid_], saddleToPairedExtrema, extremaToPairedSaddle, saddles,
       extremas, increasing, ghostPresence, sendBuffer, recomputations,
-      cmpMessages, recvBuffer, beginVect, beginRecomp, localThreadNumber);
+      cmpMessages, recvBuffer, beginVect);
     return;
   }
   ttk::SimplexId t1Lid
@@ -3676,14 +3588,8 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
             }
             // Re-compute for incorrect s1
             if(saddles[ls1.lid_].rank_ == ttk::MPIrank_) {
-              /*processTriplet<sizeExtr, sizeSad>(
-                saddles[ls1.lid_], saddleToPairedExtrema, extremaToPairedSaddle,
-                saddles, extremas, increasing, ghostPresence, sendBuffer,
-                recvBuffer, cmpMessages, 0, sender);*/
-              // TODO: here was the double thing
-              // printMsg("HERE: "+std::to_string(ls1.gid_));
-              addToRecvBuffer(ls1, recomputations, cmpMessages, recvBuffer,
-                              beginVect, beginRecomp, localThreadNumber);
+              addToRecvBuffer(
+                ls1, recomputations, cmpMessages, recvBuffer, beginVect);
             } else {
               // Send s1 for re-computation
               storeRerunToSend<sizeExtr>(sendBuffer, saddles[oldSaddleId]);
@@ -3946,25 +3852,16 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
               }
               if(sCurrent.gid_ > -1 && sCurrent.gid_ != s.gid_) {
                 if(sCurrent.rank_ == ttk::MPIrank_) {
-                  /*processTriplet<sizeExtr, sizeSad>(
-                    sCurrent, saddleToPairedExtrema, extremaToPairedSaddle,
-                    saddles, extremas, increasing, ghostPresence, sendBuffer,
-                    recvBuffer, cmpMessages, 0, sender);*/
                   addToRecvBuffer(sCurrent, recomputations, cmpMessages,
-                                  recvBuffer, beginVect, beginRecomp,
-                                  localThreadNumber);
+                                  recvBuffer, beginVect);
                 } else {
                   storeRerunToSend<sizeExtr>(sendBuffer, sCurrent);
                 }
               }
             } else {
               if(s.rank_ == ttk::MPIrank_) {
-                /*processTriplet<sizeExtr, sizeSad>(
-                  s, saddleToPairedExtrema, extremaToPairedSaddle,
-                  saddles, extremas, increasing, ghostPresence, sendBuffer,
-                  recvBuffer, cmpMessages, 0, sender);  */
-                addToRecvBuffer(s, recomputations, cmpMessages, recvBuffer,
-                                beginVect, beginRecomp, localThreadNumber);
+                addToRecvBuffer(
+                  s, recomputations, cmpMessages, recvBuffer, beginVect);
               } else {
                 storeRerunToSend<sizeExtr>(sendBuffer, s);
               }
@@ -4086,9 +3983,7 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
                            const messageType<sizeExtr, sizeSad> &)>
     &cmpMessages,
   std::vector<messageType<sizeExtr, sizeSad>> &recvBuffer,
-  ttk::SimplexId beginVect,
-  ttk::SimplexId beginRecomp,
-  int localThreadNumber) const {
+  ttk::SimplexId beginVect) const {
   // TODO: enlever les .at
   // rep1 is either last correct in local or a ghost
   /*if(sv.gid_ == 4900 || sv.gid_ == 4701) {
@@ -4146,13 +4041,8 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
       }
       if(isR1Invalid) {
         if(saddles[oldSaddle].rank_ == ttk::MPIrank_) {
-          /*processTriplet<sizeExtr, sizeSad>(
-            saddles[oldSaddle], saddleToPairedExtrema, extremaToPairedSaddle,
-            saddles, extremas, increasing, ghostPresence, sendBuffer,
-            recvBuffer, cmpMessages, 0, sender); */
           addToRecvBuffer(saddles[oldSaddle], recomputations, cmpMessages,
-                          recvBuffer, beginVect, beginRecomp,
-                          localThreadNumber);
+                          recvBuffer, beginVect);
         } else {
           storeRerunToSend<sizeExtr>(sendBuffer, saddles[oldSaddle]);
         }
@@ -4211,13 +4101,8 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
       if(isR2Invalid) {
         if(saddles[oldSaddle].rank_ == ttk::MPIrank_
            && saddles[oldSaddle].gid_ != sv.gid_) {
-          /*processTriplet<sizeExtr, sizeSad>(
-            saddles[oldSaddle], saddleToPairedExtrema, extremaToPairedSaddle,
-            saddles, extremas, increasing, ghostPresence, sendBuffer,
-            recvBuffer, cmpMessages, 0, sender);   */
           addToRecvBuffer(saddles[oldSaddle], recomputations, cmpMessages,
-                          recvBuffer, beginVect, beginRecomp,
-                          localThreadNumber);
+                          recvBuffer, beginVect);
         } else {
           storeRerunToSend<sizeExtr>(sendBuffer, saddles[oldSaddle]);
         }
@@ -4250,13 +4135,8 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
         if(isR1Invalid) {
           if(saddles[oldSaddle].rank_ == ttk::MPIrank_
              && saddles[oldSaddle].gid_ != sv.gid_) {
-            /*processTriplet<sizeExtr, sizeSad>(
-              saddles[oldSaddle], saddleToPairedExtrema, extremaToPairedSaddle,
-              saddles, extremas, increasing, ghostPresence, sendBuffer,
-              recvBuffer, cmpMessages, 0, sender);          */
             addToRecvBuffer(saddles[oldSaddle], recomputations, cmpMessages,
-                            recvBuffer, beginVect, beginRecomp,
-                            localThreadNumber);
+                            recvBuffer, beginVect);
           } else {
             storeRerunToSend<sizeExtr>(sendBuffer, saddles[oldSaddle]);
           }
@@ -4743,38 +4623,51 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
    auto &pairedMaxima{this->pairedCritCells_[dim]};*/
 
   // connected components (global min/max pair)
-  int minSadThreadNumber = std::max(1, static_cast<int>(threadNumber_ / 2));
-  int maxSadThreadNumber = std::max(1, threadNumber_ - minSadThreadNumber);
-  int taskNumber = std::min(2, threadNumber_);
   size_t nConnComp{};
-  omp_set_nested(1);
-  std::vector<PersistencePair> sadMaxPairs;
-  MPI_Comm minSadComm;
-  MPI_Comm_dup(ttk::MPIcomm_, &minSadComm);
-  MPI_Comm sadMaxComm;
-  MPI_Comm_dup(ttk::MPIcomm_, &sadMaxComm);
+  if(dim > 2) {
+    int minSadThreadNumber = std::max(1, static_cast<int>(threadNumber_ / 2));
+    int maxSadThreadNumber = std::max(1, threadNumber_ - minSadThreadNumber);
+    int taskNumber = std::min(2, threadNumber_);
+    omp_set_nested(1);
+    std::vector<PersistencePair> sadMaxPairs;
+    MPI_Comm minSadComm;
+    MPI_Comm_dup(ttk::MPIcomm_, &minSadComm);
+    MPI_Comm sadMaxComm;
+    MPI_Comm_dup(ttk::MPIcomm_, &sadMaxComm);
 #pragma omp parallel master num_threads(taskNumber) \
   firstprivate(dim, sadMaxComm, minSadComm)
-  {
-#pragma omp task
     {
-      this->getMinSaddlePairs(pairs, criticalCellsByDim[1], critCellsOrder[1],
-                              criticalCellsByDim[0], offsets, nConnComp,
-                              triangulation, minSadComm, minSadThreadNumber);
+#pragma omp task
+      {
+        this->getMinSaddlePairs(pairs, criticalCellsByDim[1], critCellsOrder[1],
+                                criticalCellsByDim[0], offsets, nConnComp,
+                                triangulation, minSadComm, minSadThreadNumber);
+      }
+      // saddle - maxima pairs
+#pragma omp task
+      {
+        this->getMaxSaddlePairs(
+          sadMaxPairs, criticalCellsByDim[dim - 1], critCellsOrder[dim - 1],
+          criticalCellsByDim[dim], critCellsOrder[dim], triangulation,
+          ignoreBoundary, offsets, sadMaxComm, maxSadThreadNumber);
+      }
     }
+    omp_set_nested(0);
+    MPI_Comm_free(&minSadComm);
+    MPI_Comm_free(&sadMaxComm);
+    pairs.insert(pairs.end(), sadMaxPairs.begin(), sadMaxPairs.end());
+  } else {
+    // minima - saddle pairs
+    this->getMinSaddlePairs(pairs, criticalCellsByDim[1], critCellsOrder[1],
+                            criticalCellsByDim[0], offsets, nConnComp,
+                            triangulation, ttk::MPIcomm_, threadNumber_);
     // saddle - maxima pairs
-#pragma omp task
-    {
-      this->getMaxSaddlePairs(
-        sadMaxPairs, criticalCellsByDim[dim - 1], critCellsOrder[dim - 1],
-        criticalCellsByDim[dim], critCellsOrder[dim], triangulation,
-        ignoreBoundary, offsets, sadMaxComm, maxSadThreadNumber);
-    }
+    this->getMaxSaddlePairs(pairs, criticalCellsByDim[dim - 1],
+                            critCellsOrder[dim - 1], criticalCellsByDim[dim],
+                            critCellsOrder[dim], triangulation, ignoreBoundary,
+                            offsets, ttk::MPIcomm_, threadNumber_);
   }
-  omp_set_nested(0);
-  MPI_Comm_free(&minSadComm);
-  MPI_Comm_free(&sadMaxComm);
-  pairs.insert(pairs.end(), sadMaxPairs.begin(), sadMaxPairs.end());
+
   /*
   // saddle - saddle pairs
   if(dim == 3 && !criticalCellsByDim[1].empty()
