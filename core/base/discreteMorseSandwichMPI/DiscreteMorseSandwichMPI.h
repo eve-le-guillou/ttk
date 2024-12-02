@@ -2229,9 +2229,9 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       }
     }
     TTK_PSORT(localThreadNumber, extremasGid.begin(), extremasGid.end());
-    const auto last = std::unique(
+    const auto lastGid = std::unique(
       /*std::execution::par_unseq,*/ extremasGid.begin(), extremasGid.end());
-    extremasGid.erase(last, extremasGid.end());
+    extremasGid.erase(lastGid, extremasGid.end());
     std::unordered_map<ttk::SimplexId, ttk::SimplexId> globalToLocalExtrema{};
     globalToLocalExtrema.reserve(extremasGid.size());
     std::vector<std::vector<char>> ghostPresence(
@@ -4623,7 +4623,14 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
 
   // connected components (global min/max pair)
   size_t nConnComp{};
-  if(dim > 2) {
+  ttk::SimplexId minNumber = criticalCellsByDim[0].size();
+  ttk::SimplexId maxNumber = criticalCellsByDim[3].size();
+  char isWorkBigEnough = (minNumber + maxNumber) > 1500000;
+  MPI_Allreduce(
+    MPI_IN_PLACE, &isWorkBigEnough, 1, MPI_CHAR, MPI_LOR, ttk::MPIcomm_);
+  if(dim > 2 && isWorkBigEnough) {
+    if(ttk::MPIrank_ == 0)
+      printMsg("Work is big enough");
     int minSadThreadNumber = std::max(1, static_cast<int>(threadNumber_ / 2));
     int maxSadThreadNumber = std::max(1, threadNumber_ - minSadThreadNumber);
     int taskNumber = std::min(2, threadNumber_);
