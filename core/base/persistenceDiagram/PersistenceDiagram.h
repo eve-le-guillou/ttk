@@ -311,6 +311,7 @@ namespace ttk {
 
     int StartingResolutionLevel{0};
     int StoppingResolutionLevel{-1};
+    bool UseTasks{true};
     bool IsResumable{false};
     double TimeLimit{};
 
@@ -528,6 +529,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
 
   Timer const tm{};
   const auto dim = triangulation->getDimensionality();
+  dms_.setUseTasks(UseTasks);
 
   dms_.buildGradient(inputScalars, scalarsMTime, inputOffsets, *triangulation);
   std::vector<DiscreteMorseSandwichMPI::PersistencePair> dms_pairs{};

@@ -339,6 +339,26 @@
         </Documentation>
       </DoubleVectorProperty>
 
+      <IntVectorProperty name="UseTasks"
+        label="Use tasks to compute D0 and D2 pairs"
+        command="SetUseTasks"
+        number_of_elements="1"
+        default_values="1"
+        panel_visibility="advanced">
+        <BooleanDomain name="bool"/>
+          <Hints>
+          <PropertyWidgetDecorator type="GenericDecorator"
+                                   mode="visibility"
+                                   property="BackEnd"
+                                   value="2" />
+        </Hints>        
+        <Documentation>
+        This option will allow for the computation of D0 and D2 in separated independent 
+        pairs. This will speed up the computation in cases where there are enough work to be
+        done (i.e. an overall computation time bigger than 5 seconds).
+        </Documentation>
+      </IntVectorProperty>   
+
       <IntVectorProperty
           name="Ignore Boundary"
           command="SetIgnoreBoundary"

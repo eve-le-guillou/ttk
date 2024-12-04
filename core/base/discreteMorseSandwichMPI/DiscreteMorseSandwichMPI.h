@@ -503,6 +503,10 @@ namespace ttk {
       return std::move(this->dg_);
     }
 
+    void setUseTasks(bool useTasks) {
+      this->UseTasks = useTasks;
+    }
+
     template <typename triangulationType>
     inline SimplexId
       getCellGreaterVertex(const dcg::Cell &c,
@@ -1239,6 +1243,7 @@ namespace ttk {
     bool ComputeSadSad{true};
     bool ComputeSadMax{true};
     bool Compute2SaddlesChildren{false};
+    bool UseTasks{true};
   };
 } // namespace ttk
 
@@ -4623,14 +4628,7 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
 
   // connected components (global min/max pair)
   size_t nConnComp{};
-  ttk::SimplexId minNumber = criticalCellsByDim[0].size();
-  ttk::SimplexId maxNumber = criticalCellsByDim[3].size();
-  char isWorkBigEnough = (minNumber + maxNumber) > 1500000;
-  MPI_Allreduce(
-    MPI_IN_PLACE, &isWorkBigEnough, 1, MPI_CHAR, MPI_LOR, ttk::MPIcomm_);
-  if(dim > 2 && isWorkBigEnough) {
-    if(ttk::MPIrank_ == 0)
-      printMsg("Work is big enough");
+  if(dim > 2 && UseTasks) {
     int minSadThreadNumber = std::max(1, static_cast<int>(threadNumber_ / 2));
     int maxSadThreadNumber = std::max(1, threadNumber_ - minSadThreadNumber);
     int taskNumber = std::min(2, threadNumber_);
