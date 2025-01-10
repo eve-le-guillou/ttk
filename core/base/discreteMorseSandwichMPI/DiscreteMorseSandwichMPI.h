@@ -6105,12 +6105,17 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
   }
 
   // saddle - saddle pairs
-  if(dim == 3 && !criticalCellsByDim[1].empty()
-     && !criticalCellsByDim[2].empty() && this->ComputeSadSad) {
-    std::vector<GeneratorType> tmp{};
-    this->getSaddleSaddlePairs(pairs, false, tmp, criticalCellsByDim[1],
-                               criticalCellsByDim[2], critCellsOrder[1],
-                               critCellsOrder[2], triangulation, offsets);
+  if(dim == 3 && this->ComputeSadSad) {
+    char computeSaddleSaddles
+      = !criticalCellsByDim[1].empty() && !criticalCellsByDim[2].empty();
+    MPI_Allreduce(
+      MPI_IN_PLACE, &computeSaddleSaddles, 1, MPI_CHAR, MPI_LOR, ttk::MPIcomm_);
+    if(computeSaddleSaddles) {
+      std::vector<GeneratorType> tmp{};
+      this->getSaddleSaddlePairs(pairs, false, tmp, criticalCellsByDim[1],
+                                 criticalCellsByDim[2], critCellsOrder[1],
+                                 critCellsOrder[2], triangulation, offsets);
+    }
   }
   // TODO: implement following
   /*if(std::is_same<triangulationType, ttk::ExplicitTriangulation>::value) {
