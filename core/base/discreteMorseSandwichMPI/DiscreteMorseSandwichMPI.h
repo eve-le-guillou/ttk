@@ -5311,7 +5311,6 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
       currentLastElement + newGidSize, LocalBoundary(cmpEdges));
     }
   }
-  std::vector<ttk::SimplexId> saddleUpdateCount(saddles2.size(), 0);
   // std::vector<std::vector<ttk::SimplexId>> mergeHistory(s2Locks.size());
   // #pragma omp parallel for num_threads(threadNumber_) schedule(static) \
   //shared(s2Locks, saddles2, globalBoundaries, localBoundaries, mergeHistory)
@@ -5350,7 +5349,6 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
         }
         if(!(newMax[0] == -1 && newMax[1] == -1)) {
           globalBoundaries[lid].emplace(maxPerProcess(rank, newMax));
-          saddleUpdateCount[lid]++;
         }
         /*#pragma omp atomic write
                 s2Locks[lid] = 0;*/
@@ -5363,13 +5361,13 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
         // This is either a merge order or an addition of local edges
         if(recvBoundaryBuffer[i + 5] == -1) {
           this->mergeCounter++;
-          if(recvBoundaryBuffer[i + 1] == 646
+          /*if(recvBoundaryBuffer[i + 1] == 646
              || recvBoundaryBuffer[i + 1] == 171) {
             printMsg("Merge boundaries with "
                      + std::to_string(recvBoundaryBuffer[i + 6]) + " for "
                      + std::to_string(recvBoundaryBuffer[i + 1]));
             // kill(getpid(), SIGINT);
-          }
+          }*/
           if(recvBoundaryBuffer[i + 6] == 171) {
             // kill(getpid(), SIGINT);
           }
@@ -5472,13 +5470,6 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
                     s2Locks[lid] = 0;*/
         }
       }
-    }
-  }
-
-  for(ttk::SimplexId i = 0; i < saddleUpdateCount.size(); i++) {
-    if(saddleUpdateCount[i] > 1) {
-      printMsg("Here for " + std::to_string(saddles2[i].gid_)
-               + " with a count of " + std::to_string(saddleUpdateCount[i]));
     }
   }
   /*for(ttk::SimplexId i = 0; i < recvBoundaryBuffer.size(); i++) {
@@ -5712,8 +5703,13 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   sendComputeBuffer[0].resize(ttk::MPIsize_, std::vector<ttk::SimplexId>());
   sendComputeBuffer[1].resize(ttk::MPIsize_, std::vector<ttk::SimplexId>());
   double receiveBoundaryUpdateTime{0}, eliminateBoundariesSandwichTime{0};
+  ttk::SimplexId c{0};
   while(hasSentMessages > 0) {
-    // printErr("Communication phase");
+    c++;
+    if(c % 1000 == 0 & ttk::MPIrank_ == 0) {
+      printMsg("Communication phase: " + std::to_string(hasSentMessages));
+    }
+
     ttk::SimplexId localSentMessageNumber{0};
 #pragma omp parallel for schedule(static, 1) num_threads(threadNumber_)
     for(int j = 0; j < ttk::MPIsize_; j++) {
@@ -5870,6 +5866,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     printMsg("Rounds of eliminateBoundariesSandwich performed using "
              + std::to_string(ttk::MPIsize_) + " MPI processes lasted :"
              + std::to_string(eliminateBoundariesSandwichTime));
+    printMsg("Rounds of communication performed " + std::to_string(c));
   }
   printMsg("Total of update: " + std::to_string(updateCounter));
   printMsg("Total of add: " + std::to_string(addCounter));
