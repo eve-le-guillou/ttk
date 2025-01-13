@@ -1462,6 +1462,7 @@ namespace ttk {
     mutable std::vector<bool> onBoundary_{};
     mutable std::array<std::vector<SimplexId>, 4> critCellsOrder_{};
     mutable std::vector<std::vector<SimplexId>> s2Children_{};
+    mutable ttk::SimplexId sadSadLimit{0};
     bool ComputeMinSad{true};
     bool ComputeSadSad{true};
     bool ComputeSadMax{true};
@@ -3324,8 +3325,8 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
           // ttk::SimplexId sid{-1};
           r = recvStatusData[i].MPI_SOURCE;
           // recomputations.clear();
-          TTK_PSORT(localThreadNumber, recvBuffer.at(r).begin(),
-                    recvBuffer.at(r).end(), cmpMessages);
+          TTK_PSORT(localThreadNumber, recvBuffer[r].begin(),
+                    recvBuffer[r].end(), cmpMessages);
         }
         recvPerformedCountTotal += recvPerformedCount;
       }
@@ -3337,21 +3338,19 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
       size_t j{0};
       // ttk::SimplexId recomp{0};
       recomputations.clear();
-      while(j < recvBuffer.at(i).size()) {
-        if((j == 0
-            || !equalSadMin(
-              recvBuffer.at(i).at(j), recvBuffer.at(i).at(j - 1)))) {
+      while(j < recvBuffer[i].size()) {
+        if((j == 0 || !equalSadMin(recvBuffer[i][j], recvBuffer[i][j - 1]))) {
           messageType<sizeExtr, sizeSad> elt;
           if(!recomputations.empty()) {
             elt = (*recomputations.begin());
-            if(cmpMessages(elt, recvBuffer.at(i).at(j))) {
+            if(cmpMessages(elt, recvBuffer[i][j])) {
               recomputations.erase(recomputations.begin());
             } else {
-              elt = recvBuffer.at(i).at(j);
+              elt = recvBuffer[i][j];
               j++;
             }
           } else {
-            elt = recvBuffer.at(i).at(j);
+            elt = recvBuffer[i][j];
             j++;
           }
           // Condition sur le premier élément de la liste
@@ -3377,7 +3376,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
           extremaToPairedSaddle, saddleToPairedExtrema,
           sendBuffer[1 - currentSendBuffer], ghostPresence,
           static_cast<char>(i), increasing, recomputations, cmpMessages,
-          recvBuffer[i], recvBuffer.at(i).size());
+          recvBuffer[i], recvBuffer[i].size());
         it++;
       }
       recomputations.clear();
@@ -3666,17 +3665,17 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
     s = saddleEdge<sizeSad>(element.s_, -1, element.sOrder_, element.sRank_);
   }
   if(s.rank_ == ttk::MPIrank_ && element.t1_ == -1 && element.t2_ == -1) {
-    if(saddleToPairedExtrema.at(s.lid_) > -1) {
-      if(extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_ != -1) {
-        extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_
-          = extremas[saddleToPairedExtrema.at(s.lid_)].lid_;
-        extremas[saddleToPairedExtrema.at(s.lid_)].rep_.saddleId_ = -1;
+    if(saddleToPairedExtrema[s.lid_] > -1) {
+      if(extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_ != -1) {
+        extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_
+          = extremas[saddleToPairedExtrema[s.lid_]].lid_;
+        extremas[saddleToPairedExtrema[s.lid_]].rep_.saddleId_ = -1;
       }
-      removePair(saddles.at(s.lid_), extremas[saddleToPairedExtrema.at(s.lid_)],
+      removePair(saddles[s.lid_], extremas[saddleToPairedExtrema[s.lid_]],
                  saddleToPairedExtrema, extremaToPairedSaddle);
     }
     processTriplet<sizeExtr>(
-      saddles.at(s.lid_), saddleToPairedExtrema, extremaToPairedSaddle, saddles,
+      saddles[s.lid_], saddleToPairedExtrema, extremaToPairedSaddle, saddles,
       extremas, increasing, ghostPresence, sendBuffer, recomputations,
       cmpMessages, recvBuffer, beginVect);
     return;
@@ -3721,32 +3720,30 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
       // Who is t1 paired with?
       ttk::SimplexId ls1Id = extremaToPairedSaddle[t1Lid];
       if(element.t1_ == element.t2_) {
-        if(s.lid_ > -1 && saddleToPairedExtrema.at(s.lid_) > -1) {
-          extremaToPairedSaddle[saddleToPairedExtrema.at(s.lid_)] = -1;
-          extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_
-            = extremas[saddleToPairedExtrema.at(s.lid_)].lid_;
-          extremas[saddleToPairedExtrema.at(s.lid_)].rep_.saddleId_ = -1;
+        if(s.lid_ > -1 && saddleToPairedExtrema[s.lid_] > -1) {
+          extremaToPairedSaddle[saddleToPairedExtrema[s.lid_]] = -1;
+          extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_
+            = extremas[saddleToPairedExtrema[s.lid_]].lid_;
+          extremas[saddleToPairedExtrema[s.lid_]].rep_.saddleId_ = -1;
           if(element.t1Rank_ != ttk::MPIrank_ && element.t1Rank_ != sender) {
             sendBuffer.at(element.t1Rank_).emplace_back(element);
             } else {
-              if(extremas[saddleToPairedExtrema.at(s.lid_)].rank_
-                   == ttk::MPIrank_
-                 && ghostPresence[extremas[saddleToPairedExtrema.at(s.lid_)]
-                                    .lid_]
+              if(extremas[saddleToPairedExtrema[s.lid_]].rank_ == ttk::MPIrank_
+                 && ghostPresence[extremas[saddleToPairedExtrema[s.lid_]].lid_]
                         .size()
                       > 1) {
                 for(const auto rank :
-                    ghostPresence[extremas[saddleToPairedExtrema.at(s.lid_)]
+                    ghostPresence[extremas[saddleToPairedExtrema[s.lid_]]
                                     .lid_]) {
                   if((rank != ttk::MPIrank_)
                      && ((rank == sender && element.hasBeenModified_)
                          || rank != sender)) {
-                    sendBuffer.at(rank).emplace_back(element);
+                    sendBuffer[rank].emplace_back(element);
                   }
                 }
               }
             }
-            saddleToPairedExtrema.at(s.lid_) = static_cast<ttk::SimplexId>(-2);
+            saddleToPairedExtrema[s.lid_] = static_cast<ttk::SimplexId>(-2);
         }
       } else {
         if(ls1Id != -1 && ls1Id != s.lid_) {
@@ -3760,16 +3757,15 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
                        extremaToPairedSaddle);
             s = addSaddle(
               s, globalToLocalSaddle, saddles, saddleToPairedExtrema);
-            if(saddleToPairedExtrema.at(s.lid_) > -1) {
-              if(extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_
-                   != -1
-                 && extremas[saddleToPairedExtrema.at(s.lid_)].rep_.saddleId_
+            if(saddleToPairedExtrema[s.lid_] > -1) {
+              if(extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_ != -1
+                 && extremas[saddleToPairedExtrema[s.lid_]].rep_.saddleId_
                       == s.lid_) {
-                extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_
-                  = extremas[saddleToPairedExtrema.at(s.lid_)].lid_;
-                extremas[saddleToPairedExtrema.at(s.lid_)].rep_.saddleId_ = -1;
+                extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_
+                  = extremas[saddleToPairedExtrema[s.lid_]].lid_;
+                extremas[saddleToPairedExtrema[s.lid_]].rep_.saddleId_ = -1;
               }
-              removePair(s, extremas[saddleToPairedExtrema.at(s.lid_)],
+              removePair(s, extremas[saddleToPairedExtrema[s.lid_]],
                          saddleToPairedExtrema, extremaToPairedSaddle);
             }
             if(element.t2_ > -1) {
@@ -3827,21 +3823,21 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
           bool changesApplied{true};
           // Update rep + send update to other processes
           s = addSaddle(s, globalToLocalSaddle, saddles, saddleToPairedExtrema);
-          if(saddleToPairedExtrema.at(s.lid_) > -1) {
+          if(saddleToPairedExtrema[s.lid_] > -1) {
             if((t2Lid > -1)
-               && (extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_
+               && (extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_
                    == t2Lid)
-               && (saddleToPairedExtrema.at(s.lid_) == t1Lid)) {
+               && (saddleToPairedExtrema[s.lid_] == t1Lid)) {
               changesApplied = false;
             }
-            if(extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_ != -1
-               && extremas[saddleToPairedExtrema.at(s.lid_)].rep_.saddleId_
+            if(extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_ != -1
+               && extremas[saddleToPairedExtrema[s.lid_]].rep_.saddleId_
                     == s.lid_) {
-              extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_
-                = extremas[saddleToPairedExtrema.at(s.lid_)].lid_;
-              extremas[saddleToPairedExtrema.at(s.lid_)].rep_.saddleId_ = -1;
+              extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_
+                = extremas[saddleToPairedExtrema[s.lid_]].lid_;
+              extremas[saddleToPairedExtrema[s.lid_]].rep_.saddleId_ = -1;
             }
-            removePair(s, extremas[saddleToPairedExtrema.at(s.lid_)],
+            removePair(s, extremas[saddleToPairedExtrema[s.lid_]],
                        saddleToPairedExtrema, extremaToPairedSaddle);
           }
           if(element.t2_ > -1) {
@@ -3899,42 +3895,40 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
       sendBuffer.at(element.t1Rank_).emplace_back(element);
     } else {
       if(element.t1_ == element.t2_) {
-        if(saddleToPairedExtrema.at(s.lid_) > -1) {
-          extremaToPairedSaddle[saddleToPairedExtrema.at(s.lid_)] = -1;
-          if(extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_ != -1) {
-            extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_
-              = extremas[saddleToPairedExtrema.at(s.lid_)].lid_;
-            extremas[saddleToPairedExtrema.at(s.lid_)].rep_.saddleId_ = -1;
+        if(saddleToPairedExtrema[s.lid_] > -1) {
+          extremaToPairedSaddle[saddleToPairedExtrema[s.lid_]] = -1;
+          if(extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_ != -1) {
+            extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_
+              = extremas[saddleToPairedExtrema[s.lid_]].lid_;
+            extremas[saddleToPairedExtrema[s.lid_]].rep_.saddleId_ = -1;
           }
-          if(extremas[saddleToPairedExtrema.at(s.lid_)].rank_ == ttk::MPIrank_
-             && ghostPresence[extremas[saddleToPairedExtrema.at(s.lid_)].lid_]
+          if(extremas[saddleToPairedExtrema[s.lid_]].rank_ == ttk::MPIrank_
+             && ghostPresence[extremas[saddleToPairedExtrema[s.lid_]].lid_]
                     .size()
                   > 1) {
             for(const auto rank :
-                ghostPresence[extremas[saddleToPairedExtrema.at(s.lid_)]
-                                .lid_]) {
+                ghostPresence[extremas[saddleToPairedExtrema[s.lid_]].lid_]) {
               if((rank != ttk::MPIrank_)
                  && ((rank == sender && element.hasBeenModified_)
                      || rank != sender)) {
-                sendBuffer.at(rank).emplace_back(element);
+                sendBuffer[rank].emplace_back(element);
               }
             }
           }
         }
-        saddleToPairedExtrema.at(s.lid_) = static_cast<ttk::SimplexId>(-2);
+        saddleToPairedExtrema[s.lid_] = static_cast<ttk::SimplexId>(-2);
       } else {
         if((element.s1_ != -1) && (element.s1_ != element.s_)
            && (!(compareArray(element.s1Order_, element.sOrder_, sizeSad)
                  == increasing))) {
-          if(saddleToPairedExtrema.at(s.lid_) > -1) {
-            extremaToPairedSaddle[saddleToPairedExtrema.at(s.lid_)] = -1;
-            if(extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_
-               != -1) {
-              extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_
-                = extremas[saddleToPairedExtrema.at(s.lid_)].lid_;
-              extremas[saddleToPairedExtrema.at(s.lid_)].rep_.saddleId_ = -1;
+          if(saddleToPairedExtrema[s.lid_] > -1) {
+            extremaToPairedSaddle[saddleToPairedExtrema[s.lid_]] = -1;
+            if(extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_ != -1) {
+              extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_
+                = extremas[saddleToPairedExtrema[s.lid_]].lid_;
+              extremas[saddleToPairedExtrema[s.lid_]].rep_.saddleId_ = -1;
             }
-            saddleToPairedExtrema.at(s.lid_) = static_cast<ttk::SimplexId>(-2);
+            saddleToPairedExtrema[s.lid_] = static_cast<ttk::SimplexId>(-2);
           }
         } else {
           addLocalExtrema(t1Lid, element.t1_, element.t1Rank_, element.t1Order_,
@@ -3942,11 +3936,11 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
                           extremaToPairedSaddle);
 
           bool isPairedWithWrongExtrema
-            = ((saddleToPairedExtrema.at(s.lid_) > -1)
-               && (saddleToPairedExtrema.at(s.lid_) != t1Lid));
+            = ((saddleToPairedExtrema[s.lid_] > -1)
+               && (saddleToPairedExtrema[s.lid_] != t1Lid));
           // TODO: test this
-          if(((saddleToPairedExtrema.at(s.lid_) > -1)
-              && (saddleToPairedExtrema.at(s.lid_) == t1Lid))
+          if(((saddleToPairedExtrema[s.lid_] > -1)
+              && (saddleToPairedExtrema[s.lid_] == t1Lid))
              && ((extremaToPairedSaddle[t1Lid] > -1)
                  && (extremaToPairedSaddle[t1Lid] == s.lid_))) {
             if(extremas[t1Lid].rep_.extremaId_ != -1
@@ -3962,14 +3956,13 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
             }
           }
           if(isPairedWithWrongExtrema) {
-            if(extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_
-               != -1) {
-              extremas[saddleToPairedExtrema.at(s.lid_)].rep_.extremaId_
-                = extremas[saddleToPairedExtrema.at(s.lid_)].lid_;
-              extremas[saddleToPairedExtrema.at(s.lid_)].rep_.saddleId_ = -1;
+            if(extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_ != -1) {
+              extremas[saddleToPairedExtrema[s.lid_]].rep_.extremaId_
+                = extremas[saddleToPairedExtrema[s.lid_]].lid_;
+              extremas[saddleToPairedExtrema[s.lid_]].rep_.saddleId_ = -1;
             }
-            auto extr{extremas[saddleToPairedExtrema.at(s.lid_)]};
-            removePair(s, extremas[saddleToPairedExtrema.at(s.lid_)],
+            auto extr{extremas[saddleToPairedExtrema[s.lid_]]};
+            removePair(s, extremas[saddleToPairedExtrema[s.lid_]],
                        saddleToPairedExtrema, extremaToPairedSaddle);
             if(extr.rank_ == ttk::MPIrank_
                && ghostPresence[extr.lid_].size() > 1) {
@@ -3977,7 +3970,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
                 if((rank != ttk::MPIrank_)
                    && ((rank == sender && element.hasBeenModified_)
                        || rank != sender)) {
-                  sendBuffer.at(rank).emplace_back(element);
+                  sendBuffer[rank].emplace_back(element);
                 }
               }
             }
@@ -4463,10 +4456,10 @@ void ttk::DiscreteMorseSandwichMPI::updateMaxBoundary(
     vect[4] = tauOrder[1];
     for(const auto max : globalBoundary) {
       if(max.proc_ != rank) {
-        sendBoundaryBufferLock.at(max.proc_).lock();
-        sendBoundaryBuffer.at(max.proc_).insert(
-          sendBoundaryBuffer.at(max.proc_).end(), vect.begin(), vect.end());
-        sendBoundaryBufferLock.at(max.proc_).unlock();
+        sendBoundaryBufferLock[max.proc_].lock();
+        sendBoundaryBuffer[max.proc_].insert(
+          sendBoundaryBuffer[max.proc_].end(), vect.begin(), vect.end());
+        sendBoundaryBufferLock[max.proc_].unlock();
       }
     }
   }
@@ -4498,10 +4491,10 @@ void ttk::DiscreteMorseSandwichMPI::updateLocalBoundary(
     vect.emplace_back(max.max_[1]);
   }
   vect[0] = -(vect.size() - 1);
-  sendBoundaryBufferLock.at(rank).lock();
-  sendBoundaryBuffer.at(rank).insert(
-    sendBoundaryBuffer.at(rank).end(), vect.begin(), vect.end());
-  sendBoundaryBufferLock.at(rank).unlock();
+  sendBoundaryBufferLock[rank].lock();
+  sendBoundaryBuffer[rank].insert(
+    sendBoundaryBuffer[rank].end(), vect.begin(), vect.end());
+  sendBoundaryBufferLock[rank].unlock();
 }
 
 template <typename LocalBoundary,
@@ -4517,7 +4510,7 @@ bool ttk::DiscreteMorseSandwichMPI::mergeGlobalBoundaries(
   ttk::SimplexId s2) const {
   for(const auto e : pTauLocalBoundary) {
     onBoundary[e] = addBoundary(e, onBoundary[e], s2LocalBoundary);
-    /*if(s2 == 646 || s2 == 171) {
+    /*if(s2 == 65718) {
       ttk::SimplexId lid;
       triangulation.getEdgeVertex(e, 0, lid);
       std::string s1
@@ -4536,8 +4529,8 @@ bool ttk::DiscreteMorseSandwichMPI::mergeGlobalBoundaries(
             + s1 + s2;
         printMsg(s);
       }
-    }
-    if(triangulation.getEdgeGlobalId(e) == 1020) {
+    }*/
+    /*if(triangulation.getEdgeGlobalId(e) == 1020) {
       ttk::SimplexId lid;
       triangulation.getEdgeVertex(e, 0, lid);
       std::string s1
@@ -4601,10 +4594,10 @@ void ttk::DiscreteMorseSandwichMPI::updateMergedBoundary(
     }
     vect[0] = -(vect.size() - 1);
     for(const auto max : globalBoundary) {
-      sendBoundaryBufferLock.at(max.proc_).lock();
-      sendBoundaryBuffer.at(max.proc_).insert(
-        sendBoundaryBuffer.at(max.proc_).end(), vect.begin(), vect.end());
-      sendBoundaryBufferLock.at(max.proc_).unlock();
+      sendBoundaryBufferLock[max.proc_].lock();
+      sendBoundaryBuffer[max.proc_].insert(
+        sendBoundaryBuffer[max.proc_].end(), vect.begin(), vect.end());
+      sendBoundaryBufferLock[max.proc_].unlock();
     }
   }
 }
@@ -4628,7 +4621,7 @@ void ttk::DiscreteMorseSandwichMPI::addEdgeToBoundary(
   ttk::SimplexId rank = triangulation.getEdgeRank(e);
   if(rank == ttk::MPIrank_) {
     onBoundary[e] = addBoundary(e, onBoundary[e], localBoundaryIds);
-    /*if(s2Gid == 646 || s2Gid == 171) {
+    if(s2Gid == 4797) {
       ttk::SimplexId order[] = {-1, -1};
       fillEdgeOrder(e, offsets, triangulation, order);
       ttk::SimplexId lid;
@@ -4653,7 +4646,7 @@ void ttk::DiscreteMorseSandwichMPI::addEdgeToBoundary(
         printMsg(s);
       }
     }
-    if(triangulation.getEdgeGlobalId(e) == 1020) {
+    /*if(triangulation.getEdgeGlobalId(e) == 1020) {
       ttk::SimplexId order[] = {-1, -1};
       fillEdgeOrder(e, offsets, triangulation, order);
       if(onBoundary[e]) {
@@ -4669,7 +4662,7 @@ void ttk::DiscreteMorseSandwichMPI::addEdgeToBoundary(
       }
     }*/
   } else {
-    /*if(s2Gid == 646 || s2Gid == 171) {
+    if(s2Gid == 4797) {
       ttk::SimplexId lid;
       triangulation.getEdgeVertex(e, 0, lid);
       std::string s1
@@ -4686,7 +4679,7 @@ void ttk::DiscreteMorseSandwichMPI::addEdgeToBoundary(
           + s2;
       printMsg(s);
     }
-    if(triangulation.getEdgeGlobalId(e) == 1020) {
+    /*if(triangulation.getEdgeGlobalId(e) == 1020) {
       ttk::SimplexId order[] = {-1, -1};
       fillEdgeOrder(e, offsets, triangulation, order);
       printMsg("add ghost edge :"
@@ -4803,19 +4796,23 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
   std::vector<Lock> &sendBoundaryBufferLock,
   std::vector<std::vector<std::vector<ttk::SimplexId>>> &sendComputeBuffer)
   const {
+  if(s2.gid_ == 65817) {
+    printMsg("Process saddle " + std::to_string(s2.gid_));
+  }
   int lock;
   // lock the 2-saddle to ensure that only one thread can perform the
   // boundary expansion
   do {
 #pragma omp atomic capture seq_cst
     {
-      lock = s2Locks.at(s2.lid_);
-      s2Locks.at(s2.lid_) = 1;
+      lock = s2Locks[s2.lid_];
+      s2Locks[s2.lid_] = 1;
     };
   } while(lock == 1);
-
-  auto &localBoundaryIds{s2LocalBoundaries.at(s2.lid_)};
-  auto &globalBoundaryIds{s2GlobalBoundaries.at(s2.lid_)};
+  bool tooFar = false;
+  ttk::SimplexId tooFarCounter{0};
+  auto &localBoundaryIds{s2LocalBoundaries[s2.lid_]};
+  auto &globalBoundaryIds{s2GlobalBoundaries[s2.lid_]};
   const auto clearOnBoundary = [&localBoundaryIds, &onBoundary]() {
     // clear the onBoundary vector (set everything to false)
     for(const auto e : localBoundaryIds) {
@@ -4855,12 +4852,12 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
       tau = *localBoundaryIds.begin();
       fillEdgeOrder(tau, offsets, triangulation, tauOrder);
     }
-    if(s2.gid_ == 646 || s2.gid_ == 171) {
+    /*if(s2.gid_ == 646 || s2.gid_ == 171) {
       printMsg("Selected tau: "
                + std::to_string(triangulation.getEdgeGlobalId(tau))
                + " with order " + std::to_string(tauOrder[0]) + ", "
                + std::to_string(tauOrder[1]));
-    }
+    }*/
     if(triangulation.getEdgeRank(tau) != ttk::MPIrank_
        && !localBoundaryIds.empty()) {
       printMsg("ERROR HERE for tau "
@@ -4869,22 +4866,38 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
     }
     if(!globalBoundaryIds.empty()) {
       const auto globMax{*globalBoundaryIds.begin()};
-      if(localBoundaryIds.empty()
-         || (!compareArray(globMax.max_, tauOrder, 2))) {
-        if(s2.gid_ == 646 || s2.gid_ == 171) {
-          printMsg("Send baton to " + std::to_string(globMax.proc_)
-                   + " with max of " + std::to_string(globMax.max_[0]) + ", "
-                   + std::to_string(globMax.max_[1]));
-          // kill(getpid(), SIGINT);
-        }
+      if(localBoundaryIds.empty()) {
         int threadNumber = omp_get_thread_num();
-        sendComputeBuffer[threadNumber].at(globMax.proc_).emplace_back(s2.gid_);
+        sendComputeBuffer[threadNumber][globMax.proc_].emplace_back(s2.gid_);
         updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock, s2.gid_,
                           tauOrder, globalBoundaryIds, ttk::MPIrank_);
         clearOnBoundary();
 #pragma omp atomic write seq_cst
-        s2Locks.at(s2.lid_) = 0;
+        s2Locks[s2.lid_] = 0;
         return 0;
+      } else {
+        if(!compareArray(globMax.max_, tauOrder, 2)) {
+          tooFar = true;
+          tooFarCounter++;
+          if(tooFar && tooFarCounter > this->sadSadLimit) {
+            /*if(s2.gid_ == 4797 || s2.gid_ == 195577) {
+              printMsg("Send baton to " + std::to_string(globMax.proc_)
+                      + " with max of " + std::to_string(globMax.max_[0]) + ", "
+                      + std::to_string(globMax.max_[1]));
+              // kill(getpid(), SIGINT);
+            }*/
+            int threadNumber = omp_get_thread_num();
+            sendComputeBuffer[threadNumber][globMax.proc_].emplace_back(
+              s2.gid_);
+            updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock,
+                              s2.gid_, tauOrder, globalBoundaryIds,
+                              ttk::MPIrank_);
+            clearOnBoundary();
+#pragma omp atomic write seq_cst
+            s2Locks[s2.lid_] = 0;
+            return 0;
+          }
+        }
       }
     }
 
@@ -4914,9 +4927,21 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
       if(globalToLocalSaddle1_.end() != it) {
         saddleTau = it->second;
       } else {
-        printErr("PROBLEM HERE");
-        kill(getpid(), SIGINT);
-        return 0;
+        if(tooFar) {
+          const auto globMax{*globalBoundaryIds.begin()};
+          int threadNumber = omp_get_thread_num();
+          sendComputeBuffer[threadNumber][globMax.proc_].emplace_back(s2.gid_);
+          updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock, s2.gid_,
+                            tauOrder, globalBoundaryIds, ttk::MPIrank_);
+          clearOnBoundary();
+#pragma omp atomic write seq_cst
+          s2Locks[s2.lid_] = 0;
+          return 0;
+        } else {
+          printErr("PROBLEM HERE");
+          kill(getpid(), SIGINT);
+          return 0;
+        }
       }
       // maybe tau is critical and paired to a critical triangle
       // TODO: works in distributed?
@@ -4947,9 +4972,25 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
 
       const auto cap = partners[saddleTau];
       if(partners[saddleTau] == -1) {
-        partners[saddleTau] = s2.lid_;
-        // printMsg("AddPair: "+std::to_string(s2.gid_)+" and
-        // "+std::to_string(saddles1[saddleTau].gid_));
+        if(tooFar) {
+#pragma omp atomic write seq_cst
+          s1Locks[saddleTau] = 0;
+          const auto globMax{*globalBoundaryIds.begin()};
+          int threadNumber = omp_get_thread_num();
+          sendComputeBuffer[threadNumber][globMax.proc_].emplace_back(s2.gid_);
+          updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock, s2.gid_,
+                            tauOrder, globalBoundaryIds, ttk::MPIrank_);
+          clearOnBoundary();
+#pragma omp atomic write seq_cst
+          s2Locks[s2.lid_] = 0;
+          return 0;
+        } else {
+          partners[saddleTau] = s2.lid_;
+          if(s2.gid_ == 4797) {
+            printErr("AddPair: " + std::to_string(s2.gid_) + " and "
+                     + std::to_string(saddles1[saddleTau].gid_));
+          }
+        }
       }
 #pragma omp atomic write seq_cst
       s1Locks[saddleTau] = 0;
@@ -4960,11 +5001,11 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
         updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock, s2.gid_,
                           tauOrder, globalBoundaryIds, ttk::MPIrank_);
 #pragma omp atomic write seq_cst
-        s2Locks.at(s2.lid_) = 0;
+        s2Locks[s2.lid_] = 0;
         return tau;
       } else {
 #pragma omp atomic write seq_cst
-        s2Locks.at(s2.lid_) = 0;
+        s2Locks[s2.lid_] = 0;
         return this->eliminateBoundariesSandwich(
           s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries, partners,
           s1Locks, s2Locks, saddles1, saddles2, triangulation, offsets,
@@ -4987,7 +5028,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
               s2Locks[pTau] = 1;
             };
           } while(lock == 1);
-          if(s2.gid_ == 646 || s2.gid_ == 171) {
+          if(s2.gid_ == 4797) {
             printMsg("Merge boundaries of " + std::to_string(s2.gid_) + " and "
                      + std::to_string(saddles2[pTau].gid_) + " in "
                      + std::to_string(triangulation.getEdgeGlobalId(tau)));
@@ -5021,21 +5062,41 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
 
           const auto cap = partners[saddleTau];
           if(partners[saddleTau] == pTau) {
-            partners[saddleTau] = s2.lid_;
-            // printMsg("AddPair: "+std::to_string(s2.gid_)+" and
-            // "+std::to_string(saddles1[saddleTau].gid_));
+            if(tooFar) {
+#pragma omp atomic write seq_cst
+              s1Locks[saddleTau] = 0;
+              const auto globMax{*globalBoundaryIds.begin()};
+              int threadNumber = omp_get_thread_num();
+              sendComputeBuffer[threadNumber][globMax.proc_].emplace_back(
+                s2.gid_);
+              updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock,
+                                s2.gid_, tauOrder, globalBoundaryIds,
+                                ttk::MPIrank_);
+              clearOnBoundary();
+#pragma omp atomic write seq_cst
+              s2Locks[s2.lid_] = 0;
+              return 0;
+            } else {
+              partners[saddleTau] = s2.lid_;
+              if(s2.gid_ == 4797) {
+                printErr("AddPair: " + std::to_string(s2.gid_) + " and "
+                         + std::to_string(saddles1[saddleTau].gid_));
+              }
+            }
           }
 #pragma omp atomic write seq_cst
           s1Locks[saddleTau] = 0;
           updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock, s2.gid_,
                             tauOrder, globalBoundaryIds, ttk::MPIrank_);
           if(cap == pTau) {
-            // printMsg("removePair: "+std::to_string(saddles2[pTau].gid_)+" and
-            // "+std::to_string(saddles1[saddleTau].gid_));
+            if(saddles2[pTau].gid_ == 4797) {
+              printErr("removePair: " + std::to_string(saddles2[pTau].gid_)
+                       + " and " + std::to_string(saddles1[saddleTau].gid_));
+            }
             // cleanup before exiting
             clearOnBoundary();
 #pragma omp atomic write seq_cst
-            s2Locks.at(s2.lid_) = 0;
+            s2Locks[s2.lid_] = 0;
             return this->eliminateBoundariesSandwich(
               saddles2[pTau], onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
               partners, s1Locks, s2Locks, saddles1, saddles2, triangulation,
@@ -5050,7 +5111,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
   // cleanup before exiting
   clearOnBoundary();
 #pragma omp atomic write seq_cst
-  s2Locks.at(s2.lid_) = 0;
+  s2Locks[s2.lid_] = 0;
   return -1;
 }
 
@@ -5098,19 +5159,20 @@ void ttk::DiscreteMorseSandwichMPI::mergeDistributedBoundary(
 
   auto &pTauLocalBoundary = localBoundaries[pTauLid];
   if(s.lid_ != -1) {
-    auto &s2LocalBoundary = localBoundaries.at(s.lid_);
-    /*if(recvBoundaryBuffer[i + 1] == 646) {
+    auto &s2LocalBoundary = localBoundaries[s.lid_];
+    /*if(recvBoundaryBuffer[i + 1] == 4797) {
       printMsg("Local boundary of size
-    :"+std::to_string(s2LocalBoundary.size())); printMsg("pTau Local boundary of
-    size :"+std::to_string(pTauLocalBoundary.size())+",
+    :"+std::to_string(s2LocalBoundary.size())+",
+    "+std::to_string(*s2LocalBoundary.begin())); printMsg("pTau Local boundary
+    of size :"+std::to_string(pTauLocalBoundary.size())+",
     "+std::to_string(*pTauLocalBoundary.begin()));
     }*/
     for(const auto e : pTauLocalBoundary) {
       auto ite = s2LocalBoundary.find(e);
       if(ite == s2LocalBoundary.end()) {
         s2LocalBoundary.emplace(e);
-        /*if(recvBoundaryBuffer[i + 1] == 646 || recvBoundaryBuffer[i + 1] ==
-        171) { ttk::SimplexId lid; triangulation.getEdgeVertex(e, 0, lid);
+        /*if(recvBoundaryBuffer[i + 1] == 4797) {
+          ttk::SimplexId lid; triangulation.getEdgeVertex(e, 0, lid);
           std::string s1 =
         "("+std::to_string(triangulation.getVertexGlobalId(lid))+")";
           triangulation.getEdgeVertex(e, 1, lid);
@@ -5122,8 +5184,9 @@ void ttk::DiscreteMorseSandwichMPI::mergeDistributedBoundary(
         }*/
       } else {
         s2LocalBoundary.erase(ite);
-        /*if(recvBoundaryBuffer[i + 1] == 646 || recvBoundaryBuffer[i + 1] ==
-         171) { ttk::SimplexId lid; triangulation.getEdgeVertex(e, 0, lid);
+        /*if(recvBoundaryBuffer[i + 1] == 4797) {
+          ttk::SimplexId lid;
+          triangulation.getEdgeVertex(e, 0, lid);
            std::string s1 =
          "("+std::to_string(triangulation.getVertexGlobalId(lid))+")";
            triangulation.getEdgeVertex(e, 1, lid);
@@ -5317,12 +5380,11 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
   for(ttk::SimplexId i = 0; i < recvBoundaryBuffer.size(); i++) {
     if(recvBoundaryBuffer[i] < -1) {
       // int lock;
-      if(ttk::MPIrank_ == 2
-         && (recvBoundaryBuffer[i + 1] == 646
-             || recvBoundaryBuffer[i + 1] == 171)) {
-        printMsg("ReceiveBoundary: " + std::to_string(recvBoundaryBuffer[i])
+      /*if(recvBoundaryBuffer[i + 1] == 195577 || recvBoundaryBuffer[i + 1] ==
+      4797) { printMsg("ReceiveBoundary: " +
+      std::to_string(recvBoundaryBuffer[i])
                  + " of " + std::to_string(recvBoundaryBuffer[i + 1]));
-      }
+      }*/
       ttk::SimplexId size = -recvBoundaryBuffer[i];
       ttk::SimplexId lid
         = globalToLocalSaddle2_.find(recvBoundaryBuffer[i + 1])->second;
@@ -5355,7 +5417,6 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
         /*if(recvBoundaryBuffer[i + 1] == 646) {
           printMsg("maxUpdate: " + std::to_string(newMax[0]) + ", "
                    + std::to_string(newMax[1]));
-          // kill(getpid(), SIGINT);
         }*/
       } else {
         // This is either a merge order or an addition of local edges
@@ -5366,11 +5427,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
             printMsg("Merge boundaries with "
                      + std::to_string(recvBoundaryBuffer[i + 6]) + " for "
                      + std::to_string(recvBoundaryBuffer[i + 1]));
-            // kill(getpid(), SIGINT);
           }*/
-          if(recvBoundaryBuffer[i + 6] == 171) {
-            // kill(getpid(), SIGINT);
-          }
           // This is a merge order
           ttk::SimplexId pTau = recvBoundaryBuffer[i + 6];
           auto it = globalToLocalSaddle2_.find(pTau);
@@ -5412,7 +5469,6 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
               printMsg("Only merge globla boundaries with "
                        + std::to_string(recvBoundaryBuffer[i + 6])+" for
             "+std::to_string(recvBoundaryBuffer[i + 1]));
-              // kill(getpid(), SIGINT);
             }  */
             /*do {
 #pragma omp atomic capture
@@ -5672,6 +5728,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
              + " MPI processes lasted :" + std::to_string(elapsedTime));
   }
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+  // std::vector<ttk::SimplexId> rerunCounter(saddles2.size(), 0);
 #endif
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp parallel for num_threads(threadNumber_) schedule(dynamic) \
@@ -5706,7 +5763,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   ttk::SimplexId c{0};
   while(hasSentMessages > 0) {
     c++;
-    if(c % 1000 == 0 & ttk::MPIrank_ == 0) {
+    if(c % 100 == 0 && ttk::MPIrank_ == 0) {
       printMsg("Communication phase: " + std::to_string(hasSentMessages));
     }
 
@@ -5778,6 +5835,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
       }
     }
     MPI_Waitall(sendCount, sendRequestsData.data(), MPI_STATUSES_IGNORE);
+    // rerunCounter.resize(saddles2.size(), 0);
     for(int i = 0; i < ttk::MPIsize_; i++) {
       // Send size of Sendbuffer
       if(i != ttk::MPIrank_) {
@@ -5829,7 +5887,11 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
           for(ttk::SimplexId j = 0; j < recvMessageSize[r]; j++) {
             ttk::SimplexId lid
               = globalToLocalSaddle2_.find(recvComputeBuffer[r][j])->second;
+            // rerunCounter[lid]++;
             const auto &s2 = saddles2[lid];
+            /*if (s2.gid_ == 4797){
+              printMsg("Rerun saddle "+std::to_string(s2.gid_));
+            }*/
             this->eliminateBoundariesSandwich(
               s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
               edgeTrianglePartner, s1Locks, s2Locks, saddles1, saddles2,
@@ -5868,6 +5930,21 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
              + std::to_string(eliminateBoundariesSandwichTime));
     printMsg("Rounds of communication performed " + std::to_string(c));
   }
+  /*std::vector<ttk::SimplexId> bigRerun({316742, 65817, 343126, 404872, 326144,
+  178431, 315565, 728891, 194123}); std::vector<int>
+  bigRerunCounter(bigRerun.size(), 0);
+
+  for (int i = 0; i < bigRerun.size(); i++){
+    auto it = globalToLocalSaddle2_.find(bigRerun[i]);
+    int rerunC = 0;
+    if (it != globalToLocalSaddle2_.end()){
+      rerunC = rerunCounter[it->second];
+    }
+    MPI_Reduce(&rerunC, &bigRerunCounter[i], 1, MPI_INT, MPI_SUM, 0,
+  ttk::MPIcomm_); if (ttk::MPIrank_ == 0) printMsg("Total rerun for
+  "+std::to_string(bigRerun[i])+" is "+std::to_string(bigRerunCounter[i]));
+  }*/
+
   printMsg("Total of update: " + std::to_string(updateCounter));
   printMsg("Total of add: " + std::to_string(addCounter));
   printMsg("Total of mergge: " + std::to_string(mergeCounter));
@@ -5909,7 +5986,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     }
   }*/
 
-  /*std::ofstream myfile;
+  std::ofstream myfile;
   myfile.open("/home/eveleguillou/experiment/DiscreteMorseSandwich/"
               + std::to_string(ttk::MPIsize_) + "_pairs_"
               + std::to_string(ttk::MPIrank_) + ".csv");
@@ -5918,7 +5995,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     myfile << std::to_string(pairs[i].birth) + ","
                 + std::to_string(pairs[i].death) + "\n";
   }
-  myfile.close();*/
+  myfile.close();
 
   auto nSadSadPairs = pairs.size() - nSadExtrPairs;
   MPI_Allreduce(
@@ -6138,6 +6215,9 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
       MPI_IN_PLACE, &computeSaddleSaddles, 1, MPI_CHAR, MPI_LOR, ttk::MPIcomm_);
     if(computeSaddleSaddles) {
       std::vector<GeneratorType> tmp{};
+      this->sadSadLimit = static_cast<ttk::SimplexId>(
+        triangulation.getNumberOfTriangles() * 0.0001);
+      // printMsg("sadsadlimit: "+std::to_string(sadSadLimit));
       this->getSaddleSaddlePairs(pairs, false, tmp, criticalCellsByDim[1],
                                  criticalCellsByDim[2], critCellsOrder[1],
                                  critCellsOrder[2], triangulation, offsets);
