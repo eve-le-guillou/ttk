@@ -5692,15 +5692,38 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
       std::swap(saddles2Gid[second], saddles2Gid[saddles2Gid.size()-1]);
   }  */
   // printMsg("Unpaired saddles 1 and 2 extracted");
+  ttk::SimplexId saddle1Number = saddles1Gid.size();
+  ttk::SimplexId saddle2Number = saddles2Gid.size();
   globalToLocalSaddle1_.clear();
   globalToLocalSaddle2_.clear();
-  std::vector<saddle<2>> saddles1(saddles1Gid.size());
-  std::vector<saddle<3>> saddles2(saddles2Gid.size());
-  for(size_t i = 0; i < saddles1.size(); i++) {
-    globalToLocalSaddle1_.emplace(saddles1Gid[i], i);
-  }
-  for(size_t i = 0; i < saddles2.size(); i++) {
-    globalToLocalSaddle2_.emplace(saddles2Gid[i], i);
+  std::vector<saddle<2>> saddles1;
+  std::vector<saddle<3>> saddles2;
+  auto &edgeTrianglePartner{this->edgeTrianglePartner_};
+
+  // one lock per 1-saddle
+  std::vector<int> s1Locks;
+  // one lock per 2-saddle
+  std::vector<int> s2Locks;
+#pragma omp parallel master shared(globalToLocalSaddle1_, globalToLocalSaddle2_)
+  {
+#pragma omp task
+    for(ttk::SimplexId i = 0; i < saddle1Number; i++) {
+      globalToLocalSaddle1_.emplace(saddles1Gid[i], i);
+    }
+#pragma omp task
+    for(ttk::SimplexId i = 0; i < saddle2Number; i++) {
+      globalToLocalSaddle2_.emplace(saddles2Gid[i], i);
+    }
+#pragma omp task
+    saddles1.resize(saddle1Number);
+#pragma omp task
+    saddles2.resize(saddle2Number);
+#pragma omp task
+    edgeTrianglePartner.resize(saddle1Number, -1);
+#pragma omp task
+    s1Locks.resize(saddle1Number, 0);
+#pragma omp task
+    s2Locks.resize(saddle2Number, 0);
   }
 #ifdef TTK_ENABLE_MPI_TIME
   elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
@@ -5712,7 +5735,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
 #pragma omp parallel for num_threads(threadNumber_) schedule(static)
-  for(size_t i = 0; i < saddles1.size(); i++) {
+  for(ttk::SimplexId i = 0; i < saddle1Number; i++) {
     auto &s1{saddles1[i]};
     s1.gid_ = saddles1Gid[i];
     ttk::SimplexId lid = triangulation.getEdgeLocalId(s1.gid_);
@@ -5722,7 +5745,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   }
 
 #pragma omp parallel for num_threads(threadNumber_) schedule(static)
-  for(size_t i = 0; i < saddles2.size(); i++) {
+  for(ttk::SimplexId i = 0; i < saddle2Number; i++) {
     auto &s2{saddles2[i]};
     s2.gid_ = saddles2Gid[i];
     ttk::SimplexId lid = triangulation.getTriangleLocalId(s2.gid_);
@@ -5743,8 +5766,6 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   const auto &edgesFiltrOrder{crit1SaddlesOrder};
 
   auto &onBoundary{this->onBoundary_};
-  auto &edgeTrianglePartner{this->edgeTrianglePartner_};
-  edgeTrianglePartner.resize(saddles1.size(), -1);
   std::function<bool(const ttk::SimplexId, const ttk::SimplexId)> cmpEdges
     = [&edgesFiltrOrder](const ttk::SimplexId a, const ttk::SimplexId b) {
         return edgesFiltrOrder[a] > edgesFiltrOrder[b];
@@ -5767,21 +5788,11 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   std::vector<GlobalBoundary> s2GlobalBoundaries(saddles2.size());
   std::vector<LocalBoundary> s2LocalBoundaries(
     saddles2.size(), LocalBoundary(cmpEdges));
-
-  // one lock per 1-saddle
-  std::vector<int> s1Locks(saddles1.size(), 0);
-  // one lock per 2-saddle
-  std::vector<int> s2Locks(saddles2.size(), 0);
   std::vector<std::vector<ttk::SimplexId>> sendBoundaryBuffer(
     ttk::MPIsize_, std::vector<ttk::SimplexId>());
   std::vector<Lock> sendBoundaryBufferLock(ttk::MPIsize_);
-  std::array<std::vector<std::vector<std::vector<ttk::SimplexId>>>, 2>
-    sendComputeBufferThread;
-  sendComputeBufferThread[0].resize(
+  std::vector<std::vector<std::vector<ttk::SimplexId>>> sendComputeBufferThread(
     threadNumber_, std::vector<std::vector<ttk::SimplexId>>(ttk::MPIsize_));
-  sendComputeBufferThread[1].resize(
-    threadNumber_, std::vector<std::vector<ttk::SimplexId>>(ttk::MPIsize_));
-  char currentSendBuffer{0};
   // compute 2-saddles boundaries in parallel
 #ifdef TTK_ENABLE_MPI_TIME
   elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
@@ -5804,7 +5815,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
       s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
       edgeTrianglePartner, s1Locks, s2Locks, saddles1, saddles2, triangulation,
       offsets, sendBoundaryBuffer, sendBoundaryBufferLock,
-      sendComputeBufferThread[currentSendBuffer]);
+      sendComputeBufferThread);
   }
 #ifdef TTK_ENABLE_MPI_TIME
   elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
@@ -5819,9 +5830,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   MPI_Datatype MPI_SimplexId = getMPIType(hasSentMessages);
   std::vector<std::vector<ttk::SimplexId>> recvBoundaryBuffer(ttk::MPIsize_);
   std::vector<std::vector<ttk::SimplexId>> recvComputeBuffer(ttk::MPIsize_);
-  std::array<std::vector<std::vector<ttk::SimplexId>>, 2> sendComputeBuffer;
-  sendComputeBuffer[0].resize(ttk::MPIsize_, std::vector<ttk::SimplexId>());
-  sendComputeBuffer[1].resize(ttk::MPIsize_, std::vector<ttk::SimplexId>());
+  std::vector<std::vector<ttk::SimplexId>> sendComputeBuffer(
+    ttk::MPIsize_, std::vector<ttk::SimplexId>());
   double receiveBoundaryUpdateTime{0}, eliminateBoundariesSandwichTime{0};
   ttk::SimplexId c{0};
   while(hasSentMessages > 0) {
@@ -5834,11 +5844,10 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
 #pragma omp parallel for schedule(static, 1) num_threads(threadNumber_)
     for(int j = 0; j < ttk::MPIsize_; j++) {
       for(int i = 0; i < this->threadNumber_; i++) {
-        sendComputeBuffer[currentSendBuffer][j].insert(
-          sendComputeBuffer[currentSendBuffer][j].end(),
-          sendComputeBufferThread[currentSendBuffer][i][j].begin(),
-          sendComputeBufferThread[currentSendBuffer][i][j].end());
-        sendComputeBufferThread[currentSendBuffer][i][j].clear();
+        sendComputeBuffer[j].insert(sendComputeBuffer[j].end(),
+                                    sendComputeBufferThread[i][j].begin(),
+                                    sendComputeBufferThread[i][j].end());
+        sendComputeBufferThread[i][j].clear();
       }
     }
     std::vector<MPI_Request> sendRequests(ttk::MPIsize_ - 1);
@@ -5902,7 +5911,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     for(int i = 0; i < ttk::MPIsize_; i++) {
       // Send size of Sendbuffer
       if(i != ttk::MPIrank_) {
-        sendMessageSize[i] = sendComputeBuffer[currentSendBuffer][i].size();
+        sendMessageSize[i] = sendComputeBuffer[i].size();
         localSentMessageNumber += sendMessageSize[i];
         recvBoundaryBuffer[i].clear();
         sendBoundaryBuffer[i].clear();
@@ -5922,8 +5931,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     sendCount = 0;
     for(int i = 0; i < ttk::MPIsize_; i++) {
       if((sendMessageSize[i] > 0)) {
-        MPI_Isend(sendComputeBuffer[currentSendBuffer][i].data(),
-                  sendMessageSize[i], MPI_SimplexId, i, 1, ttk::MPIcomm_,
+        MPI_Isend(sendComputeBuffer[i].data(), sendMessageSize[i],
+                  MPI_SimplexId, i, 1, ttk::MPIcomm_,
                   &sendRequestsData[sendCount]);
         sendCount++;
       }
@@ -5959,8 +5968,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
               s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
               edgeTrianglePartner, s1Locks, s2Locks, saddles1, saddles2,
               triangulation, offsets, sendBoundaryBuffer,
-              sendBoundaryBufferLock,
-              sendComputeBufferThread[1 - currentSendBuffer]);
+              sendBoundaryBufferLock, sendComputeBufferThread);
           }
         }
         recvPerformedCountTotal += recvPerformedCount;
@@ -5972,11 +5980,10 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
                   MPI_SUM, ttk::MPIcomm_);
     for(int i = 0; i < ttk::MPIsize_; i++) {
       if(i != ttk::MPIrank_) {
-        sendComputeBuffer[currentSendBuffer][i].clear();
+        sendComputeBuffer[i].clear();
         recvComputeBuffer[i].clear();
       }
     }
-    currentSendBuffer = 1 - currentSendBuffer;
 #ifdef TTK_ENABLE_MPI_TIME
     eliminateBoundariesSandwichTime
       += ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
