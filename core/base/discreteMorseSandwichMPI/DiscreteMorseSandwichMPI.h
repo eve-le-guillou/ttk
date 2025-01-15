@@ -6214,6 +6214,10 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
              + " MPI processes lasted :" + std::to_string(elapsedTime));
   }
 #endif
+#ifdef TTK_ENABLE_MPI_TIME
+  ttk::Timer t_int;
+  ttk::startMPITimer(t_int, ttk::MPIrank_, ttk::MPIsize_);
+#endif
   /* // if minima are paired
    auto &pairedMinima{this->pairedCritCells_[0]};
    // if 1-saddles are paired
@@ -6270,6 +6274,15 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
                             offsets, ttk::MPIcomm_, threadNumber_);
   }
 
+#ifdef TTK_ENABLE_MPI_TIME
+  elapsedTime = ttk::endMPITimer(t_int, ttk::MPIrank_, ttk::MPIsize_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Computation of D0 and D2 pairs performed using "
+             + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
+  }
+  ttk::startMPITimer(t_int, ttk::MPIrank_, ttk::MPIsize_);
+#endif
   // saddle - saddle pairs
   if(dim == 3 && this->ComputeSadSad) {
     char computeSaddleSaddles
@@ -6286,6 +6299,14 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
                                  critCellsOrder[2], triangulation, offsets);
     }
   }
+#ifdef TTK_ENABLE_MPI_TIME
+  elapsedTime = ttk::endMPITimer(t_int, ttk::MPIrank_, ttk::MPIsize_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Computation of D1 pairs performed using "
+             + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
+  }
+#endif
   // TODO: implement following
   /*if(std::is_same<triangulationType, ttk::ExplicitTriangulation>::value) {
     // create infinite pairs from non-paired 1-saddles, 2-saddles and maxima
