@@ -4510,7 +4510,7 @@ bool ttk::DiscreteMorseSandwichMPI::mergeGlobalBoundaries(
   ttk::SimplexId s2) const {
   for(const auto e : pTauLocalBoundary) {
     onBoundary[e] = addBoundary(e, onBoundary[e], s2LocalBoundary);
-    /*if(s2 == 65718) {
+    /*if(s2 == 116345535) {
       ttk::SimplexId lid;
       triangulation.getEdgeVertex(e, 0, lid);
       std::string s1
@@ -4621,7 +4621,7 @@ void ttk::DiscreteMorseSandwichMPI::addEdgeToBoundary(
   ttk::SimplexId rank = triangulation.getEdgeRank(e);
   if(rank == ttk::MPIrank_) {
     onBoundary[e] = addBoundary(e, onBoundary[e], localBoundaryIds);
-    /*if(s2Gid == 27505063) {
+    /*if(s2Gid == 116345535) {
       ttk::SimplexId order[] = {-1, -1};
       fillEdgeOrder(e, offsets, triangulation, order);
       ttk::SimplexId lid;
@@ -4662,7 +4662,7 @@ void ttk::DiscreteMorseSandwichMPI::addEdgeToBoundary(
       }
     }*/
   } else {
-    /*if(s2Gid == 27505063) {
+    /*if(s2Gid == 116345535) {
       ttk::SimplexId lid;
       triangulation.getEdgeVertex(e, 0, lid);
       std::string s1
@@ -4796,7 +4796,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
   std::vector<Lock> &sendBoundaryBufferLock,
   std::vector<std::vector<std::vector<ttk::SimplexId>>> &sendComputeBuffer)
   const {
-  /*if(s2.gid_ == 27505063) {
+  /*if(s2.gid_ == 116345535) {
     printMsg("Process saddle " + std::to_string(s2.gid_));
   }*/
   int lock;
@@ -4852,7 +4852,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
       tau = *localBoundaryIds.begin();
       fillEdgeOrder(tau, offsets, triangulation, tauOrder);
     }
-    /*if(s2.gid_ == 27505063) {
+    /*if(s2.gid_ == 116345535) {
       printMsg("Selected tau: "
                + std::to_string(triangulation.getEdgeGlobalId(tau))
                + " with order " + std::to_string(tauOrder[0]) + ", "
@@ -4868,17 +4868,23 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
       const auto globMax{*globalBoundaryIds.begin()};
       if(localBoundaryIds.empty()) {
         int threadNumber = omp_get_thread_num();
-        /*if(s2.gid_ == 27505063) {
+        /*if(s2.gid_ == 116345535) {
+            std::string s = " with globalBoundary: ";
+            for (const auto b: globalBoundaryIds){
+               s += std::to_string(b.proc_)+" with max
+        "+std::to_string(b.max_[0])+", "+std::to_string(b.max_[1])+"; ";
+            }
           printMsg("Send baton to " + std::to_string(globMax.proc_)
                   + " with max of " + std::to_string(globMax.max_[0]) + ", "
                   + std::to_string(globMax.max_[1])+" because localBoundary is
-        empty");
+        empty"+s);
           // kill(getpid(), SIGINT);
         }*/
         sendComputeBuffer[threadNumber][globMax.proc_].emplace_back(s2.gid_);
         updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock, s2.gid_,
                           tauOrder, globalBoundaryIds, ttk::MPIrank_);
         clearOnBoundary();
+        globalBoundaryIds.clear();
 #pragma omp atomic write seq_cst
         s2Locks[s2.lid_] = 0;
         return 0;
@@ -4887,12 +4893,18 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
           tooFar = true;
           tooFarCounter++;
           if(tooFar && tooFarCounter > this->sadSadLimit) {
-            /*if(s2.gid_ == 27505063) {
+            /*if(s2.gid_ == 116345535) {
+            std::string s = " with globalBoundary: ";
+            for (const auto b: globalBoundaryIds){
+               s += std::to_string(b.proc_)+" with max
+            "+std::to_string(b.max_[0])+", "+std::to_string(b.max_[1])+"; ";
+            }
               printMsg("Send baton to " + std::to_string(globMax.proc_)
                       + " with max of " + std::to_string(globMax.max_[0]) + ", "
                       + std::to_string(globMax.max_[1])+" because tooFarCounter
-            is reached: "+std::to_string(tooFarCounter));
+            is reached: "+std::to_string(tooFarCounter)+s);
               //kill(getpid(), SIGINT);
+
             }*/
             int threadNumber = omp_get_thread_num();
             sendComputeBuffer[threadNumber][globMax.proc_].emplace_back(
@@ -4935,28 +4947,34 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
       if(globalToLocalSaddle1_.end() != it) {
         saddleTau = it->second;
       } else {
-        // if(tooFar) {
-        const auto globMax{*globalBoundaryIds.begin()};
-        /*if(s2.gid_ == 27505063) {
-          printMsg("Send baton to " + std::to_string(globMax.proc_)
-                  + " with max of " + std::to_string(globMax.max_[0]) + ", "
-                  + std::to_string(globMax.max_[1])+" because a paired D0 or D2
-        saddle has been reached");
-          // kill(getpid(), SIGINT);
-        }   */
-        int threadNumber = omp_get_thread_num();
-        sendComputeBuffer[threadNumber][globMax.proc_].emplace_back(s2.gid_);
-        updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock, s2.gid_,
-                          tauOrder, globalBoundaryIds, ttk::MPIrank_);
-        clearOnBoundary();
+        if(tooFar) {
+          const auto globMax{*globalBoundaryIds.begin()};
+          /*if(s2.gid_ == 116345535) {
+            printMsg("Send baton to " + std::to_string(globMax.proc_)
+                    + " with max of " + std::to_string(globMax.max_[0]) + ", "
+                    + std::to_string(globMax.max_[1])+" because a paired D0 or
+          D2 saddle has been reached");
+            // kill(getpid(), SIGINT);
+          }   */
+          int threadNumber = omp_get_thread_num();
+          sendComputeBuffer[threadNumber][globMax.proc_].emplace_back(s2.gid_);
+          updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock, s2.gid_,
+                            tauOrder, globalBoundaryIds, ttk::MPIrank_);
+          clearOnBoundary();
 #pragma omp atomic write seq_cst
         s2Locks[s2.lid_] = 0;
         return 0;
-        /*} else {
-          printErr("PROBLEM HERE");
+        } else {
+          std::string s = " with globalBoundary: ";
+          for(const auto b : globalBoundaryIds) {
+            s += std::to_string(b.proc_) + " with max "
+                 + std::to_string(b.max_[0]) + ", " + std::to_string(b.max_[1])
+                 + "; ";
+          }
+          printErr("PROBLEM HERE with " + std::to_string(s2.gid_) + s);
           kill(getpid(), SIGINT);
           return 0;
-        }*/
+        }
       }
       // maybe tau is critical and paired to a critical triangle
       // TODO: works in distributed?
@@ -4991,7 +5009,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
 #pragma omp atomic write seq_cst
           s1Locks[saddleTau] = 0;
           const auto globMax{*globalBoundaryIds.begin()};
-          /*if(s2.gid_ == 27505063) {
+          /*if(s2.gid_ == 116345535) {
             printMsg("Send baton to " + std::to_string(globMax.proc_)
                     + " with max of " + std::to_string(globMax.max_[0]) + ", "
                     + std::to_string(globMax.max_[1])+" because an unpaired
@@ -5008,10 +5026,10 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
           return 0;
         } else {
           partners[saddleTau] = s2.lid_;
-          /*if(s2.gid_ == 27505063) {
-            printErr("AddPair: " + std::to_string(s2.gid_) + " and "
+          /*if(s2.gid_ == 116345535) {
+            printMsg("AddPair: " + std::to_string(s2.gid_) + " and "
                      + std::to_string(saddles1[saddleTau].gid_));
-            kill(getpid(), SIGINT);
+            //kill(getpid(), SIGINT);
           }*/
         }
       }
@@ -5051,7 +5069,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
               s2Locks[pTau] = 1;
             };
           } while(lock == 1);
-          /*if(s2.gid_ == 27505063) {
+          /*if(s2.gid_ == 116345535) {
             printMsg("Merge boundaries of " + std::to_string(s2.gid_) + " and "
                      + std::to_string(saddles2[pTau].gid_) + " in "
                      + std::to_string(triangulation.getEdgeGlobalId(tau)));
@@ -5089,7 +5107,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
 #pragma omp atomic write seq_cst
               s1Locks[saddleTau] = 0;
               const auto globMax{*globalBoundaryIds.begin()};
-              /*if(s2.gid_ == 27505063) {
+              /*if(s2.gid_ == 116345535) {
                 printMsg("Send baton to " + std::to_string(globMax.proc_)
                         + " with max of " + std::to_string(globMax.max_[0]) + ",
               "
@@ -5109,10 +5127,10 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
               return 0;
             } else {
               partners[saddleTau] = s2.lid_;
-              /*if(s2.gid_ == 27505063) {
-                printErr("AddPair: " + std::to_string(s2.gid_) + " and "
+              /*if(s2.gid_ == 116345535) {
+                printMsg("AddPair: " + std::to_string(s2.gid_) + " and "
                          + std::to_string(saddles1[saddleTau].gid_));
-                kill(getpid(), SIGINT);
+                //kill(getpid(), SIGINT);
               }*/
             }
           }
@@ -5121,8 +5139,8 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
           updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock, s2.gid_,
                             tauOrder, globalBoundaryIds, ttk::MPIrank_);
           if(cap == pTau) {
-            /*if(saddles2[pTau].gid_ == 27505063) {
-              printErr("removePair: " + std::to_string(saddles2[pTau].gid_)
+            /*if(saddles2[pTau].gid_ == 116345535) {
+              printMsg("removePair: " + std::to_string(saddles2[pTau].gid_)
                        + " and " + std::to_string(saddles1[saddleTau].gid_));
             }*/
             // cleanup before exiting
@@ -5173,14 +5191,26 @@ void ttk::DiscreteMorseSandwichMPI::mergeDistributedBoundary(
   }*/
   GlobalBoundary &globalBoundary = globalBoundaries[lid];
   int size = -recvBoundaryBuffer[i];
-  for(int j = 7; j < size; j += 3) {
-    if(recvBoundaryBuffer[i + j] != ttk::MPIrank_) {
-      ttk::SimplexId newMax[]
-        = {recvBoundaryBuffer[i + j + 1], recvBoundaryBuffer[i + j + 2]};
-      updateMax(
-        maxPerProcess(recvBoundaryBuffer[i + j], newMax), globalBoundary);
+  if(!globalBoundary.empty()) {
+    for(int j = 7; j < size; j += 3) {
+      if(recvBoundaryBuffer[i + j] != ttk::MPIrank_) {
+        ttk::SimplexId newMax[]
+          = {recvBoundaryBuffer[i + j + 1], recvBoundaryBuffer[i + j + 2]};
+        updateMax(
+          maxPerProcess(recvBoundaryBuffer[i + j], newMax), globalBoundary);
+      }
+    }
+  } else {
+    for(int j = 7; j < size; j += 3) {
+      if(recvBoundaryBuffer[i + j] != ttk::MPIrank_) {
+        ttk::SimplexId newMax[]
+          = {recvBoundaryBuffer[i + j + 1], recvBoundaryBuffer[i + j + 2]};
+        globalBoundary.emplace(
+          maxPerProcess(recvBoundaryBuffer[i + j], newMax));
+      }
     }
   }
+
   /*do {
 #pragma omp atomic capture
     {
@@ -5190,9 +5220,9 @@ void ttk::DiscreteMorseSandwichMPI::mergeDistributedBoundary(
   } while(lock == 1);*/
 
   auto &pTauLocalBoundary = localBoundaries[pTauLid];
-  if(s.lid_ != -1) {
+  if(s.lid_ != -1 && !localBoundaries[s.lid_].empty()) {
     auto &s2LocalBoundary = localBoundaries[s.lid_];
-    /*if(recvBoundaryBuffer[i + 1] == 27505063) {
+    /*if(recvBoundaryBuffer[i + 1] == 116345535) {
       printMsg("Local boundary of size
     :"+std::to_string(s2LocalBoundary.size())+",
     "+std::to_string(*s2LocalBoundary.begin())); printMsg("pTau Local boundary
@@ -5203,7 +5233,7 @@ void ttk::DiscreteMorseSandwichMPI::mergeDistributedBoundary(
       auto ite = s2LocalBoundary.find(e);
       if(ite == s2LocalBoundary.end()) {
         s2LocalBoundary.emplace(e);
-        /*if(recvBoundaryBuffer[i + 1] == 27505063) {
+        /*if(recvBoundaryBuffer[i + 1] == 116345535) {
           ttk::SimplexId lid; triangulation.getEdgeVertex(e, 0, lid);
           std::string s1 =
         "("+std::to_string(triangulation.getVertexGlobalId(lid))+")";
@@ -5216,7 +5246,7 @@ void ttk::DiscreteMorseSandwichMPI::mergeDistributedBoundary(
         }*/
       } else {
         s2LocalBoundary.erase(ite);
-        /*if(recvBoundaryBuffer[i + 1] == 27505063) {
+        /*if(recvBoundaryBuffer[i + 1] == 116345535) {
           ttk::SimplexId lid;
           triangulation.getEdgeVertex(e, 0, lid);
            std::string s1 =
@@ -5233,10 +5263,11 @@ void ttk::DiscreteMorseSandwichMPI::mergeDistributedBoundary(
   } else {
     localBoundaries[lid].insert(
       pTauLocalBoundary.begin(), pTauLocalBoundary.end());
-    /*if(recvBoundaryBuffer[i + 1] == 646 || recvBoundaryBuffer[i + 1] ==  171)
-    { printMsg("Merge pTau boundary in local"); for(const auto e :
-    localBoundaries[lid]) { ttk::SimplexId lid; triangulation.getEdgeVertex(e,
-    0, lid); std::string s1 =
+    /*if(recvBoundaryBuffer[i + 1] == 116345535) {
+      printMsg("Merge pTau boundary in local");
+      for(const auto e : localBoundaries[lid]) {
+        ttk::SimplexId lid; triangulation.getEdgeVertex(e, 0, lid);
+        std::string s1 =
     "("+std::to_string(triangulation.getVertexGlobalId(lid))+")";
           triangulation.getEdgeVertex(e, 1, lid);
           std::string s2 = ",
@@ -5309,6 +5340,7 @@ void ttk::DiscreteMorseSandwichMPI::addDistributedEdgeToLocalBoundary(
   saddle<3> &s{saddles2[lid]};
   int size = -recvBoundaryBuffer[i];
   LocalBoundary &localBoundary = localBoundaries[lid];
+  bool isEmpty = localBoundaries[lid].empty();
   auto it = localBoundary.find(leid1);
   if(it != localBoundary.end()) {
     localBoundary.erase(it);
@@ -5323,7 +5355,7 @@ void ttk::DiscreteMorseSandwichMPI::addDistributedEdgeToLocalBoundary(
       localBoundary.emplace(leid2);
     }
   }
-  if(s.lid_ == -1 && !isHistory) {
+  if(((s.lid_ == -1) || isEmpty) && !isHistory) {
     // TODO: Necessary?
     GlobalBoundary &globalBoundary = globalBoundaries[lid];
     for(int j = 7; j < size; j += 3) {
@@ -5413,7 +5445,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
     if(recvBoundaryBuffer[i] < -1) {
       // int lock;
       /*if(recvBoundaryBuffer[i + 1] == 195577 || recvBoundaryBuffer[i + 1] ==
-      27505063) { printMsg("ReceiveBoundary: " +
+      116345535) { printMsg("ReceiveBoundary: " +
       std::to_string(recvBoundaryBuffer[i])
                  + " of " + std::to_string(recvBoundaryBuffer[i + 1]));
       }*/
@@ -5454,7 +5486,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
         // This is either a merge order or an addition of local edges
         if(recvBoundaryBuffer[i + 5] == -1) {
           this->mergeCounter++;
-          /*if(recvBoundaryBuffer[i + 1] == 27505063) {
+          /*if(recvBoundaryBuffer[i + 1] == 116345535) {
             printMsg("Merge boundaries with "
                      + std::to_string(recvBoundaryBuffer[i + 6]) + " for "
                      + std::to_string(recvBoundaryBuffer[i + 1]));
@@ -5920,7 +5952,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
               = globalToLocalSaddle2_.find(recvComputeBuffer[r][j])->second;
             // rerunCounter[lid]++;
             const auto &s2 = saddles2[lid];
-            /*if (s2.gid_ == 27505063){
+            /*if (s2.gid_ == 116345535){
               printMsg("Rerun saddle "+std::to_string(s2.gid_));
             }*/
             this->eliminateBoundariesSandwich(
