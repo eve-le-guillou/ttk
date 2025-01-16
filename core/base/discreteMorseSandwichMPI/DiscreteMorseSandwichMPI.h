@@ -1420,8 +1420,6 @@ namespace ttk {
 #endif
       // Timer tm{};
       this->edgeTrianglePartner_ = {};
-      this->s2Mapping_ = {};
-      this->s1Mapping_ = {};
       this->critEdges_ = {};
       this->pairedCritCells_ = {};
       this->onBoundary_ = {};
@@ -1448,8 +1446,7 @@ namespace ttk {
     dcg::DiscreteGradient dg_{};
 
     // factor memory allocations outside computation loops
-    mutable std::vector<ttk::SimplexId> edgeTrianglePartner_{}, s2Mapping_{},
-      s1Mapping_{};
+    mutable std::vector<ttk::SimplexId> edgeTrianglePartner_{};
     mutable std::vector<ttk::SimplexId> saddleToPairedMin_{},
       saddleToPairedMax_{}, minToPairedSaddle_{}, maxToPairedSaddle_{};
     mutable std::unordered_map<ttk::SimplexId, ttk::SimplexId>
@@ -5704,7 +5701,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   std::vector<int> s1Locks;
   // one lock per 2-saddle
   std::vector<int> s2Locks;
-#pragma omp parallel master shared(globalToLocalSaddle1_, globalToLocalSaddle2_)
+#pragma omp parallel master
   {
 #pragma omp task
     for(ttk::SimplexId i = 0; i < saddle1Number; i++) {
@@ -6015,11 +6012,13 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   "+std::to_string(bigRerun[i])+" is "+std::to_string(bigRerunCounter[i]));
   }*/
 
-  printMsg("Total of update: " + std::to_string(updateCounter));
+  /*printMsg("Total of update: " + std::to_string(updateCounter));
   printMsg("Total of add: " + std::to_string(addCounter));
-  printMsg("Total of mergge: " + std::to_string(mergeCounter));
+  printMsg("Total of merge: " + std::to_string(mergeCounter));*/
 
   // extract saddle-saddle pairs from computed boundaries
+#pragma omp declare reduction (merge : std::vector<PersistencePair>: omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+#pragma omp parallel for reduction(merge : pairs) schedule(static)
   for(size_t i = 0; i < edgeTrianglePartner.size(); ++i) {
     if(edgeTrianglePartner[i] != -1) {
       const auto s1 = saddles1[i].gid_;
@@ -6056,7 +6055,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     }
   }*/
 
-  std::ofstream myfile;
+  /*std::ofstream myfile;
   myfile.open("/home/eveleguillou/experiment/DiscreteMorseSandwich/"
               + std::to_string(ttk::MPIsize_) + "_pairs_"
               + std::to_string(ttk::MPIrank_) + ".csv");
@@ -6065,8 +6064,23 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     myfile << std::to_string(pairs[i].birth) + ","
                 + std::to_string(pairs[i].death) + "\n";
   }
-  myfile.close();
-
+  myfile.close();*/
+  s2GlobalBoundaries = {};
+  s2LocalBoundaries = {};
+  saddles2 = {};
+  saddles1 = {};
+  s1Locks = {};
+  s2Locks = {};
+  saddles1Gid = {};
+  saddles2Gid = {};
+#ifdef TTK_ENABLE_MPI_TIME
+  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("D1 memory clean up performed using "
+             + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
+  }
+#endif
   auto nSadSadPairs = pairs.size() - nSadExtrPairs;
   MPI_Allreduce(
     MPI_IN_PLACE, &nSadSadPairs, 1, MPI_SimplexId, MPI_SUM, ttk::MPIcomm_);
