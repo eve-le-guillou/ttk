@@ -4886,7 +4886,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
         s2Locks[s2.lid_] = 0;
         return 0;
       } else {
-        if(!compareArray(globMax.max_, tauOrder, 2)) {
+        if(tooFar || !compareArray(globMax.max_, tauOrder, 2)) {
           tooFar = true;
           tooFarCounter++;
           if(tooFar && tooFarCounter > this->sadSadLimit) {
@@ -5790,6 +5790,16 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   std::vector<Lock> sendBoundaryBufferLock(ttk::MPIsize_);
   std::vector<std::vector<std::vector<ttk::SimplexId>>> sendComputeBufferThread(
     threadNumber_, std::vector<std::vector<ttk::SimplexId>>(ttk::MPIsize_));
+  /*  const auto cmpSadMin
+      = [=, &saddles2](
+          const ttk::SimplexId &id1, const ttk::SimplexId &id2) -> bool {
+      return saddles2[id1] > saddles2[id2];
+    };
+
+    // TRI des arcs
+    std::vector<ttk::SimplexId> saddleIds(saddles2.size());
+    std::iota(saddleIds.begin(), saddleIds.end(), 0);
+    TTK_PSORT(threadNumber_, saddleIds.begin(), saddleIds.end(), cmpSadMin);*/
   // compute 2-saddles boundaries in parallel
 #ifdef TTK_ENABLE_MPI_TIME
   elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
@@ -6073,6 +6083,11 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   s2Locks = {};
   saddles1Gid = {};
   saddles2Gid = {};
+  sendComputeBuffer = {};
+  sendComputeBufferThread = {};
+  recvComputeBuffer = {};
+  recvBoundaryBuffer = {};
+  sendBoundaryBuffer = {};
 #ifdef TTK_ENABLE_MPI_TIME
   elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
   if(ttk::MPIrank_ == 0) {
