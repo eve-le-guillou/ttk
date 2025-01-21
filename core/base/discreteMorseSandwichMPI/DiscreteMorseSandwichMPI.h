@@ -5785,6 +5785,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   std::vector<GlobalBoundary> s2GlobalBoundaries(saddles2.size());
   std::vector<LocalBoundary> s2LocalBoundaries(
     saddles2.size(), LocalBoundary(cmpEdges));
+  s2LocalBoundaries.reserve(
+    static_cast<ttk::SimplexId>(saddles2.size() + 0.05 * saddles2.size()));
   std::vector<std::vector<ttk::SimplexId>> sendBoundaryBuffer(
     ttk::MPIsize_, std::vector<ttk::SimplexId>());
   std::vector<Lock> sendBoundaryBufferLock(ttk::MPIsize_);
@@ -5812,7 +5814,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   // std::vector<ttk::SimplexId> rerunCounter(saddles2.size(), 0);
 #endif
 #ifdef TTK_ENABLE_OPENMP
-#pragma omp parallel for num_threads(threadNumber_) schedule(dynamic) \
+#pragma omp parallel for num_threads(threadNumber_) schedule(dynamic, 1) \
   firstprivate(onBoundary) shared(s1Locks, s2Locks)
 #endif // TTK_ENABLE_OPENMP
   for(size_t i = 0; i < saddles2.size(); i++) {
@@ -6076,6 +6078,28 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   }
   myfile.close();*/
   s2GlobalBoundaries = {};
+#pragma omp parallel for num_threads(threadNumber_)
+  for(ttk::SimplexId i = 0; i < s2LocalBoundaries.size(); i++) {
+    s2LocalBoundaries[i].clear();
+  }
+#pragma omp parallel for schedule(static, 1) num_threads(threadNumber_)
+  for(int i = 0; i < threadNumber_; i++) {
+    sendComputeBufferThread[i].clear();
+  }
+  sendComputeBufferThread = {};
+#pragma omp parallel master num_threads(threadNumber_)
+  {
+    for(int i = 0; i < ttk::MPIsize_; i++) {
+#pragma omp task
+      sendComputeBuffer[i] = {};
+#pragma omp task
+      recvComputeBuffer[i] = {};
+#pragma omp task
+      recvBoundaryBuffer[i] = {};
+#pragma omp task
+      sendBoundaryBuffer[i] = {};
+    }
+  }
   s2LocalBoundaries = {};
   saddles2 = {};
   saddles1 = {};
@@ -6084,7 +6108,6 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   saddles1Gid = {};
   saddles2Gid = {};
   sendComputeBuffer = {};
-  sendComputeBufferThread = {};
   recvComputeBuffer = {};
   recvBoundaryBuffer = {};
   sendBoundaryBuffer = {};
