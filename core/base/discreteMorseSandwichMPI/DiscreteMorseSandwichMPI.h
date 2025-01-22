@@ -4807,6 +4807,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
     };
   } while(lock == 1);
   bool tooFar = false;
+  ttk::SimplexId localEdgeCounter{0};
   ttk::SimplexId tooFarCounter{0};
   auto &localBoundaryIds{s2LocalBoundaries[s2.lid_]};
   auto &globalBoundaryIds{s2GlobalBoundaries[s2.lid_]};
@@ -4846,7 +4847,34 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
     // tau: youngest edge on boundary
     ttk::SimplexId tau{-1};
     if(!localBoundaryIds.empty()) {
-      tau = *localBoundaryIds.begin();
+      auto it = localBoundaryIds.begin();
+      if(tooFar) {
+        ttk::SimplexId i{0};
+        while(i < localEdgeCounter && it != localBoundaryIds.end()) {
+          it++;
+        }
+      }
+      if(it == localBoundaryIds.end()) {
+        const auto globMax{*globalBoundaryIds.begin()};
+        /*if(s2.gid_ == 116345535) {
+          printMsg("Send baton to " + std::to_string(globMax.proc_)
+                  + " with max of " + std::to_string(globMax.max_[0]) + ", "
+                  + std::to_string(globMax.max_[1])+" because a paired D0 or
+        D2 saddle has been reached");
+          // kill(getpid(), SIGINT);
+        }   */
+        tau = *localBoundaryIds.begin();
+        fillEdgeOrder(tau, offsets, triangulation, tauOrder);
+        int threadNumber = omp_get_thread_num();
+        sendComputeBuffer[threadNumber][globMax.proc_].emplace_back(s2.gid_);
+        updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock, s2.gid_,
+                          tauOrder, globalBoundaryIds, ttk::MPIrank_);
+        clearOnBoundary();
+#pragma omp atomic write seq_cst
+        s2Locks[s2.lid_] = 0;
+        return 0;
+      }
+      tau = *it;
       fillEdgeOrder(tau, offsets, triangulation, tauOrder);
     }
     /*if(s2.gid_ == 116345535) {
@@ -4945,7 +4973,9 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
         saddleTau = it->second;
       } else {
         if(tooFar) {
-          const auto globMax{*globalBoundaryIds.begin()};
+          localEdgeCounter++;
+          continue;
+          // const auto globMax{*globalBoundaryIds.begin()};
           /*if(s2.gid_ == 116345535) {
             printMsg("Send baton to " + std::to_string(globMax.proc_)
                     + " with max of " + std::to_string(globMax.max_[0]) + ", "
@@ -4953,14 +4983,14 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
           D2 saddle has been reached");
             // kill(getpid(), SIGINT);
           }   */
-          int threadNumber = omp_get_thread_num();
+          /*int threadNumber = omp_get_thread_num();
           sendComputeBuffer[threadNumber][globMax.proc_].emplace_back(s2.gid_);
           updateMaxBoundary(sendBoundaryBuffer, sendBoundaryBufferLock, s2.gid_,
                             tauOrder, globalBoundaryIds, ttk::MPIrank_);
           clearOnBoundary();
 #pragma omp atomic write seq_cst
         s2Locks[s2.lid_] = 0;
-        return 0;
+        return 0;*/
         } else {
           std::string s = " with globalBoundary: ";
           for(const auto b : globalBoundaryIds) {
