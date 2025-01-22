@@ -35,10 +35,16 @@ namespace ttk {
     datatype *addArrayElement(datatype element) {
       numberOfElements_ = numberOfElements_ % size;
       if(numberOfElements_ == 0) {
-        this->list_.push_back(std::array<datatype, size>({}));
+        this->list_.emplace_back(std::array<datatype, size>({}));
       }
       this->list_.back().at(numberOfElements_) = element;
       this->numberOfElements_++;
+      return &(this->list_.back().at(numberOfElements_ - 1));
+    }
+    void removeFirstArray() {
+      this->list_.pop_front();
+    }
+    datatype *back() {
       return &(this->list_.back().at(numberOfElements_ - 1));
     }
   };
