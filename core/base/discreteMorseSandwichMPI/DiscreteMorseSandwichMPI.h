@@ -5560,8 +5560,6 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
   for(int i = 0; i < count; i++) {
     if(recvBoundaryBuffer[i] < -1) {
       int lock;
-      printMsg("ReceiveBoundary: " + std::to_string(recvBoundaryBuffer[i])
-               + " of " + std::to_string(recvBoundaryBuffer[i + 1]));
       ttk::SimplexId size = -recvBoundaryBuffer[i];
       auto it = globalToLocalSaddle2_.find(recvBoundaryBuffer[i + 1]);
       ttk::SimplexId lid;
@@ -5580,9 +5578,12 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
         lid = firstBlockSize_ + currentLastElement_
               + blockSize_ * (currentLastBlock_ - 1);
         globalToLocalSaddle2_[recvBoundaryBuffer[i + 1]] = lid;
-        printMsg("Add gid " + std::to_string(recvBoundaryBuffer[i + 1])
-                 + " at lidBlock: " + std::to_string(currentLastBlock_)
-                 + " and elementLid: " + std::to_string(currentLastElement_));
+        if(recvBoundaryBuffer[i] == -4) {
+          printMsg("Add gid " + std::to_string(recvBoundaryBuffer[i + 1])
+                   + " at lidBlock: " + std::to_string(currentLastBlock_)
+                   + " and elementLid: " + std::to_string(currentLastElement_));
+          kill(getpid(), SIGINT);
+        }
         currentLastElement_++;
       }
       ttk::SimplexId lidBlock;
@@ -5916,8 +5917,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     {
       for(size_t i = 0; i < saddle2Number; i++) {
         // 2-saddles sorted in increasing order
-        const auto &s2 = saddles2[0][i];
-#pragma omp task
+        const auto s2 = saddles2[0][i];
+#pragma omp task firstprivate(s2)
         {
           this->eliminateBoundariesSandwich(
             s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
@@ -5971,13 +5972,13 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
                 ttk::SimplexId lidBlock;
                 ttk::SimplexId lidElement;
                 getLid(lid, lidBlock, lidElement);
-                const auto &s2 = saddles2[lidBlock][lidElement];
+                const auto s2 = saddles2[lidBlock][lidElement];
                 printMsg("m_recv[i]: " + std::to_string(m_recv[i])
                          + ", s2 : " + std::to_string(s2.gid_)
                          + ", lidBlock: " + std::to_string(lidBlock)
                          + ", lidElement: " + std::to_string(lidElement)
                          + " from " + std::to_string(status.MPI_SOURCE));
-#pragma omp task
+#pragma omp task firstprivate(s2)
                 {
                   this->eliminateBoundariesSandwich(
                     s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
@@ -6092,7 +6093,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
                 sendBoundaryRequests_[i].removeFirstArray();
                 sendBoundaryMessages_[i].removeFirstArray();
                 if(!sendBoundaryRequests_[i].empty()
-                   || sendBoundaryRequests_[i].getBlockNumber() == 1) {
+                   && sendBoundaryRequests_[i].getBlockNumber() > 1) {
                   firstBlocRequest = sendBoundaryRequests_[i].list_.begin();
                 } else {
                   break;
@@ -6118,7 +6119,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
                 sendComputeRequests_[i].removeFirstArray();
                 sendComputeMessages_[i].removeFirstArray();
                 if(!sendComputeRequests_[i].empty()
-                   || sendComputeRequests_[i].getBlockNumber() == 1) {
+                   && sendComputeRequests_[i].getBlockNumber() > 1) {
                   firstBlocRequest = sendComputeRequests_[i].list_.begin();
                 } else {
                   break;
