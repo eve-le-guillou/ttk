@@ -11,6 +11,7 @@
 ///
 /// \sa IntegralLines.h %for a usage example.
 
+#include "DataTypes.h"
 #include <array>
 #include <list>
 
@@ -22,6 +23,7 @@ namespace ttk {
   public:
     std::list<std::array<datatype, size>> list_;
     int numberOfElements_;
+    ttk::SimplexId blockNumber_{0};
     // In order to prevent false sharing when creating a
     // std::vector of ArrayLinkedList objects (one element
     // of the std::vector for each thread), it is necessary
@@ -36,15 +38,35 @@ namespace ttk {
       numberOfElements_ = numberOfElements_ % size;
       if(numberOfElements_ == 0) {
         this->list_.emplace_back(std::array<datatype, size>({}));
+        blockNumber_++;
       }
       this->list_.back().at(numberOfElements_) = element;
       this->numberOfElements_++;
       return &(this->list_.back().at(numberOfElements_ - 1));
     }
+
     void removeFirstArray() {
       this->list_.pop_front();
+      blockNumber_--;
     }
+
+    bool empty() {
+      return list_.empty();
+    }
+
+    ttk::SimplexId getBlockNumber() {
+      return this->blockNumber_;
+    }
+
     datatype *back() {
+      if(list_.empty()) {
+        return nullptr;
+      }
+      if(numberOfElements_ == 0) {
+        auto it = this->list_.end();
+        it--;
+        return &(it->at(size - 1));
+      }
       return &(this->list_.back().at(numberOfElements_ - 1));
     }
   };

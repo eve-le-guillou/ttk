@@ -859,6 +859,17 @@ namespace ttk {
       const GLI getSimplexLocalId,
       std::vector<std::vector<char>> &ghostPresence,
       int localThreadNumber) const;
+
+    inline ttk::SimplexId checkEndOfComputation() const;
+
+    inline void getLid(ttk::SimplexId lid,
+                       ttk::SimplexId &lidBlock,
+                       ttk::SimplexId &lidElement) const;
+
+    inline void pushMessage(std::vector<ttk::SimplexId> &boundaryMessage,
+                            ttk::SimplexId computeId,
+                            ttk::SimplexId receiver,
+                            int tag) const;
     /**
      * @brief Follow the ascending 1-separatrices to compute the saddles ->
      * maxima association
@@ -1277,17 +1288,6 @@ namespace ttk {
       const triangulationType &triangulation,
       const SimplexId *const offsets) const;
 
-    ttk::SimplexId checkEndOfComputation() const;
-
-    void getLid(ttk::SimplexId lid,
-                ttk::SimplexId &lidBlock,
-                ttk::SimplexId &lidElement) const;
-
-    void pushMessage(std::vector<ttk::SimplexId> &boundaryMessage,
-                     ttk::SimplexId computeId,
-                     ttk::SimplexId receiver,
-                     int tag) const;
-
     /**
      * @brief Ad-hoc struct for sorting simplices
      *
@@ -1488,11 +1488,16 @@ namespace ttk {
       sendBoundaryMessages_;
     mutable std::vector<
       ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, ARRAY_SIZE>>
+      sendSignalMessages_;
+    mutable std::vector<
+      ttk::ArrayLinkedList<std::vector<ttk::SimplexId>, ARRAY_SIZE>>
       sendComputeMessages_;
     mutable std::vector<Lock> sendMessageLock_;
     mutable Lock sendQueueLock_;
     mutable std::vector<ttk::ArrayLinkedList<MPI_Request, ARRAY_SIZE>>
       sendBoundaryRequests_;
+    mutable std::vector<ttk::ArrayLinkedList<MPI_Request, ARRAY_SIZE>>
+      sendSignalRequests_;
     mutable std::vector<ttk::ArrayLinkedList<MPI_Request, ARRAY_SIZE>>
       sendComputeRequests_;
     mutable std::queue<MessageAndMPIInfo> sendQueue_{};
@@ -4488,18 +4493,31 @@ void ttk::DiscreteMorseSandwichMPI::pushMessage(
       sendMessageLock_[receiver].lock();
       auto lastBoundary = sendBoundaryMessages_[receiver].back();
       auto lastCompute = sendComputeMessages_[receiver].back();
+      if(sendBoundaryMessages_[receiver].empty()) {
+        lastBoundary = this->sendBoundaryMessages_[receiver].addArrayElement(
+          std::vector<ttk::SimplexId>());
+        this->sendBoundaryRequests_[receiver].addArrayElement(
+          MPI_Request{MPI_REQUEST_NULL});
+      }
+      if(sendComputeMessages_[receiver].empty()) {
+        lastCompute = this->sendComputeMessages_[receiver].addArrayElement(
+          std::vector<ttk::SimplexId>());
+        this->sendComputeRequests_[receiver].addArrayElement(
+          MPI_Request{MPI_REQUEST_NULL});
+      }
+
       if(lastBoundary->size() + boundaryMessage.size() > messageSize_) {
         m_ptr = lastBoundary;
         request = this->sendBoundaryRequests_[receiver].back();
         // Put in queue
         sendQueueLock_.lock();
-        sendQueue_.push(
-          MessageAndMPIInfo{m_ptr, receiver, tag, request, messageSize_});
+        sendQueue_.push(MessageAndMPIInfo{
+          m_ptr, receiver, tag, request, lastBoundary->size()});
         if(lastCompute->size() > 0) {
           m_ptr = lastCompute;
           request = this->sendComputeRequests_[receiver].back();
-          sendQueue_.push(
-            MessageAndMPIInfo{m_ptr, receiver, tag, request, messageSize_});
+          sendQueue_.push(MessageAndMPIInfo{
+            m_ptr, receiver, COMPUTE, request, lastCompute->size()});
         }
         sendQueueLock_.unlock();
         this->sendComputeMessages_[receiver].addArrayElement(
@@ -4521,11 +4539,23 @@ void ttk::DiscreteMorseSandwichMPI::pushMessage(
       sendMessageLock_[receiver].unlock();
       break;
     }
-    default: {
+    case COMPUTE: {
       sendMessageLock_[receiver].lock();
       m_ptr
         = this->sendComputeMessages_[receiver].addArrayElement(boundaryMessage);
       request = this->sendComputeRequests_[receiver].addArrayElement(
+        MPI_Request{MPI_REQUEST_NULL});
+      sendQueueLock_.lock();
+      sendQueue_.push(MessageAndMPIInfo{m_ptr, receiver, tag, request, 1});
+      sendQueueLock_.unlock();
+      sendMessageLock_[receiver].unlock();
+      break;
+    }
+    default: {
+      sendMessageLock_[receiver].lock();
+      m_ptr
+        = this->sendSignalMessages_[receiver].addArrayElement(boundaryMessage);
+      request = this->sendSignalRequests_[receiver].addArrayElement(
         MPI_Request{MPI_REQUEST_NULL});
       sendQueueLock_.lock();
       sendQueue_.push(MessageAndMPIInfo{m_ptr, receiver, tag, request, 1});
@@ -4886,6 +4916,15 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
   /*if(s2.gid_ == 116345535) {
     printMsg("Process saddle " + std::to_string(s2.gid_));
   }*/
+  if(s2.gid_ == -1 || s2.lidBlock_ == -1) {
+    printErr("ERROR HERE");
+    kill(getpid(), SIGINT);
+  }
+  ttk::SimplexId tempTask;
+#pragma omp atomic read
+  tempTask = taskCounter_;
+  printMsg("Process saddle " + std::to_string(s2.gid_)
+           + ", taskCounter :" + std::to_string(tempTask));
   int lock;
   // lock the 2-saddle to ensure that only one thread can perform the
   // boundary expansion
@@ -4946,13 +4985,13 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
       }
       if(it == localBoundaryIds.end()) {
         const auto globMax{*globalBoundaryIds.begin()};
-        /*if(s2.gid_ == 116345535) {
-          printMsg("Send baton to " + std::to_string(globMax.proc_)
-                  + " with max of " + std::to_string(globMax.max_[0]) + ", "
-                  + std::to_string(globMax.max_[1])+" because a paired D0 or
-        D2 saddle has been reached");
-          // kill(getpid(), SIGINT);
-        }   */
+        // if(s2.gid_ == 116345535) {
+        printMsg("Send baton to " + std::to_string(globMax.proc_)
+                 + " with max of " + std::to_string(globMax.max_[0]) + ", "
+                 + std::to_string(globMax.max_[1])
+                 + " because a paired D0 or D2 saddle has been reached");
+        // kill(getpid(), SIGINT);
+        //}
         tau = *localBoundaryIds.begin();
         fillEdgeOrder(tau, offsets, triangulation, tauOrder);
         int threadNumber = omp_get_thread_num();
@@ -5256,7 +5295,13 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
               taskCounter_--;
               return 0;
             } else {
-              partners[saddleTau] = pTau;
+              if(s2.lidBlock_ == 0) {
+                partners[saddleTau] = s2.lidElement_;
+              } else {
+                partners[saddleTau] = firstBlockSize_
+                                      + blockSize_ * (s2.lidBlock_ - 1)
+                                      + s2.lidElement_;
+              }
               /*if(s2.gid_ == 116345535) {
                 printMsg("AddPair: " + std::to_string(s2.gid_) + " and "
                          + std::to_string(saddles1[saddleTau].gid_));
@@ -5515,18 +5560,15 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
   for(int i = 0; i < count; i++) {
     if(recvBoundaryBuffer[i] < -1) {
       int lock;
-      /*if(recvBoundaryBuffer[i + 1] == 195577 || recvBoundaryBuffer[i + 1] ==
-      116345535) { printMsg("ReceiveBoundary: " +
-      std::to_string(recvBoundaryBuffer[i])
-                 + " of " + std::to_string(recvBoundaryBuffer[i + 1]));
-      }*/
+      printMsg("ReceiveBoundary: " + std::to_string(recvBoundaryBuffer[i])
+               + " of " + std::to_string(recvBoundaryBuffer[i + 1]));
       ttk::SimplexId size = -recvBoundaryBuffer[i];
       auto it = globalToLocalSaddle2_.find(recvBoundaryBuffer[i + 1]);
       ttk::SimplexId lid;
       if(it != globalToLocalSaddle2_.end()) {
         lid = it->second;
       } else {
-        if(currentLastElement_ > blockSize_) {
+        if(currentLastElement_ >= blockSize_) {
           currentLastBlock_++;
           saddles2[currentLastBlock_].resize(blockSize_);
           s2Locks[currentLastBlock_].resize(blockSize_, 0);
@@ -5535,8 +5577,12 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
             blockSize_, LocalBoundary(cmpEdges));
           currentLastElement_ = 0;
         }
-        lid = currentLastElement_ + blockSize_ * currentLastBlock_;
+        lid = firstBlockSize_ + currentLastElement_
+              + blockSize_ * (currentLastBlock_ - 1);
         globalToLocalSaddle2_[recvBoundaryBuffer[i + 1]] = lid;
+        printMsg("Add gid " + std::to_string(recvBoundaryBuffer[i + 1])
+                 + " at lidBlock: " + std::to_string(currentLastBlock_)
+                 + " and elementLid: " + std::to_string(currentLastElement_));
         currentLastElement_++;
       }
       ttk::SimplexId lidBlock;
@@ -5747,7 +5793,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   ttk::SimplexId saddle1Number = saddles1Gid.size();
   ttk::SimplexId saddle2Number = saddles2Gid.size();
   firstBlockSize_ = saddle2Number;
-  blockSize_ = 0.05 * saddle2Number;
+  blockSize_ = std::max(static_cast<ttk::SimplexId>(0.05 * saddle2Number),
+                        static_cast<ttk::SimplexId>(1));
   MPI_Datatype MPI_SimplexId = getMPIType(saddle1Number);
   MPI_Allreduce(&saddle2Number, &globalSaddle2Counter_, 1, MPI_SimplexId,
                 MPI_SUM, ttk::MPIcomm_);
@@ -5845,14 +5892,18 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
         return false;
       };
   sendBoundaryMessages_.resize(ttk::MPIsize_);
+  sendSignalMessages_.resize(ttk::MPIsize_);
   sendComputeMessages_.resize(ttk::MPIsize_);
   sendMessageLock_ = std::vector<Lock>(ttk::MPIsize_);
   sendBoundaryRequests_.resize(ttk::MPIsize_);
+  sendSignalRequests_.resize(ttk::MPIsize_);
   sendComputeRequests_.resize(ttk::MPIsize_);
   using GlobalBoundary = std::set<maxPerProcess, std::less<>>;
   using LocalBoundary = std::set<ttk::SimplexId, decltype(cmpEdges)>;
   std::vector<std::vector<GlobalBoundary>> s2GlobalBoundaries(overalSize);
   s2GlobalBoundaries[0].resize(saddle2Number);
+  taskCounter_ = saddle2Number;
+  printMsg("Saddle2Number: " + std::to_string(saddle2Number));
   std::vector<std::vector<LocalBoundary>> s2LocalBoundaries(
     overalSize, std::vector<LocalBoundary>(0, LocalBoundary(cmpEdges)));
   s2LocalBoundaries[0].resize(saddle2Number, LocalBoundary(cmpEdges));
@@ -5867,26 +5918,33 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
         // 2-saddles sorted in increasing order
         const auto &s2 = saddles2[0][i];
 #pragma omp task
-        this->eliminateBoundariesSandwich(
-          s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
-          edgeTrianglePartner, s1Locks, s2Locks, saddles1, saddles2,
-          triangulation, offsets);
+        {
+          this->eliminateBoundariesSandwich(
+            s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
+            edgeTrianglePartner, s1Locks, s2Locks, saddles1, saddles2,
+            triangulation, offsets);
+        }
       }
-    }
     // Start communication phase
     if(ttk::MPIsize_ > 1) {
+      printMsg("Start communication phase");
       std::vector<ttk::SimplexId> m_recv(messageSize_, -1);
       MPI_Status status;
       bool keepWorking{true};
+      saddles2[currentLastBlock_].resize(blockSize_);
+      s2Locks[currentLastBlock_].resize(blockSize_, 0);
+      s2GlobalBoundaries[currentLastBlock_].resize(blockSize_);
+      s2LocalBoundaries[currentLastBlock_].resize(
+        blockSize_, LocalBoundary(cmpEdges));
+      currentLastElement_ = 0;
       while(keepWorking) {
         int probe;
         int out = MPI_Iprobe(
           MPI_ANY_SOURCE, MPI_ANY_TAG, ttk::MPIcomm_, &probe, &status);
         ttk::SimplexId receiveMessageCounter = 0;
         int count;
-        while(!out && probe && receiveMessageCounter < 100) {
+        while(!out && probe && receiveMessageCounter < 2) {
           receiveMessageCounter++;
-          printMsg("About to receive a message");
           MPI_Recv(m_recv.data(), messageSize_, MPI_SimplexId, MPI_ANY_SOURCE,
                    MPI_ANY_TAG, ttk::MPIcomm_, &status);
           MPI_Get_count(&status, MPI_SimplexId, &count);
@@ -5899,8 +5957,14 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
                                     cmpEdges);
               break;
             case COMPUTE:
+              ttk::SimplexId taskTemp;
 #pragma omp atomic update
               taskCounter_ += count;
+#pragma omp atomic read
+              taskTemp = taskCounter_;
+              printMsg("eliminateBoundariesSandwich for "
+                       + std::to_string(count) + " with taskCounter of "
+                       + std::to_string(taskTemp));
               for(ttk::SimplexId i = 0; i < count; i++) {
                 ttk::SimplexId lid
                   = globalToLocalSaddle2_.find(m_recv[i])->second;
@@ -5908,19 +5972,28 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
                 ttk::SimplexId lidElement;
                 getLid(lid, lidBlock, lidElement);
                 const auto &s2 = saddles2[lidBlock][lidElement];
+                printMsg("m_recv[i]: " + std::to_string(m_recv[i])
+                         + ", s2 : " + std::to_string(s2.gid_)
+                         + ", lidBlock: " + std::to_string(lidBlock)
+                         + ", lidElement: " + std::to_string(lidElement)
+                         + " from " + std::to_string(status.MPI_SOURCE));
 #pragma omp task
-                this->eliminateBoundariesSandwich(
-                  s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
-                  edgeTrianglePartner, s1Locks, s2Locks, saddles1, saddles2,
-                  triangulation, offsets);
+                {
+                  this->eliminateBoundariesSandwich(
+                    s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
+                    edgeTrianglePartner, s1Locks, s2Locks, saddles1, saddles2,
+                    triangulation, offsets);
+                }
               }
               break;
             case FINISHED_PROPAGATION:
               globalSaddle2Counter_ -= m_recv[0];
+              printMsg("New global counter: "
+                       + std::to_string(globalSaddle2Counter_));
               if(globalSaddle2Counter_ == 0) {
                 keepWorking = false;
                 for(int i = 1; i < ttk::MPIsize_; i++) {
-                  std::vector<ttk::SimplexId> m;
+                  std::vector<ttk::SimplexId> m(1, 1);
                   this->pushMessage(m, -1, i, STOP_WORKING);
                   printMsg("All processes should stop working");
                 }
@@ -5942,84 +6015,124 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
         if(tempTask == 0) {
           for(int i = 0; i < ttk::MPIsize_; i++) {
             sendMessageLock_[i].lock();
-            m_ptr = sendBoundaryMessages_[i].back();
-            ttk::SimplexId boundarySize = m_ptr->size();
-            if(boundarySize > 0) {
-              request = this->sendBoundaryRequests_[i].back();
-              sendQueueLock_.lock();
-              sendQueue_.push(MessageAndMPIInfo{
-                m_ptr, i, BOUNDARY_UPDATE, request, boundarySize});
-              m_ptr = sendComputeMessages_[i].back();
-              ttk::SimplexId computeSize = m_ptr->size();
-              if(computeSize > 0) {
-                request = this->sendComputeRequests_[i].back();
-                sendQueue_.push(
-                  MessageAndMPIInfo{m_ptr, i, COMPUTE, request, computeSize});
-              }
-              sendQueueLock_.unlock();
-            } else {
-              m_ptr = sendComputeMessages_[i].back();
-              ttk::SimplexId computeSize = m_ptr->size();
-              if(computeSize > 0) {
-                request = this->sendComputeRequests_[i].back();
+            if(!sendBoundaryMessages_[i].empty()) {
+              m_ptr = sendBoundaryMessages_[i].back();
+              ttk::SimplexId boundarySize = m_ptr->size();
+              if(boundarySize > 0) {
+                request = this->sendBoundaryRequests_[i].back();
                 sendQueueLock_.lock();
-                sendQueue_.push(
-                  MessageAndMPIInfo{m_ptr, i, COMPUTE, request, computeSize});
-                sendQueueLock_.unlock();
+                sendQueue_.push(MessageAndMPIInfo{
+                  m_ptr, i, BOUNDARY_UPDATE, request, boundarySize});
+                m_ptr = sendComputeMessages_[i].back();
+                if(!sendComputeMessages_[i].empty()) {
+                  ttk::SimplexId computeSize = m_ptr->size();
+                  if(computeSize > 0) {
+                    request = this->sendComputeRequests_[i].back();
+                    sendQueue_.push(MessageAndMPIInfo{
+                      m_ptr, i, COMPUTE, request, computeSize});
+                  }
+                  sendQueueLock_.unlock();
+                  if(computeSize > 0) {
+                    this->sendComputeMessages_[i].addArrayElement(
+                      std::vector<ttk::SimplexId>());
+                    this->sendComputeRequests_[i].addArrayElement(
+                      MPI_Request{MPI_REQUEST_NULL});
+                  }
+                }
+                this->sendBoundaryMessages_[i].addArrayElement(
+                  std::vector<ttk::SimplexId>());
+                this->sendBoundaryRequests_[i].addArrayElement(
+                  MPI_Request{MPI_REQUEST_NULL});
+              } else {
+                if(!sendComputeMessages_[i].empty()) {
+                  m_ptr = sendComputeMessages_[i].back();
+                  ttk::SimplexId computeSize = m_ptr->size();
+                  if(computeSize > 0) {
+                    request = this->sendComputeRequests_[i].back();
+                    sendQueueLock_.lock();
+                    sendQueue_.push(MessageAndMPIInfo{
+                      m_ptr, i, COMPUTE, request, computeSize});
+                    sendQueueLock_.unlock();
+                    if(computeSize > 0) {
+                      this->sendComputeMessages_[i].addArrayElement(
+                        std::vector<ttk::SimplexId>());
+                      this->sendComputeRequests_[i].addArrayElement(
+                        MPI_Request{MPI_REQUEST_NULL});
+                    }
+                  }
+                }
               }
             }
+
             sendMessageLock_[i].unlock();
           }
         }
-      }
-      MessageAndMPIInfo message;
-      ttk::SimplexId sendCount{0};
-      while(!sendQueue_.empty() && sendCount < ARRAY_SIZE) {
+        MessageAndMPIInfo message;
+        ttk::SimplexId sendCount{0};
         sendQueueLock_.lock();
-        message = sendQueue_.front();
-        sendQueue_.pop();
+        while(!sendQueue_.empty() && sendCount < ARRAY_SIZE) {
+          message = sendQueue_.front();
+          sendQueue_.pop();
+          MPI_Isend(message.m->data(), message.size, MPI_SimplexId,
+                    message.receiver, message.tag, ttk::MPIcomm_,
+                    message.request);
+          sendCount++;
+        }
         sendQueueLock_.unlock();
-        MPI_Isend(message.m->data(), message.size, MPI_SimplexId,
-                  message.receiver, message.tag, ttk::MPIcomm_,
-                  message.request);
-        sendCount++;
-      }
-      // TODO: give to a thread?
-      for(int i = 0; i < ttk::MPIsize_; i++) {
-        int flag{true};
-        sendMessageLock_[i].lock();
-        auto firstBlocRequest = sendBoundaryRequests_[i].list_.begin();
-        ttk::SimplexId j = 0;
-        while(flag) {
-          if(j == ARRAY_SIZE) {
-            sendBoundaryRequests_[i].removeFirstArray();
-            sendBoundaryMessages_[i].removeFirstArray();
-            firstBlocRequest = sendBoundaryRequests_[i].list_.begin();
-            j = 0;
+        // TODO: give to a thread?
+        for(int i = 0; i < ttk::MPIsize_; i++) {
+          int flag{true};
+          sendMessageLock_[i].lock();
+          if(!sendBoundaryRequests_[i].empty()
+             && sendBoundaryRequests_[i].getBlockNumber() > 1) {
+            auto firstBlocRequest = sendBoundaryRequests_[i].list_.begin();
+            ttk::SimplexId j = 0;
+            while(flag) {
+              if(j == ARRAY_SIZE) {
+                sendBoundaryRequests_[i].removeFirstArray();
+                sendBoundaryMessages_[i].removeFirstArray();
+                if(!sendBoundaryRequests_[i].empty()
+                   || sendBoundaryRequests_[i].getBlockNumber() == 1) {
+                  firstBlocRequest = sendBoundaryRequests_[i].list_.begin();
+                } else {
+                  break;
+                }
+                j = 0;
+              }
+              MPI_Test(&firstBlocRequest->at(j), &flag, MPI_STATUS_IGNORE);
+              j++;
+            }
           }
-          MPI_Test(&firstBlocRequest->at(j), &flag, MPI_STATUS_IGNORE);
-          j++;
+          sendMessageLock_[i].unlock();
         }
-        sendMessageLock_[i].unlock();
-      }
 
-      for(int i = 0; i < ttk::MPIsize_; i++) {
-        int flag{true};
-        sendMessageLock_[i].lock();
-        auto firstBlocRequest = sendComputeRequests_[i].list_.begin();
-        ttk::SimplexId j = 0;
-        while(flag) {
-          if(j == ARRAY_SIZE) {
-            sendComputeRequests_[i].removeFirstArray();
-            sendComputeMessages_[i].removeFirstArray();
-            firstBlocRequest = sendBoundaryRequests_[j].list_.begin();
-            j = 0;
+        for(int i = 0; i < ttk::MPIsize_; i++) {
+          int flag{true};
+          sendMessageLock_[i].lock();
+          if(!sendComputeRequests_[i].empty()
+             && sendComputeRequests_[i].getBlockNumber() > 1) {
+            auto firstBlocRequest = sendComputeRequests_[i].list_.begin();
+            ttk::SimplexId j = 0;
+            while(flag) {
+              if(j == ARRAY_SIZE) {
+                sendComputeRequests_[i].removeFirstArray();
+                sendComputeMessages_[i].removeFirstArray();
+                if(!sendComputeRequests_[i].empty()
+                   || sendComputeRequests_[i].getBlockNumber() == 1) {
+                  firstBlocRequest = sendComputeRequests_[i].list_.begin();
+                } else {
+                  break;
+                }
+                j = 0;
+              }
+              MPI_Test(&firstBlocRequest->at(j), &flag, MPI_STATUS_IGNORE);
+              j++;
+            }
           }
-          MPI_Test(&firstBlocRequest->at(j), &flag, MPI_STATUS_IGNORE);
-          j++;
+          sendMessageLock_[i].unlock();
         }
-        sendMessageLock_[i].unlock();
       }
+    }
     }
   }
   Timer tmseq{};
