@@ -5844,6 +5844,15 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   std::vector<std::vector<LocalBoundary>> s2LocalBoundaries(
     overallSize, std::vector<LocalBoundary>(0, LocalBoundary(cmpEdges)));
   s2LocalBoundaries[0].resize(saddle2Number, LocalBoundary(cmpEdges));
+#ifdef TTK_ENABLE_MPI_TIME
+  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("Last preprocessing performed using "
+             + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
+  }
+  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
   // s2LocalBoundaries.reserve(
   //  static_cast<ttk::SimplexId>(saddle2Number + 0.05 * saddle2Number));
 #pragma omp parallel num_threads(threadNumber_) firstprivate(onBoundary) \
@@ -5851,19 +5860,16 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   {
 #pragma omp single nowait
     {
-      for(size_t i = 0; i < saddle2Number; i++) {
-        // 2-saddles sorted in increasing order
-        const auto s2 = saddles2[0][i];
+#pragma omp taskloop num_tasks(saddle2Number) nogroup
+      for(ttk::SimplexId i = 0; i < saddle2Number; i++) {
         /*if(s2.gid_ == 115) {
           printMsg("Start here for " + std::to_string(s2.gid_));
         }*/
-#pragma omp task firstprivate(s2)
-        {
-          this->eliminateBoundariesSandwich(
-            s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
-            edgeTrianglePartner, s1Locks, s2Locks, saddles1, saddles2,
-            triangulation, offsets);
-        }
+        const auto s2 = saddles2[0][i];
+        this->eliminateBoundariesSandwich(
+          s2, onBoundary, s2GlobalBoundaries, s2LocalBoundaries,
+          edgeTrianglePartner, s1Locks, s2Locks, saddles1, saddles2,
+          triangulation, offsets);
       }
     // Start communication phase
     if(ttk::MPIsize_ > 1) {
@@ -6046,6 +6052,15 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     }
     }
   }
+
+#ifdef TTK_ENABLE_MPI_TIME
+  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+  if(ttk::MPIrank_ == 0) {
+    printMsg("D1 computation performed using " + std::to_string(ttk::MPIsize_)
+             + " MPI processes lasted :" + std::to_string(elapsedTime));
+  }
+  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
+#endif
   Timer tmseq{};
 
   // extract saddle-saddle pairs from computed boundaries
