@@ -1437,7 +1437,6 @@ namespace ttk {
       this->critEdges_ = {};
       this->pairedCritCells_ = {};
       this->onBoundary_ = {};
-      this->localEdgeToSaddle1_ = {};
       this->critCellsOrder_ = {};
       this->saddleToPairedMin_ = {};
       this->saddleToPairedMax_ = {};
@@ -5720,8 +5719,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   MPI_Allreduce(&saddle2Number, &globalSaddle2Counter_, 1, MPI_SimplexId,
                 MPI_SUM, ttk::MPIcomm_);
   this->messageSize_
-    = std::max(static_cast<ttk::SimplexId>(saddle2Number * 0.001),
-               static_cast<ttk::SimplexId>(10));
+    = std::max(static_cast<ttk::SimplexId>(saddle2Number * 0.0001),
+               static_cast<ttk::SimplexId>(2));
   ttk::SimplexId overallSize
     = (globalSaddle2Counter_ - firstBlockSize_) / blockSize_ + 2;
   printMsg("Overall size: " + std::to_string(overallSize));
@@ -5743,6 +5742,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     }
 #pragma omp task
     saddles2[0].resize(saddle2Number);
+#pragma omp task
+    globalToLocalSaddle1_.clear();
 #pragma omp task
     edgeTrianglePartner.resize(saddle1Number, -1);
 #pragma omp task
@@ -5832,9 +5833,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   }
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
-  ttk::SimplexId taskSize = std::max(
-    static_cast<ttk::SimplexId>(saddle2Number / (threadNumber_ * 10000)),
-    static_cast<ttk::SimplexId>(10));
+  ttk::SimplexId taskSize
+    = std::min(saddle2Number, static_cast<ttk::SimplexId>(10));
   ttk::SimplexId taskNum
     = static_cast<ttk::SimplexId>(saddle2Number / taskSize) + 1;
   ttk::SimplexId count{0};
@@ -5932,6 +5932,12 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
         //         + std::to_string(totalFinishedPropagationCounter));
         MPI_Allreduce(MPI_IN_PLACE, &totalFinishedPropagationCounter, 1,
                       MPI_SimplexId, MPI_SUM, ttk::MPIcomm_);
+        messageSize_ = std::max(
+          static_cast<ttk::SimplexId>(2),
+          std::min(messageSize_,
+                   static_cast<ttk::SimplexId>(
+                     (globalSaddle2Counter_ - totalFinishedPropagationCounter)
+                     * 0.1)));
         // printMsg("finishedPropagationCounter after allreduce: "
         //         + std::to_string(totalFinishedPropagationCounter));
         std::vector<MPI_Request> sendRequestsData(ttk::MPIsize_ - 1);
@@ -6105,12 +6111,25 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
                 + std::to_string(pairs[i].death) + "\n";
   }
   myfile.close();*/
-  s2GlobalBoundaries = {};
-  /*#pragma omp parallel for num_threads(threadNumber_)
-    for(ttk::SimplexId i = 0; i < s2LocalBoundaries.size(); i++) {
-      s2LocalBoundaries[i].clear();
-    }*/
+  for(ttk::SimplexId i = 0; i < currentLastBlock_ + 1; i++) {
+#pragma omp parallel for num_threads(threadNumber_)
+    for(ttk::SimplexId j = 0; j < saddles2[i].size(); j++) {
+      s2LocalBoundaries[i][j].clear();
+      s2GlobalBoundaries[i][j].clear();
+    }
+  }
+  if(ttk::MPIsize_ > 1) {
+#pragma omp parallel for num_threads(ttk::MPIsize_)
+    for(int i = 0; i < ttk::MPIsize_; i++) {
+      this->sendComputeBuffer_[0][i].clear();
+      this->sendComputeBuffer_[1][i].clear();
+      this->sendBoundaryBuffer_[0][i].clear();
+      this->sendBoundaryBuffer_[1][i].clear();
+    }
+  }
+
   s2LocalBoundaries = {};
+  s2GlobalBoundaries = {};
   saddles2 = {};
   s1Locks = {};
   s2Locks = {};
