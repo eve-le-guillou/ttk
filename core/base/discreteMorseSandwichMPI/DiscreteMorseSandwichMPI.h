@@ -5832,8 +5832,11 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   }
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
-  ttk::SimplexId numTasks
-    = std::min(static_cast<ttk::SimplexId>(20 * threadNumber_), saddle2Number);
+  ttk::SimplexId taskSize = std::max(
+    static_cast<ttk::SimplexId>(saddle2Number / (threadNumber_ * 10000)),
+    static_cast<ttk::SimplexId>(10));
+  ttk::SimplexId taskNum
+    = static_cast<ttk::SimplexId>(saddle2Number / taskSize) + 1;
   ttk::SimplexId count{0};
 #pragma omp parallel num_threads(threadNumber_) shared(                      \
   onBoundaryThread, s1Locks, s2Locks, s2GlobalBoundaries, s2LocalBoundaries, \
@@ -5841,32 +5844,40 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   {
 #pragma omp single nowait
     {
-#pragma omp taskloop nogroup num_tasks(numTasks)
-      for(ttk::SimplexId i = 0; i < saddle2Number; i++) {
-        const auto s2 = saddles2[0][i];
-        this->eliminateBoundariesSandwich(
-          s2, onBoundaryThread, s2GlobalBoundaries, s2LocalBoundaries,
-          edgeTrianglePartner, s1Locks, s2Locks, saddles2, localEdgeToSaddle1_,
-          triangulation, offsets);
+      for(ttk::SimplexId i = 0; i < taskNum; i++) {
+#pragma omp task firstprivate(i)
+        {
+          for(ttk::SimplexId j = 0; j < taskSize; j++) {
+            ttk::SimplexId lid = i * taskSize + j;
+            if(lid < saddle2Number) {
+              const auto s2 = saddles2[0][lid];
+              this->eliminateBoundariesSandwich(
+                s2, onBoundaryThread, s2GlobalBoundaries, s2LocalBoundaries,
+                edgeTrianglePartner, s1Locks, s2Locks, saddles2,
+                localEdgeToSaddle1_, triangulation, offsets);
+            }
+          }
+        }
       }
-    // Start communication phase
-    if(ttk::MPIsize_ > 1) {
-      printMsg("Start communication phase");
-      saddles2[currentLastBlock_].resize(blockSize_);
-      s2Locks[currentLastBlock_].resize(blockSize_, 0);
-      s2GlobalBoundaries[currentLastBlock_].resize(blockSize_);
-      s2LocalBoundaries[currentLastBlock_].resize(
-        blockSize_, LocalBoundary(cmpEdges));
-      std::vector<std::vector<ttk::SimplexId>> recvBoundaryBuffer(
-        ttk::MPIsize_);
-      std::vector<std::vector<ttk::SimplexId>> recvComputeBuffer(ttk::MPIsize_);
-      ttk::SimplexId totalFinishedPropagationCounter{0};
-      ttk::SimplexId tempTask;
-      ttk::SimplexId messageCnt;
-      while(totalFinishedPropagationCounter < globalSaddle2Counter_) {
-        count++;
-        bool flag = true;
-        while(flag) {
+      // Start communication phase
+      if(ttk::MPIsize_ > 1) {
+        printMsg("Start communication phase");
+        saddles2[currentLastBlock_].resize(blockSize_);
+        s2Locks[currentLastBlock_].resize(blockSize_, 0);
+        s2GlobalBoundaries[currentLastBlock_].resize(blockSize_);
+        s2LocalBoundaries[currentLastBlock_].resize(
+          blockSize_, LocalBoundary(cmpEdges));
+        std::vector<std::vector<ttk::SimplexId>> recvBoundaryBuffer(
+          ttk::MPIsize_);
+        std::vector<std::vector<ttk::SimplexId>> recvComputeBuffer(
+          ttk::MPIsize_);
+        ttk::SimplexId totalFinishedPropagationCounter{0};
+        ttk::SimplexId tempTask;
+        ttk::SimplexId messageCnt;
+        while(totalFinishedPropagationCounter < globalSaddle2Counter_) {
+          count++;
+          bool flag = true;
+          while(flag) {
 #pragma omp atomic read
           messageCnt = messageCounter_;
           if(messageCnt > messageSize_) {
