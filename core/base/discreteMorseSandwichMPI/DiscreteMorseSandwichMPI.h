@@ -5834,7 +5834,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
   ttk::SimplexId taskSize
-    = std::min(saddle2Number, static_cast<ttk::SimplexId>(10));
+    = std::min(saddle2Number + 1, static_cast<ttk::SimplexId>(10));
   ttk::SimplexId taskNum
     = static_cast<ttk::SimplexId>(saddle2Number / taskSize) + 1;
   ttk::SimplexId count{0};
