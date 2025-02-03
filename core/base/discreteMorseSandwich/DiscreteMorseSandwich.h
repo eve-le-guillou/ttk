@@ -1324,7 +1324,7 @@ int ttk::DiscreteMorseSandwich::computePersistencePairs(
     nConnComp++;
   }
 
-  /*if(dim > 1 && this->ComputeSadMax) {
+  if(dim > 1 && this->ComputeSadMax) {
     // saddle - maxima pairs
     this->getMaxSaddlePairs(
       pairs, pairedMaxima, paired2Saddles, criticalCellsByDim[dim - 1],
@@ -1360,7 +1360,7 @@ int ttk::DiscreteMorseSandwich::computePersistencePairs(
       pairs, paired1Saddles, paired2Saddles, false, tmp, criticalCellsByDim[1],
       criticalCellsByDim[2], critCellsOrder[1], triangulation);
   }
-
+  /*
   if(std::is_same<triangulationType, ttk::ExplicitTriangulation>::value) {
     // create infinite pairs from non-paired 1-saddles, 2-saddles and maxima
     size_t nHandles{}, nCavities{}, nNonPairedMax{};
