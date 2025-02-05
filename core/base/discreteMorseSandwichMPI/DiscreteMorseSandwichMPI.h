@@ -1296,7 +1296,17 @@ namespace ttk {
     /**
      * @brief \ref Simplex adaptation for edges
      */
-    struct EdgeSimplex : Simplex<2> {
+    struct EdgeSimplex {
+      SimplexId id_{};
+      ttk::SimplexId vertsOrder_[2];
+      friend bool operator<(const EdgeSimplex &lhs, const EdgeSimplex &rhs) {
+        for(int i = 0; i < 2; i++) {
+          if(lhs.vertsOrder_[i] != rhs.vertsOrder_[i]) {
+            return lhs.vertsOrder_[i] < rhs.vertsOrder_[i];
+          }
+        }
+        return false;
+      }
       template <typename triangulationType>
       void fillEdge(const SimplexId id,
                     const SimplexId *const offsets,
@@ -1307,7 +1317,8 @@ namespace ttk {
         this->vertsOrder_[0] = offsets[this->vertsOrder_[0]];
         this->vertsOrder_[1] = offsets[this->vertsOrder_[1]];
         // sort vertices in decreasing order
-        std::sort(this->vertsOrder_.rbegin(), this->vertsOrder_.rend());
+        std::sort(this->vertsOrder_, this->vertsOrder_ + 2,
+                  std::greater<ttk::SimplexId>());
       }
     };
 
@@ -1369,6 +1380,11 @@ namespace ttk {
 #endif
       {
         if(dim > 2) {
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task
+#endif
+          this->critEdges_.resize(triangulation.getNumberOfEdges());
+
           this->onBoundary_.resize(threadNumber_);
           for(int i = 0; i < threadNumber_; i++) {
 #ifdef TTK_ENABLE_OPENMP
@@ -1411,6 +1427,7 @@ namespace ttk {
 #endif
       // Timer tm{};
       this->edgeTrianglePartner_ = {};
+      this->critEdges_ = {};
       this->pairedCritCells_ = {};
       this->onBoundary_ = {};
       this->critCellsOrder_ = {};
@@ -1444,6 +1461,7 @@ namespace ttk {
       saddleToPairedMax_{}, minToPairedSaddle_{}, maxToPairedSaddle_{};
     mutable std::unordered_map<ttk::SimplexId, ttk::SimplexId>
       globalToLocalSaddle1_{}, globalToLocalSaddle2_{};
+    mutable std::vector<EdgeSimplex> critEdges_{};
     mutable std::array<std::vector<bool>, 4> pairedCritCells_{};
     mutable std::vector<std::vector<bool>> onBoundary_{};
     mutable std::vector<ttk::SimplexId> localEdgeToSaddle1_{};
@@ -6119,31 +6137,13 @@ void ttk::DiscreteMorseSandwichMPI::extractCriticalCells(
                  localThreadNumber, debug::LineMode::NEW);*/
 
   // memory allocations
-  std::vector<EdgeSimplex> critEdges;
-  std::vector<TriangleSimplex> critTriangles;
-  std::vector<TetraSimplex> critTetras;
-#pragma omp parallel master
-  {
-    if(!sortEdges) {
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif
-      critEdges.resize(criticalCellsByDim[1].size());
-    } else {
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif
-      critEdges.resize(triangulation.getNumberOfEdges());
-    }
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif
-    critTriangles.resize(criticalCellsByDim[2].size());
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif
-    critTetras.resize(criticalCellsByDim[3].size());
+  auto &critEdges{this->critEdges_};
+  if(!sortEdges) {
+    critEdges.resize(criticalCellsByDim[1].size());
   }
+  std::vector<TriangleSimplex> critTriangles(criticalCellsByDim[2].size());
+  std::vector<TetraSimplex> critTetras(criticalCellsByDim[3].size());
+
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp parallel num_threads(threadNumber_)
 #endif // TTK_ENABLE_OPENMP
