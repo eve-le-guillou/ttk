@@ -1279,34 +1279,29 @@ namespace ttk {
      *
      * Adapted version of ttk::PersistentSimplexPairs::Simplex
      */
-    template <size_t n>
+    template <int n>
     struct Simplex {
       /** Index in the triangulation */
       SimplexId id_{};
       /** Order field value of the simplex vertices, sorted in
           decreasing order */
-      std::array<SimplexId, n> vertsOrder_{};
+      ttk::SimplexId vertsOrder_[n];
       /** To compare two vertices according to the filtration (lexicographic
        * order) */
       friend bool operator<(const Simplex<n> &lhs, const Simplex<n> &rhs) {
-        return lhs.vertsOrder_ < rhs.vertsOrder_;
-      }
-    };
-
-    /**
-     * @brief \ref Simplex adaptation for edges
-     */
-    struct EdgeSimplex {
-      SimplexId id_{};
-      ttk::SimplexId vertsOrder_[2];
-      friend bool operator<(const EdgeSimplex &lhs, const EdgeSimplex &rhs) {
-        for(int i = 0; i < 2; i++) {
+        for(int i = 0; i < n; i++) {
           if(lhs.vertsOrder_[i] != rhs.vertsOrder_[i]) {
             return lhs.vertsOrder_[i] < rhs.vertsOrder_[i];
           }
         }
         return false;
       }
+    };
+
+    /**
+     * @brief \ref Simplex adaptation for edges
+     */
+    struct EdgeSimplex : Simplex<2> {
       template <typename triangulationType>
       void fillEdge(const SimplexId id,
                     const SimplexId *const offsets,
@@ -1338,7 +1333,8 @@ namespace ttk {
         this->vertsOrder_[1] = offsets[this->vertsOrder_[1]];
         this->vertsOrder_[2] = offsets[this->vertsOrder_[2]];
         // sort vertices in decreasing order
-        std::sort(this->vertsOrder_.rbegin(), this->vertsOrder_.rend());
+        std::sort(this->vertsOrder_, this->vertsOrder_ + 3,
+                  std::greater<ttk::SimplexId>());
       }
     };
 
@@ -1360,7 +1356,8 @@ namespace ttk {
         this->vertsOrder_[2] = offsets[this->vertsOrder_[2]];
         this->vertsOrder_[3] = offsets[this->vertsOrder_[3]];
         // sort vertices in decreasing order
-        std::sort(this->vertsOrder_.rbegin(), this->vertsOrder_.rend());
+        std::sort(this->vertsOrder_, this->vertsOrder_ + 4,
+                  std::greater<ttk::SimplexId>());
       }
     };
 
