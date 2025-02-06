@@ -1372,6 +1372,13 @@ namespace ttk {
       if(dim > 3 || dim < 1) {
         return;
       }
+      if(dim > 2) {
+        // Allocating this in tasks may create a significant overhead cost
+        this->onBoundary_.resize(threadNumber_);
+        for(int i = 0; i < threadNumber_; i++) {
+          this->onBoundary_[i].resize(triangulation.getNumberOfEdges(), false);
+        }
+      }
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp parallel master num_threads(threadNumber_)
 #endif
@@ -1381,15 +1388,6 @@ namespace ttk {
 #pragma omp task
 #endif
           this->critEdges_.resize(triangulation.getNumberOfEdges());
-
-          this->onBoundary_.resize(threadNumber_);
-          for(int i = 0; i < threadNumber_; i++) {
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif
-            this->onBoundary_[i].resize(
-              triangulation.getNumberOfEdges(), false);
-          }
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp task
 #endif
@@ -1425,8 +1423,11 @@ namespace ttk {
       // Timer tm{};
       this->edgeTrianglePartner_ = {};
       this->critEdges_ = {};
-      this->pairedCritCells_ = {};
-      this->onBoundary_ = {};
+#pragma omp parallel for num_threads(threadNumber_) schedule(static, 1)
+      for(int i = 0; i < threadNumber_; i++) {
+        this->onBoundary_[i].clear();
+      }
+      this->onBoundary_ = {} this->onBoundary_ = {};
       this->critCellsOrder_ = {};
       this->saddleToPairedMin_ = {};
       this->saddleToPairedMax_ = {};
@@ -1459,7 +1460,6 @@ namespace ttk {
     mutable std::unordered_map<ttk::SimplexId, ttk::SimplexId>
       globalToLocalSaddle1_{}, globalToLocalSaddle2_{};
     mutable std::vector<EdgeSimplex> critEdges_{};
-    mutable std::array<std::vector<bool>, 4> pairedCritCells_{};
     mutable std::vector<std::vector<bool>> onBoundary_{};
     mutable std::vector<ttk::SimplexId> localEdgeToSaddle1_{};
     mutable std::array<std::vector<SimplexId>, 4> critCellsOrder_{};
@@ -5367,11 +5367,11 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   std::vector<std::vector<int>> s2Locks(overallSize, std::vector<int>());
 #pragma omp parallel master
   {
-#pragma omp task
+#pragma omp task shared(globalToLocalSaddle2_, saddles2Gid)
     for(ttk::SimplexId i = 0; i < saddle2Number; i++) {
       globalToLocalSaddle2_.emplace(saddles2Gid[i], i);
     }
-#pragma omp task
+#pragma omp task shared(saddles2)
     saddles2[0].resize(saddle2Number);
 #pragma omp task
     globalToLocalSaddle1_.clear();
