@@ -1427,7 +1427,7 @@ namespace ttk {
       for(int i = 0; i < threadNumber_; i++) {
         this->onBoundary_[i].clear();
       }
-      this->onBoundary_ = {} this->onBoundary_ = {};
+      this->onBoundary_ = {};
       this->critCellsOrder_ = {};
       this->saddleToPairedMin_ = {};
       this->saddleToPairedMax_ = {};
