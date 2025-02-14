@@ -1361,83 +1361,13 @@ namespace ttk {
       }
     };
 
-    template <typename triangulationType>
-    void alloc(const triangulationType &triangulation) {
-#ifdef TTK_ENABLE_MPI_TIME
-      ttk::Timer t_mpi;
-      ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
-      // Timer tm{};
-      const auto dim{this->dg_.getDimensionality()};
-      if(dim > 3 || dim < 1) {
-        return;
-      }
-      if(dim > 2) {
-        // Allocating this in tasks may create a significant overhead cost
-        this->onBoundary_.resize(threadNumber_);
-        for(int i = 0; i < threadNumber_; i++) {
-          this->onBoundary_[i].resize(triangulation.getNumberOfEdges(), false);
-        }
-      }
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp parallel master num_threads(threadNumber_)
-#endif
-      {
-        if(dim > 2) {
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif
-          this->critEdges_.resize(triangulation.getNumberOfEdges());
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif
-          this->localEdgeToSaddle1_.resize(
-            triangulation.getNumberOfEdges(), -1);
-        }
-        for(int i = 1; i < dim + 1; ++i) {
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif
-          this->critCellsOrder_[i].resize(
-            this->dg_.getNumberOfCells(i, triangulation), -1);
-        }
-      }
-#ifdef TTK_ENABLE_MPI_TIME
-      double elapsedTime
-        = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-      if(ttk::MPIrank_ == 0) {
-        printMsg("Memory allocations performed using "
-                 + std::to_string(ttk::MPIsize_)
-                 + " MPI processes lasted :" + std::to_string(elapsedTime));
-      }
-#endif
-      /*this->printMsg("Memory allocations", 1.0, tm.getElapsedTime(), 1,
-                     debug::LineMode::NEW);*/
-    }
-
     void clear() {
 #ifdef TTK_ENABLE_MPI_TIME
       ttk::Timer t_mpi;
       ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
       // Timer tm{};
-      this->edgeTrianglePartner_ = {};
-      this->critEdges_ = {};
-#pragma omp parallel for num_threads(threadNumber_) schedule(static, 1)
-      for(int i = 0; i < threadNumber_; i++) {
-        this->onBoundary_[i].clear();
-      }
-      this->onBoundary_ = {};
       this->critCellsOrder_ = {};
-      this->saddleToPairedMin_ = {};
-      this->saddleToPairedMax_ = {};
-      this->minToPairedSaddle_ = {};
-      this->maxToPairedSaddle_ = {};
-      this->globalToLocalSaddle1_ = {};
-      this->globalToLocalSaddle2_ = {};
-      this->localEdgeToSaddle1_ = {};
-      this->sendComputeBuffer_ = {};
-      this->sendBoundaryBuffer_ = {};
       /*this->printMsg(
         "Memory cleanup", 1.0, tm.getElapsedTime(), 1, debug::LineMode::NEW);*/
 #ifdef TTK_ENABLE_MPI_TIME
@@ -1451,6 +1381,13 @@ namespace ttk {
 #endif
     }
 
+    void minMaxClear() const {
+      this->saddleToPairedMin_ = {};
+      this->saddleToPairedMax_ = {};
+      this->minToPairedSaddle_ = {};
+      this->maxToPairedSaddle_ = {};
+    }
+
     dcg::DiscreteGradient dg_{};
 
     // factor memory allocations outside computation loops
@@ -1459,7 +1396,6 @@ namespace ttk {
       saddleToPairedMax_{}, minToPairedSaddle_{}, maxToPairedSaddle_{};
     mutable std::unordered_map<ttk::SimplexId, ttk::SimplexId>
       globalToLocalSaddle1_{}, globalToLocalSaddle2_{};
-    mutable std::vector<EdgeSimplex> critEdges_{};
     mutable std::vector<std::vector<bool>> onBoundary_{};
     mutable std::vector<ttk::SimplexId> localEdgeToSaddle1_{};
     mutable std::array<std::vector<SimplexId>, 4> critCellsOrder_{};
@@ -4666,7 +4602,7 @@ void ttk::DiscreteMorseSandwichMPI::packageLocalBoundaryUpdate(
       break;
     case 3:
       printErr("NOT SUPPOSED TO BE HERE");
-      kill(getpid(), SIGINT);
+      // kill(getpid(), SIGINT);
   }
 };
 
@@ -4831,14 +4767,8 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
     if(pTau == -1) {
       saddleTau = localEdgeToSaddle1[tau];
       if(saddleTau == -1) {
-        if(tooFar) {
-          localEdgeCounter++;
-          continue;
-        } else {
-          printErr("PROBLEM HERE with " + std::to_string(s2.gid_));
-          kill(getpid(), SIGINT);
-          return 0;
-        }
+        localEdgeCounter++;
+        continue;
       }
       // maybe tau is critical and paired to a critical triangle
       do {
@@ -5174,7 +5104,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
   std::vector<std::vector<saddle<3>>> &saddles2,
   triangulationType &triangulation,
   compareEdges &cmpEdges) const {
-  for(int i = 0; i < recvBoundaryBuffer.size(); i++) {
+  for(ttk::SimplexId i = 0; i < recvBoundaryBuffer.size(); i++) {
     if(recvBoundaryBuffer[i] < -1) {
       int lock;
       ttk::SimplexId size = -recvBoundaryBuffer[i];
@@ -5360,7 +5290,9 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   globalToLocalSaddle2_.clear();
   std::vector<std::vector<saddle<3>>> saddles2(overallSize);
   auto &edgeTrianglePartner{this->edgeTrianglePartner_};
-
+  auto &onBoundaryThread{this->onBoundary_};
+  onBoundaryThread.resize(
+    threadNumber_, std::vector<bool>(triangulation.getNumberOfEdges(), false));
   // one lock per 1-saddle
   std::vector<int> s1Locks;
   // one lock per 2-saddle
@@ -5371,6 +5303,10 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     for(ttk::SimplexId i = 0; i < saddle2Number; i++) {
       globalToLocalSaddle2_.emplace(saddles2Gid[i], i);
     }
+#pragma omp task
+    this->minMaxClear();
+#pragma omp task
+    localEdgeToSaddle1_.resize(triangulation.getNumberOfEdges(), -1);
 #pragma omp task shared(saddles2)
     saddles2[0].resize(saddle2Number);
 #pragma omp task
@@ -5401,7 +5337,6 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   // sort every triangulation edges by filtration order
   const auto &edgesFiltrOrder{crit1SaddlesOrder};
 
-  auto &onBoundaryThread{this->onBoundary_};
   std::function<bool(const ttk::SimplexId, const ttk::SimplexId)> cmpEdges
     = [&edgesFiltrOrder](const ttk::SimplexId a, const ttk::SimplexId b) {
         return edgesFiltrOrder[a] > edgesFiltrOrder[b];
@@ -5728,23 +5663,49 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
       s2GlobalBoundaries[i][j].clear();
     }
   }
-  if(ttk::MPIsize_ > 1) {
-#pragma omp parallel for num_threads(ttk::MPIsize_)
-    for(int i = 0; i < ttk::MPIsize_; i++) {
-      this->sendComputeBuffer_[0][i].clear();
-      this->sendComputeBuffer_[1][i].clear();
-      this->sendBoundaryBuffer_[0][i].clear();
-      this->sendBoundaryBuffer_[1][i].clear();
+#pragma omp parallel master num_threads(threadNumber_)
+  {
+    if(ttk::MPIsize_ > 1) {
+      for(int i = 0; i < ttk::MPIsize_; i++) {
+#pragma omp task
+        this->sendComputeBuffer_[0][i].clear();
+#pragma omp task
+        this->sendComputeBuffer_[1][i].clear();
+#pragma omp task
+        this->sendBoundaryBuffer_[0][i].clear();
+#pragma omp task
+        this->sendBoundaryBuffer_[1][i].clear();
+      }
     }
+#pragma omp task
+    sendComputeBuffer_ = {};
+#pragma omp task
+    sendBoundaryBuffer_ = {};
+#pragma omp task
+    s2LocalBoundaries = {};
+#pragma omp task
+    s2GlobalBoundaries = {};
+#pragma omp task
+    saddles2 = {};
+#pragma omp task
+    s1Locks = {};
+#pragma omp task
+    s2Locks = {};
+#pragma omp task
+    saddles1Gid = {};
+#pragma omp task
+    saddles2Gid = {};
+#pragma omp task
+    globalToLocalSaddle1_ = {};
+#pragma omp task
+    globalToLocalSaddle2_ = {};
+#pragma omp task
+    localEdgeToSaddle1_ = {};
+#pragma omp task
+    edgeTrianglePartner = {};
+#pragma omp task
+    onBoundaryThread = {};
   }
-
-  s2LocalBoundaries = {};
-  s2GlobalBoundaries = {};
-  saddles2 = {};
-  s1Locks = {};
-  s2Locks = {};
-  saddles1Gid = {};
-  saddles2Gid = {};
 #ifdef TTK_ENABLE_MPI_TIME
   elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
   if(ttk::MPIrank_ == 0) {
@@ -5771,20 +5732,49 @@ void ttk::DiscreteMorseSandwichMPI::extractCriticalCells(
   const bool sortEdges) const {
 
   Timer tm{};
-
   this->dg_.getCriticalPoints(criticalCellsByDim, triangulation);
 
+  const auto dim{this->dg_.getDimensionality()};
   /*this->printMsg("Extracted critical cells", 1.0, tm.getElapsedTime(),
                  localThreadNumber, debug::LineMode::NEW);*/
-
+  std::vector<EdgeSimplex> critEdges;
+  std::vector<TriangleSimplex> critTriangles;
+  std::vector<TetraSimplex> critTetras;
   // memory allocations
-  auto &critEdges{this->critEdges_};
-  if(!sortEdges) {
-    critEdges.resize(criticalCellsByDim[1].size());
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp parallel master num_threads(threadNumber_) \
+  shared(criticalCellsByDim)
+#endif
+  {
+    if(dim > 2) {
+      if(!sortEdges) {
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task shared(critEdges)
+#endif
+        critEdges.resize(criticalCellsByDim[1].size());
+      } else {
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task shared(critEdges)
+#endif
+        critEdges.resize(triangulation.getNumberOfEdges());
+      }
+    }
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task shared(critTriangles)
+#endif
+    critTriangles.resize(criticalCellsByDim[2].size());
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task shared(critTetras)
+#endif
+    critTetras.resize(criticalCellsByDim[3].size());
+    for(int i = 1; i < dim + 1; ++i) {
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task shared(critCellsOrder_) firstprivate(i)
+#endif
+      this->critCellsOrder_[i].resize(
+        this->dg_.getNumberOfCells(i, triangulation), -1);
+    }
   }
-  std::vector<TriangleSimplex> critTriangles(criticalCellsByDim[2].size());
-  std::vector<TetraSimplex> critTetras(criticalCellsByDim[3].size());
-
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp parallel num_threads(threadNumber_)
 #endif // TTK_ENABLE_OPENMP
@@ -5880,8 +5870,6 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
   const bool ignoreBoundary,
   const bool compute2SaddlesChildren) {
 
-  // allocate memory
-  this->alloc(triangulation);
 #ifdef TTK_ENABLE_MPI_TIME
   ttk::Timer t_mpi;
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
@@ -5915,6 +5903,8 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
   // connected components (global min/max pair)
   size_t nConnComp{};
   if(dim > 2 && UseTasks) {
+    pairs.reserve(criticalCellsByDim[0].size()
+                  + criticalCellsByDim[dim].size());
     int minSadThreadNumber = std::max(1, static_cast<int>(threadNumber_ / 2));
     int maxSadThreadNumber = std::max(1, threadNumber_ - minSadThreadNumber);
     int taskNumber = std::min(2, threadNumber_);
@@ -5982,6 +5972,8 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
                                  criticalCellsByDim[2], critCellsOrder[1],
                                  critCellsOrder[2], triangulation, offsets);
     }
+  } else {
+    this->minMaxClear();
   }
 #ifdef TTK_ENABLE_MPI_TIME
   elapsedTime = ttk::endMPITimer(t_int, ttk::MPIrank_, ttk::MPIsize_);
