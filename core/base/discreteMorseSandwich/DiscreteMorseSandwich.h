@@ -24,8 +24,6 @@
 #include <DiscreteGradient.h>
 
 #include <algorithm>
-#include <array>
-#include <csignal>
 #include <numeric>
 #include <string>
 
@@ -72,7 +70,8 @@ namespace ttk {
     inline int buildGradient(const void *const scalars,
                              const size_t scalarsMTime,
                              const SimplexId *const offsets,
-                             const triangulationType &triangulation) {
+                             const triangulationType &triangulation,
+                             const std::vector<bool> *updateMask = nullptr) {
       this->dg_.setDebugLevel(this->debugLevel_);
       this->dg_.setThreadNumber(this->threadNumber_);
       this->dg_.setInputOffsets(offsets);
@@ -299,10 +298,6 @@ namespace ttk {
      */
     using tripletType = std::array<SimplexId, 3>;
 
-    struct Rep {
-      ttk::SimplexId extremaId_{0};
-      ttk::SimplexId saddleId_{-1};
-    };
     /**
      * @brief Compute persistence pairs from triplets
      *
@@ -315,17 +310,14 @@ namespace ttk {
      * @param[in] extremaOrder Order on extrema
      * @param[in] pairDim Pair birth simplex dimension
      */
-    void tripletsToPersistencePairs(
-      std::vector<PersistencePair> &pairs,
-      std::vector<bool> &pairedExtrema,
-      std::vector<bool> &pairedSaddles,
-      std::vector<Rep> &reps,
-      std::vector<tripletType> &triplets,
-      const SimplexId *const saddlesOrder,
-      const SimplexId *const extremaOrder,
-      const SimplexId pairDim,
-      const std::vector<std::array<ttk::SimplexId, 2>> &svToR,
-      std::vector<ttk::SimplexId> &saddleToPairedExtrema) const;
+    void tripletsToPersistencePairs(std::vector<PersistencePair> &pairs,
+                                    std::vector<bool> &pairedExtrema,
+                                    std::vector<bool> &pairedSaddles,
+                                    std::vector<SimplexId> &reps,
+                                    std::vector<tripletType> &triplets,
+                                    const SimplexId *const saddlesOrder,
+                                    const SimplexId *const extremaOrder,
+                                    const SimplexId pairDim) const;
 
     /**
      * @brief Detect 1-saddles paired to a given 2-saddle
@@ -438,10 +430,6 @@ namespace ttk {
 
     template <typename triangulationType>
     void alloc(const triangulationType &triangulation) {
-#ifdef TTK_ENABLE_MPI_TIME
-      ttk::Timer t_mpi;
-      ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
       Timer tm{};
       const auto dim{this->dg_.getDimensionality()};
       if(dim > 3 || dim < 1) {
@@ -454,42 +442,12 @@ namespace ttk {
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp task
 #endif // TTK_ENABLE_OPENMP
-        this->saddleToPairedMin_.resize(
-          this->dg_.getNumberOfCells(1, triangulation), -1);
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif // TTK_ENABLE_OPENMP
-        this->svToRMin_.resize(
-          this->dg_.getNumberOfCells(1, triangulation), {-1, -1});
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif // TTK_ENABLE_OPENMP
-        {
-          this->firstRepMin_.resize(triangulation.getNumberOfVertices(), Rep{});
-          for(int i = 0; i < triangulation.getNumberOfVertices(); i++) {
-            this->firstRepMin_[i].extremaId_ = i;
-          }
-        }
+        this->firstRepMin_.resize(triangulation.getNumberOfVertices());
         if(dim > 1) {
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp task
 #endif
-          {
-            this->firstRepMax_.resize(triangulation.getNumberOfCells(), Rep{});
-            for(int i = 0; i < triangulation.getNumberOfCells(); i++) {
-              this->firstRepMax_[i].extremaId_ = i;
-            }
-          }
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif // TTK_ENABLE_OPENMP
-          this->saddleToPairedMax_.resize(
-            this->dg_.getNumberOfCells(dim - 1, triangulation), -1);
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp task
-#endif // TTK_ENABLE_OPENMP
-          this->svToRMax_.resize(
-            this->dg_.getNumberOfCells(dim - 1, triangulation), {-1, -1});
+          this->firstRepMax_.resize(triangulation.getNumberOfCells());
         }
         if(dim > 2) {
 #ifdef TTK_ENABLE_OPENMP
@@ -521,25 +479,32 @@ namespace ttk {
           this->pairedCritCells_[i].resize(
             this->dg_.getNumberOfCells(i, triangulation), false);
         }
-        for(int i = 1; i < dim + 1; ++i) {
+        // NOTE:
+        // a for loop used to stand here, but gcc 13 looks buggy with it...
+        if(dim >= 1) {
 #ifdef TTK_ENABLE_OPENMP
 #pragma omp task
 #endif
-          this->critCellsOrder_[i].resize(
-            this->dg_.getNumberOfCells(i, triangulation), -1);
+          this->critCellsOrder_[1].resize(
+            this->dg_.getNumberOfCells(1, triangulation), -1);
+        }
+        if(dim >= 2) {
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task
+#endif
+          this->critCellsOrder_[2].resize(
+            this->dg_.getNumberOfCells(2, triangulation), -1);
+        }
+        if(dim >= 3) {
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task
+#endif
+          this->critCellsOrder_[3].resize(
+            this->dg_.getNumberOfCells(3, triangulation), -1);
         }
       }
-#ifdef TTK_ENABLE_MPI_TIME
-      double elapsedTime
-        = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-      if(ttk::MPIrank_ == 0) {
-        printMsg("Memory allocations performed using "
-                 + std::to_string(ttk::MPIsize_)
-                 + " MPI processes lasted :" + std::to_string(elapsedTime));
-      }
-#endif
-      /*this->printMsg("Memory allocations", 1.0, tm.getElapsedTime(), 1,
-                     debug::LineMode::NEW, debug::Priority::DETAIL);*/
+      this->printMsg("Memory allocations", 1.0, tm.getElapsedTime(), 1,
+                     debug::LineMode::NEW, debug::Priority::DETAIL);
     }
 
     void clear() {
@@ -553,10 +518,6 @@ namespace ttk {
       this->pairedCritCells_ = {};
       this->onBoundary_ = {};
       this->critCellsOrder_ = {};
-      this->saddleToPairedMin_ = {};
-      this->saddleToPairedMax_ = {};
-      this->svToRMin_ = {};
-      this->svToRMax_ = {};
       this->printMsg("Memory cleanup", 1.0, tm.getElapsedTime(), 1,
                      debug::LineMode::NEW, debug::Priority::DETAIL);
     }
@@ -564,10 +525,8 @@ namespace ttk {
     dcg::DiscreteGradient dg_{};
 
     // factor memory allocations outside computation loops
-    mutable std::vector<std::array<ttk::SimplexId, 2>> svToRMin_{}, svToRMax_{};
-    mutable std::vector<Rep> firstRepMin_{}, firstRepMax_{};
-    mutable std::vector<ttk::SimplexId> edgeTrianglePartner_{}, s2Mapping_{},
-      s1Mapping_{}, saddleToPairedMin_{}, saddleToPairedMax_{};
+    mutable std::vector<SimplexId> firstRepMin_{}, firstRepMax_{},
+      edgeTrianglePartner_{}, s2Mapping_{}, s1Mapping_{};
     mutable std::vector<EdgeSimplex> critEdges_{};
     mutable std::array<std::vector<bool>, 4> pairedCritCells_{};
     mutable std::vector<bool> onBoundary_{};
@@ -690,59 +649,40 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
   const triangulationType &triangulation) const {
 
   Timer tm{};
-  // Timer t{};
 
   auto saddle1ToMinima = getSaddle1ToMinima(criticalEdges, triangulation);
 
   Timer tmseq{};
-  // float getTripletsTime = t.getElapsedTime();
-  // t.reStart();
+
   auto &firstRep{this->firstRepMin_};
-  auto &saddleToPairedExtrema{this->saddleToPairedMin_};
-  auto &svToR{this->svToRMin_};
-  // std::iota(firstRep.begin(), firstRep.end(), 0);
+  std::iota(firstRep.begin(), firstRep.end(), 0);
   std::vector<tripletType> sadMinTriplets{};
-  // float svToRInit = t.getElapsedTime();
-  // t.reStart();
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp declare reduction (merge : std::vector<tripletType> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
-#pragma omp parallel for reduction(merge : sadMinTriplets) schedule(static)
-#endif
+
   for(size_t i = 0; i < saddle1ToMinima.size(); ++i) {
     auto &mins = saddle1ToMinima[i];
     const auto s1 = criticalEdges[i];
     // remove duplicates
-    std::sort(mins.begin(), mins.end());
+    TTK_PSORT(this->threadNumber_, mins.begin(), mins.end());
     const auto last = std::unique(mins.begin(), mins.end());
     mins.erase(last, mins.end());
     if(mins.size() != 2) {
       continue;
     }
-    svToR[s1][0] = mins[0];
-    svToR[s1][1] = mins[1];
     sadMinTriplets.emplace_back(tripletType{s1, mins[0], mins[1]});
   }
-  // float preTreatmentTime = t.getElapsedTime();
+  for(int i = 0; i < sadMinTriplets.size(); i++) {
+    printMsg("Triplets " + std::to_string(sadMinTriplets[i][0]) + ", "
+             + std::to_string(sadMinTriplets[i][1]) + ", "
+             + std::to_string(sadMinTriplets[i][2]));
+  }
   tripletsToPersistencePairs(pairs, pairedMinima, paired1Saddles, firstRep,
-                             sadMinTriplets, critEdgesOrder.data(), offsets, 0,
-                             svToR, saddleToPairedExtrema);
+                             sadMinTriplets, critEdgesOrder.data(), offsets, 0);
+
   const auto nMinSadPairs = pairs.size();
 
   this->printMsg(
     "Computed " + std::to_string(nMinSadPairs) + " min-saddle pairs", 1.0,
     tm.getElapsedTime(), this->threadNumber_);
-  /*this->printMsg("triplets creation time for min-saddle took "
-                 + std::to_string(getTripletsTime) + "s");
-  this->printMsg("svToR init for min-saddle took " + std::to_string(svToRInit)
-                 + "s");
-  this->printMsg("pre treatment for min-saddle took "
-                 + std::to_string(preTreatmentTime) + "s");
-  this->printMsg("getRep time for min-saddle took " + std::to_string(getRepTime)
-                 + "s");
-  this->printMsg("saddleCreatTime for min-saddle took "
-                 + std::to_string(saddleToPairedExtremaTime) + "s");
-  this->printMsg("post treatment time for min-saddle took "
-                 + std::to_string(postTreatmentTime) + "s");*/
 
   this->printMsg("min-saddle pairs sequential part", 1.0,
                  tmseq.getElapsedTime(), 1, debug::LineMode::NEW,
@@ -760,7 +700,6 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
   const triangulationType &triangulation) const {
 
   Timer tm{};
-  // Timer t{};
 
   const auto dim = this->dg_.getDimensionality();
 
@@ -792,32 +731,24 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
           triangulation);
 
   Timer tmseq{};
-  // float getTripletsTime = t.getElapsedTime();
-  // t.reStart();
+
   auto &firstRep{this->firstRepMax_};
-  auto &saddleToPairedExtrema{this->saddleToPairedMax_};
-  auto &svToR{this->svToRMax_};
-  // std::iota(firstRep.begin(), firstRep.end(), 0);
+  std::iota(firstRep.begin(), firstRep.end(), 0);
   std::vector<tripletType> sadMaxTriplets{};
-  // float svToRInit = t.getElapsedTime();
-  // t.reStart();
-#ifdef TTK_ENABLE_OPENMP
-#pragma omp declare reduction (merge : std::vector<tripletType> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
-#pragma omp parallel for reduction(merge : sadMaxTriplets) schedule(static)
-#endif
+
   for(size_t i = 0; i < saddle2ToMaxima.size(); ++i) {
     auto &maxs = saddle2ToMaxima[i];
     // remove duplicates
-    std::sort(
-      maxs.begin(), maxs.end(), [](const SimplexId a, const SimplexId b) {
-        // positive values (actual maxima) before negative ones
-        // (boundary component id)
-        if(a * b >= 0) {
-          return a < b;
-        } else {
-          return a > b;
-        }
-      });
+    TTK_PSORT(this->threadNumber_, maxs.begin(), maxs.end(),
+              [](const SimplexId a, const SimplexId b) {
+                // positive values (actual maxima) before negative ones
+                // (boundary component id)
+                if(a * b >= 0) {
+                  return a < b;
+                } else {
+                  return a > b;
+                }
+              });
     const auto last = std::unique(maxs.begin(), maxs.end());
     maxs.erase(last, maxs.end());
 
@@ -828,36 +759,23 @@ void ttk::DiscreteMorseSandwich::getMaxSaddlePairs(
     }
 
     const auto s2 = criticalSaddles[i];
-    svToR[s2][0] = maxs[0];
-    svToR[s2][1] = maxs[1];
     if(!pairedSaddles[s2]) {
       sadMaxTriplets.emplace_back(tripletType{s2, maxs[0], maxs[1]});
     }
   }
+
   const auto nMinSadPairs = pairs.size();
-  // float preTreatmentTime = t.getElapsedTime();
+
   tripletsToPersistencePairs(pairs, pairedMaxima, pairedSaddles, firstRep,
                              sadMaxTriplets, critSaddlesOrder.data(),
-                             critMaxsOrder.data(), dim - 1, svToR,
-                             saddleToPairedExtrema);
+                             critMaxsOrder.data(), dim - 1);
 
   const auto nSadMaxPairs = pairs.size() - nMinSadPairs;
 
   this->printMsg(
     "Computed " + std::to_string(nSadMaxPairs) + " saddle-max pairs", 1.0,
     tm.getElapsedTime(), this->threadNumber_);
-  /*this->printMsg("triplets creation time for saddle-max took "
-                 + std::to_string(getTripletsTime) + "s");
-  this->printMsg("svToR init for saddle-max took " + std::to_string(svToRInit)
-                 + "s");
-  this->printMsg("pre treatment for saddle-max took "
-                 + std::to_string(preTreatmentTime) + "s");
-  this->printMsg("getRep time for  saddle-max took "
-                 + std::to_string(getRepTime) + "s");
-  this->printMsg("saddleCreatTime for  saddle-max took "
-                 + std::to_string(saddleToPairedExtremaTime) + "s");
-  this->printMsg("post treatment time for  saddle-max took "
-                 + std::to_string(postTreatmentTime) + "s");*/
+
   this->printMsg("saddle-max pairs sequential part", 1.0,
                  tmseq.getElapsedTime(), 1, debug::LineMode::NEW,
                  debug::Priority::VERBOSE);
@@ -1099,6 +1017,7 @@ void ttk::DiscreteMorseSandwich::getSaddleSaddlePairs(
   Timer tmseq{};
 
   // extract saddle-saddle pairs from computed boundaries
+
   for(size_t i = 0; i < saddles2.size(); ++i) {
     if(!s2Boundaries[i].empty()) {
       const auto s2 = saddles2[i];
@@ -1246,9 +1165,9 @@ void ttk::DiscreteMorseSandwich::extractCriticalCells(
     }
   }
 
-  /*this->printMsg("Extracted & sorted critical cells", 1.0,
-     tm.getElapsedTime(), this->threadNumber_, debug::LineMode::NEW,
-                 debug::Priority::DETAIL);*/
+  this->printMsg("Extracted & sorted critical cells", 1.0, tm.getElapsedTime(),
+                 this->threadNumber_, debug::LineMode::NEW,
+                 debug::Priority::DETAIL);
 }
 
 template <typename triangulationType>
@@ -1261,10 +1180,7 @@ int ttk::DiscreteMorseSandwich::computePersistencePairs(
 
   // allocate memory
   this->alloc(triangulation);
-#ifdef TTK_ENABLE_MPI_TIME
-  ttk::Timer t_mpi;
-  ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-#endif
+
   Timer tm{};
   pairs.clear();
   const auto dim = this->dg_.getDimensionality();
@@ -1278,14 +1194,6 @@ int ttk::DiscreteMorseSandwich::computePersistencePairs(
   this->extractCriticalCells(
     criticalCellsByDim, critCellsOrder, offsets, triangulation, dim == 3);
 
-#ifdef TTK_ENABLE_MPI_TIME
-  double elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Extract critical cells performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-#endif
   // if minima are paired
   auto &pairedMinima{this->pairedCritCells_[0]};
   // if 1-saddles are paired
@@ -1360,7 +1268,7 @@ int ttk::DiscreteMorseSandwich::computePersistencePairs(
       pairs, paired1Saddles, paired2Saddles, false, tmp, criticalCellsByDim[1],
       criticalCellsByDim[2], critCellsOrder[1], triangulation);
   }
-  /*
+
   if(std::is_same<triangulationType, ttk::ExplicitTriangulation>::value) {
     // create infinite pairs from non-paired 1-saddles, 2-saddles and maxima
     size_t nHandles{}, nCavities{}, nNonPairedMax{};
@@ -1419,17 +1327,10 @@ int ttk::DiscreteMorseSandwich::computePersistencePairs(
     tm.getElapsedTime(), this->threadNumber_);
 
   this->displayStats(pairs, criticalCellsByDim, pairedMinima, paired1Saddles,
-                     paired2Saddles, pairedMaxima);*/
+                     paired2Saddles, pairedMaxima);
 
   // free memory
   this->clear();
-#ifdef TTK_ENABLE_MPI_TIME
-  elapsedTime = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
-  if(ttk::MPIrank_ == 0) {
-    printMsg("Computation of persistence pairs performed using "
-             + std::to_string(ttk::MPIsize_)
-             + " MPI processes lasted :" + std::to_string(elapsedTime));
-  }
-#endif
+
   return 0;
 }
