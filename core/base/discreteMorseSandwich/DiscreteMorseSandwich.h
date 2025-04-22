@@ -670,11 +670,6 @@ void ttk::DiscreteMorseSandwich::getMinSaddlePairs(
     }
     sadMinTriplets.emplace_back(tripletType{s1, mins[0], mins[1]});
   }
-  for(int i = 0; i < sadMinTriplets.size(); i++) {
-    printMsg("Triplets " + std::to_string(sadMinTriplets[i][0]) + ", "
-             + std::to_string(sadMinTriplets[i][1]) + ", "
-             + std::to_string(sadMinTriplets[i][2]));
-  }
   tripletsToPersistencePairs(pairs, pairedMinima, paired1Saddles, firstRep,
                              sadMinTriplets, critEdgesOrder.data(), offsets, 0);
 
