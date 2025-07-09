@@ -45,7 +45,7 @@ TTKPERSISTENCEDIAGRAM_EXPORT int DiagramToVTU(vtkUnstructuredGrid *vtu,
                                               const ttk::Debug &dbg,
                                               const int dim,
                                               const bool embedInDomain);
-
+#ifdef TTK_ENABLE_MPI
 TTKPERSISTENCEDIAGRAM_EXPORT int
   DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
                           const ttk::DiagramType &diagram,
@@ -53,7 +53,7 @@ TTKPERSISTENCEDIAGRAM_EXPORT int
                           const ttk::Debug &dbg,
                           const int dim,
                           const bool embedInDomain);
-
+#endif
 /**
  * @brief Generate the spatial embedding of a given Persistence Diagram
  *

@@ -1,32 +1,29 @@
 /// \ingroup baseCode
 /// \class ttk::DiscreteMorseSandwichMPI
-/// \author Julien Tierny <julien.tierny@lip6.fr>
-/// \author Pierre Guillou <pierre.guillou@lip6.fr>
-/// \date January 2021.
+/// \author Eve Le Guillou <eve.le-guillou@lip6.fr>
+/// \date September 2025.
 ///
 /// \brief TTK %DiscreteMorseSandwichMPI processing package.
 ///
 /// %DiscreteMorseSandwichMPI computes a Persistence Diagram by using the
-/// %Discrete Morse-Theory %DiscreteGradient algorithms.
+/// %Distributed Discrete Morse-Theory %DiscreteGradient algorithms.
 ///
 /// \b Related \b publication \n
-/// "Discrete Morse Sandwich: Fast Computation of Persistence Diagrams for
-/// Scalar Data -- An Algorithm and A Benchmark" \n
-/// Pierre Guillou, Jules Vidal, Julien Tierny \n
-/// IEEE Transactions on Visualization and Computer Graphics, 2023.\n
-/// arXiv:2206.13932, 2023.
+/// "Distributed Discrete Morse Sandwich: Efficient Computation
+//  of Persistence Diagrams for Massive Scalar Data" \n
+/// Eve Le Guillou, Pierre Fortin, Julien Tierny \n
+/// arXiv:2505.21266, 2025.
 ///
 ///
 /// \sa ttk::dcg::DiscreteGradient
 
 #pragma once
-
+#ifdef TTK_ENABLE_MPI
 #include <DiscreteGradient.h>
 
 #include <algorithm>
 #include <array>
 #include <csignal>
-//#include <execution>
 #include <numeric>
 #include <random>
 #include <string>
@@ -52,7 +49,10 @@ namespace ttk {
         : birth{b}, death{d}, type{t} {
       }
     };
-
+    /**
+     * @brief Representative of an extrema
+     *
+     */
     struct Rep {
       ttk::SimplexId extremaId_{0};
       ttk::SimplexId saddleId_{-1};
@@ -101,21 +101,21 @@ namespace ttk {
       // sort vertices in decreasing order
       std::sort(vertsOrder, vertsOrder + 4, std::greater<ttk::SimplexId>());
     };
-
+    /**
+     * @brief Struct used to send v-paths during the computation
+     *
+     */
     struct vpathToSend {
       ttk::SimplexId saddleId_;
       ttk::SimplexId extremaId_;
       char saddleRank_;
     };
 
-    struct MessageAndMPIInfo {
-      std::vector<ttk::SimplexId> *m;
-      ttk::SimplexId receiver;
-      int tag;
-      MPI_Request *request;
-      int size;
-    };
-
+    /**
+     * @brief Struct used to send v-paths back to their
+     * owner once the computation is over
+     *
+     */
     template <int sizeExtr>
     struct vpathFinished {
       ttk::SimplexId saddleId_;
@@ -158,7 +158,13 @@ namespace ttk {
       MPI_Type_create_struct(5, lengths, mpi_offsets, types, &MPI_MessageType);
       MPI_Type_commit(&MPI_MessageType);
     };
-
+    /**
+     * @brief Message type of the self-correcting algorithm for min-sad and
+     * sad-max
+     *
+     * @tparam sizeExtr: dimension of the extrema
+     * @tparam sizeSad: dimension of the saddle
+     */
     template <int sizeExtr, int sizeSad>
     struct messageType {
       ttk::SimplexId sOrder_[sizeSad];
@@ -304,6 +310,7 @@ namespace ttk {
       }
       return false;
     };
+
     template <int extrSize, int sadSize>
     void createMPIMessageType(MPI_Datatype &MPI_MessageType) const {
       ttk::SimplexId id = 0;
@@ -337,6 +344,13 @@ namespace ttk {
       MPI_Type_commit(&MPI_MessageType);
     };
 
+    /**
+     * @brief Struct representing extrema for the computation of min-sad and
+     * sad-max.
+     *
+     * @tparam size: size of the order array (equal to the dimension of the
+     * simplex)
+     */
     template <int size>
     struct extremaNode {
       ttk::SimplexId gid_{-1};
@@ -406,7 +420,13 @@ namespace ttk {
       std::vector<ttk::SimplexId> saddleIds_;
       char rank_;
     };
-
+    /**
+     * @brief Struct representing saddles for the computation of min-sad and
+     * sad-max.
+     *
+     * @tparam size: size of the order array (equal to the dimension of the
+     * simplex)
+     */
     template <int size>
     struct saddleEdge {
       ttk::SimplexId gid_{-1};
@@ -460,7 +480,12 @@ namespace ttk {
         return this->gid_ < s1.gid_;
       }
     };
-
+    /**
+     * @brief Struct representing saddles for the computation of sad-sad.
+     *
+     * @tparam size: size of the order array (equal to the dimension of the
+     * simplex)
+     */
     template <int size>
     struct saddle {
       ttk::SimplexId gid_{-1};
@@ -509,7 +534,11 @@ namespace ttk {
         return this->gid_ > s1.gid_;
       };
     };
-
+    /**
+     * @brief Struct holding the maximum value of an edge on a process for
+     * a particular propagation (used in sad-sad pairings).
+     *
+     */
     struct maxPerProcess {
       ttk::SimplexId proc_;
       ttk::SimplexId max_[2];
@@ -543,23 +572,64 @@ namespace ttk {
       }
     };
 
+    /**
+     * @brief Updates the max of the global boundary of a propagation
+     *
+     * @tparam GlobalBoundary: the global boundary type
+     * @param m: the value of the new max
+     * @param maxBoundary: the global boundary to update
+     */
     template <typename GlobalBoundary>
     void updateMax(maxPerProcess m, GlobalBoundary &maxBoundary) const;
-
+    /**
+     * @brief Get the max of a process for a global boundary
+     *
+     * @tparam GlobalBoundary: the global boundary type
+     * @param rank: the rank of the process
+     * @param currentMax: the retrieved max
+     * @param maxBoundary: the Global Boundary
+     */
     template <typename GlobalBoundary>
     void getMaxOfProc(ttk::SimplexId rank,
                       ttk::SimplexId *currentMax,
                       GlobalBoundary &maxBoundary) const;
-
+    /**
+     * @brief Checks if a Local-Global Boundary is empty
+     *
+     * @tparam GlobalBoundary: the global boundary type
+     * @tparam LocalBoundary: the local boundary type
+     * @param localBoundary: the local boundary to check
+     * @param globalBoundary: the global boundary to check
+     * @return true if both are empty
+     * @return false if at least one is not empty
+     */
     template <typename GlobalBoundary, typename LocalBoundary>
     bool isEmpty(LocalBoundary &localBoundary,
                  GlobalBoundary &globalBoundary) const;
-
+    /**
+     * @brief Add an edge to the local boundary
+     *
+     * @tparam LocalBoundary
+     * @param e: edge to add
+     * @param isOnBoundary: true if the edge is already in the local boundary
+     * @param localBoundary: local boundary
+     * @return true: if the edge has been added to the local boundary
+     * @return false: if the edge has been removed from the local boundary
+     */
     template <typename LocalBoundary>
     bool addBoundary(const SimplexId e,
                      bool isOnBoundary,
                      LocalBoundary &localBoundary) const;
-
+    /**
+     * @brief Update the max in a global boundary for a particular process
+     *
+     * @tparam GlobalBoundary: type of the global boundary
+     * @param s2: originating triangle of the boundary
+     * @param tauOrder: value of the new max
+     * @param boundary: global boundary to update
+     * @param rank: rank of the process
+     * @param computeProc: rank of the process to notify of this update
+     */
     template <typename GlobalBoundary>
     void updateMaxBoundary(
       const SimplexId s2,
@@ -803,36 +873,26 @@ namespace ttk {
       const GSR getSimplexRank,
       int localThreadNumber) const;
 
-    template <typename triangulationType,
-              typename GlobalBoundary,
-              typename LocalBoundary,
-              typename compareEdges>
+    template <typename GlobalBoundary, typename LocalBoundary>
     void mergeDistributedBoundary(
       std::vector<ttk::SimplexId> &recvBoundaryBuffer,
       std::vector<std::vector<int>> &s2Locks,
       std::vector<std::vector<GlobalBoundary>> &globalBoundaries,
       std::vector<std::vector<LocalBoundary>> &localBoundaries,
       std::vector<std::vector<saddle<3>>> &saddles2,
-      triangulationType &triangulation,
-      compareEdges &cmpEdges,
       ttk::SimplexId i,
       ttk::SimplexId lidBlock,
       ttk::SimplexId lidElement,
       ttk::SimplexId pTauLidBlock,
       ttk::SimplexId pTauLidElement) const;
 
-    template <typename triangulationType,
-              typename GlobalBoundary,
-              typename LocalBoundary,
-              typename compareEdges>
+    template <typename GlobalBoundary, typename LocalBoundary>
     void addDistributedEdgeToLocalBoundary(
       std::vector<ttk::SimplexId> &recvBoundaryBuffer,
       std::vector<std::vector<int>> &s2Locks,
       std::vector<std::vector<GlobalBoundary>> &globalBoundaries,
       std::vector<std::vector<LocalBoundary>> &localBoundaries,
       std::vector<std::vector<saddle<3>>> &saddles2,
-      triangulationType &triangulation,
-      compareEdges &cmpEdges,
       ttk::SimplexId i,
       ttk::SimplexId lidBlock,
       ttk::SimplexId lidElement,
@@ -4697,7 +4757,6 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
         const auto globMax{*globalBoundaryIds.begin()};
         tau = *localBoundaryIds.begin();
         fillEdgeOrder(tau, offsets, triangulation, tauOrder);
-        int threadNumber = omp_get_thread_num();
         updateMaxBoundary(
           s2.gid_, tauOrder, globalBoundaryIds, ttk::MPIrank_, globMax.proc_);
         clearOnBoundary();
@@ -4713,7 +4772,6 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
     if(!globalBoundaryIds.empty()) {
       const auto globMax{*globalBoundaryIds.begin()};
       if(localBoundaryIds.empty()) {
-        int threadNumber = omp_get_thread_num();
         updateMaxBoundary(
           s2.gid_, tauOrder, globalBoundaryIds, ttk::MPIrank_, globMax.proc_);
         clearOnBoundary();
@@ -4728,7 +4786,6 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
           tooFar = true;
           tooFarCounter++;
           if(tooFar && tooFarCounter > this->sadSadLimit_) {
-            int threadNumber = omp_get_thread_num();
             updateMaxBoundary(s2.gid_, tauOrder, globalBoundaryIds,
                               ttk::MPIrank_, globMax.proc_);
             clearOnBoundary();
@@ -4937,18 +4994,13 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
   return -1;
 }
 
-template <typename triangulationType,
-          typename GlobalBoundary,
-          typename LocalBoundary,
-          typename compareEdges>
+template <typename GlobalBoundary, typename LocalBoundary>
 void ttk::DiscreteMorseSandwichMPI::mergeDistributedBoundary(
   std::vector<ttk::SimplexId> &recvBoundaryBuffer,
   std::vector<std::vector<int>> &s2Locks,
   std::vector<std::vector<GlobalBoundary>> &globalBoundaries,
   std::vector<std::vector<LocalBoundary>> &localBoundaries,
   std::vector<std::vector<saddle<3>>> &saddles2,
-  triangulationType &triangulation,
-  compareEdges &cmpEdges,
   ttk::SimplexId i,
   ttk::SimplexId lidBlock,
   ttk::SimplexId lidElement,
@@ -5023,18 +5075,13 @@ void ttk::DiscreteMorseSandwichMPI::mergeDistributedBoundary(
   }
 }
 
-template <typename triangulationType,
-          typename GlobalBoundary,
-          typename LocalBoundary,
-          typename compareEdges>
+template <typename GlobalBoundary, typename LocalBoundary>
 void ttk::DiscreteMorseSandwichMPI::addDistributedEdgeToLocalBoundary(
   std::vector<ttk::SimplexId> &recvBoundaryBuffer,
   std::vector<std::vector<int>> &s2Locks,
   std::vector<std::vector<GlobalBoundary>> &globalBoundaries,
   std::vector<std::vector<LocalBoundary>> &localBoundaries,
   std::vector<std::vector<saddle<3>>> &saddles2,
-  triangulationType &triangulation,
-  compareEdges &cmpEdges,
   ttk::SimplexId i,
   ttk::SimplexId lidBlock,
   ttk::SimplexId lidElement,
@@ -5172,8 +5219,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
             // s is present
             this->mergeDistributedBoundary(
               recvBoundaryBuffer, s2Locks, globalBoundaries, localBoundaries,
-              saddles2, triangulation, cmpEdges, i, lidBlock, lidElement,
-              pTauLidBlock, pTauLidElement);
+              saddles2, i, lidBlock, lidElement, pTauLidBlock, pTauLidElement);
           } else {
             // pTau is not present on this process, therefore only the global
             // boundary needs to be update s is necessarily present
@@ -5215,8 +5261,7 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
 
           this->addDistributedEdgeToLocalBoundary(
             recvBoundaryBuffer, s2Locks, globalBoundaries, localBoundaries,
-            saddles2, triangulation, cmpEdges, i, lidBlock, lidElement, leid1,
-            leid2);
+            saddles2, i, lidBlock, lidElement, leid1, leid2);
         }
       }
     }
@@ -6057,3 +6102,4 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
 
   return 0;
 }
+#endif // TTK_ENABLE_MPI

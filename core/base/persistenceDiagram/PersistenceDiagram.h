@@ -169,6 +169,7 @@ namespace ttk {
       DISCRETE_MORSE_SANDWICH = 2,
       APPROXIMATE_TOPOLOGY = 3,
       PERSISTENT_SIMPLEX = 4,
+      DISCRETE_MORSE_SANDWICH_MPI = 5,
     };
 
     PersistenceDiagram();
@@ -179,12 +180,21 @@ namespace ttk {
 
     inline void setComputeMinSad(const bool data) {
       this->dms_.setComputeMinSad(data);
+#ifdef TTK_ENABLE_MPI
+      this->dmsMPI_.setComputeMinSad(data);
+#endif
     }
     inline void setComputeSadSad(const bool data) {
       this->dms_.setComputeSadSad(data);
+#ifdef TTK_ENABLE_MPI
+      this->dmsMPI_.setComputeSadSad(data);
+#endif
     }
     inline void setComputeSadMax(const bool data) {
       this->dms_.setComputeSadMax(data);
+#ifdef TTK_ENABLE_MPI
+      this->dmsMPI_.setComputeSadMax(data);
+#endif
     }
 
     /**
@@ -246,12 +256,23 @@ namespace ttk {
                                  const SimplexId *inputOffsets,
                                  const triangulationType *triangulation);
 
+#ifdef TTK_ENABLE_MPI
+    template <typename scalarType, class triangulationType>
+    int executeDiscreteMorseSandwichMPI(std::vector<PersistencePair> &CTDiagram,
+                                        const scalarType *inputScalars,
+                                        const size_t scalarsMTime,
+                                        const SimplexId *inputOffsets,
+                                        const triangulationType *triangulation);
+#endif
+
     template <typename scalarType, class triangulationType>
     int executeDiscreteMorseSandwich(std::vector<PersistencePair> &CTDiagram,
                                      const scalarType *inputScalars,
                                      const size_t scalarsMTime,
                                      const SimplexId *inputOffsets,
-                                     const triangulationType *triangulation);
+                                     const triangulationType *triangulation,
+                                     const std::vector<bool> *updateMask
+                                     = nullptr);
 
     template <class triangulationType>
     void checkProgressivityRequirement(const triangulationType *triangulation);
@@ -276,8 +297,17 @@ namespace ttk {
           dms_.preconditionTriangulation(triangulation);
           triangulation->preconditionManifold();
         }
+#ifdef TTK_ENABLE_MPI
+        if(this->BackEnd == BACKEND::DISCRETE_MORSE_SANDWICH_MPI) {
+          dmsMPI_.setDebugLevel(debugLevel_);
+          dmsMPI_.setThreadNumber(threadNumber_);
+          dmsMPI_.preconditionTriangulation(triangulation);
+          triangulation->preconditionManifold();
+        }
+#endif
         if(this->BackEnd == BACKEND::PERSISTENT_SIMPLEX
-           || this->BackEnd == BACKEND::DISCRETE_MORSE_SANDWICH) {
+           || this->BackEnd == BACKEND::DISCRETE_MORSE_SANDWICH
+           || this->BackEnd == BACKEND::DISCRETE_MORSE_SANDWICH_MPI) {
           psp_.preconditionTriangulation(triangulation);
         }
       }
@@ -301,8 +331,10 @@ namespace ttk {
     ftm::FTMTreePP contourTree_{};
     dcg::DiscreteGradient dcg_{};
     PersistentSimplexPairs psp_{};
-    DiscreteMorseSandwichMPI dms_{};
-
+    DiscreteMorseSandwich dms_{};
+#ifdef TTK_ENABLE_MPI
+    DiscreteMorseSandwichMPI dmsMPI_{};
+#endif
     // int BackEnd{0};
     BACKEND BackEnd{BACKEND::DISCRETE_MORSE_SANDWICH};
     // progressivity
@@ -426,21 +458,34 @@ int ttk::PersistenceDiagram::execute(std::vector<PersistencePair> &CTDiagram,
     case BACKEND::FTM:
       executeFTM(CTDiagram, inputScalars, inputOffsets, triangulation);
       break;
+    case BACKEND::DISCRETE_MORSE_SANDWICH_MPI:
+#ifdef TTK_ENABLE_MPI
+      executeDiscreteMorseSandwichMPI(
+        CTDiagram, inputScalars, scalarsMTime, inputOffsets, triangulation);
+#else
+      this->printWrn("TTK is not compiled with MPI. Running sequentially.");
+      this->printWrn("If you want to run TTK with MPI, compile it with "
+                     "TTK_ENABLE_MPI to ON.");
+      executeDiscreteMorseSandwich(
+        CTDiagram, inputScalars, scalarsMTime, inputOffsets, triangulation);
+#endif
+      break;
     default:
       printErr("No method was selected");
   }
 
   this->printMsg("Complete", 1.0, tm.getElapsedTime(), this->threadNumber_);
-
+#ifdef TTK_ENABLE_MPI
   if(!isRunningWithMPI()) {
+#endif
     // augment persistence pairs with meta-data
     augmentPersistenceDiagram(CTDiagram, inputScalars, triangulation);
 
     // finally sort the diagram
     sortPersistenceDiagram(CTDiagram, inputOffsets);
-  } else {
-    /* TODO: nothing?*/
+#ifdef TTK_ENABLE_MPI
   }
+#endif
 
   printMsg(ttk::debug::Separator::L1);
 
@@ -525,15 +570,95 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   const scalarType *inputScalars,
   const size_t scalarsMTime,
   const SimplexId *inputOffsets,
+  const triangulationType *triangulation,
+  const std::vector<bool> *updateMask) {
+
+  Timer const tm{};
+  const auto dim = triangulation->getDimensionality();
+  dms_.setThreadNumber(this->threadNumber_);
+
+  dms_.buildGradient(
+    inputScalars, scalarsMTime, inputOffsets, *triangulation, updateMask);
+  std::vector<DiscreteMorseSandwich::PersistencePair> dms_pairs{};
+  dms_.computePersistencePairs(
+    dms_pairs, inputOffsets, *triangulation, this->IgnoreBoundary);
+  CTDiagram.resize(dms_pairs.size());
+
+  // transform DiscreteMorseSandwich pairs (critical cells id) to PL
+  // pairs (vertices id)
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp parallel for num_threads(threadNumber_)
+#endif // TTK_ENABLE_OPENMP
+  for(size_t i = 0; i < dms_pairs.size(); ++i) {
+    auto &pair{dms_pairs[i]};
+    if(pair.type > 0) {
+      pair.birth = dms_.getCellGreaterVertex(
+        Cell{pair.type, pair.birth}, *triangulation);
+    }
+    if(pair.death != -1) {
+      pair.death = dms_.getCellGreaterVertex(
+        Cell{pair.type + 1, pair.death}, *triangulation);
+    }
+  }
+
+  // find the global maximum
+  const auto nVerts = triangulation->getNumberOfVertices();
+  const SimplexId globmax = std::distance(
+    inputOffsets, std::max_element(inputOffsets, inputOffsets + nVerts));
+
+  // convert pairs to the relevant format
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp parallel for num_threads(threadNumber_)
+#endif // TTK_ENABLE_OPENMP
+  for(size_t i = 0; i < dms_pairs.size(); ++i) {
+    const auto &p{dms_pairs[i]};
+    const auto isFinite = (p.death >= 0);
+    const auto death = isFinite ? p.death : globmax;
+
+    if(p.type == 0) {
+      const auto dtype = (isFinite && dim > 1) ? CriticalType::Saddle1
+                                               : CriticalType::Local_maximum;
+      CTDiagram[i] = PersistencePair{
+        CriticalVertex{p.birth, {}, {}, {}, CriticalType::Local_minimum},
+        CriticalVertex{death, {}, {}, {}, dtype}, p.type, isFinite};
+    } else if(p.type == 1) {
+      const auto btype
+        = (dim == 3) ? CriticalType::Saddle1 : CriticalType::Saddle2;
+      const auto dtype = (isFinite && dim == 3) ? CriticalType::Saddle2
+                                                : CriticalType::Local_maximum;
+      CTDiagram[i] = PersistencePair{CriticalVertex{p.birth, {}, {}, {}, btype},
+                                     CriticalVertex{death, {}, {}, {}, dtype},
+                                     p.type, isFinite};
+    } else if(p.type == 2) {
+      const auto btype = (isFinite || dim == 3) ? CriticalType::Saddle2
+                                                : CriticalType::Local_maximum;
+      CTDiagram[i] = PersistencePair{
+        CriticalVertex{p.birth, {}, {}, {}, btype},
+        CriticalVertex{death, {}, {}, {}, CriticalType::Local_maximum}, p.type,
+        isFinite};
+    }
+  }
+
+  return 0;
+}
+
+#ifdef TTK_ENABLE_MPI
+template <typename scalarType, class triangulationType>
+int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
+  std::vector<PersistencePair> &CTDiagram,
+  const scalarType *inputScalars,
+  const size_t scalarsMTime,
+  const SimplexId *inputOffsets,
   const triangulationType *triangulation) {
 
   Timer const tm{};
   const auto dim = triangulation->getDimensionality();
-  dms_.setUseTasks(UseTasks);
+  dmsMPI_.setUseTasks(UseTasks);
 
-  dms_.buildGradient(inputScalars, scalarsMTime, inputOffsets, *triangulation);
+  dmsMPI_.buildGradient(
+    inputScalars, scalarsMTime, inputOffsets, *triangulation);
   std::vector<DiscreteMorseSandwichMPI::PersistencePair> dms_pairs{};
-  dms_.computePersistencePairs(
+  dmsMPI_.computePersistencePairs(
     dms_pairs, inputOffsets, *triangulation, this->IgnoreBoundary);
   CTDiagram.resize(dms_pairs.size());
 
@@ -691,13 +816,6 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
         }
     }
   };
-#ifdef TTK_ENABLE_OPENMP
-//#pragma omp declare reduction(merge :std::vector<dataRequest>:
-//omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) #pragma omp
-//parallel for num_threads(threadNumber_) reduction(merge:
-//sendRecvBuffer.at(ttk::MPIrank_))
-#endif // TTK_ENABLE_OPENMP
-  MPI_Barrier(ttk::MPIcomm_);
   for(ttk::SimplexId i = 0; i < dms_pairs.size(); ++i) {
     auto &pair{dms_pairs[i]};
     int simplexType = getBirthSimplexType(pair.type);
@@ -706,7 +824,8 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
     if(lid != -1
        && triangulation->getSimplexRank(lid, simplexType) == ttk::MPIrank_) {
       if(pair.type > 0) {
-        lid = dms_.getCellGreaterVertex(Cell{pair.type, lid}, *triangulation);
+        lid
+          = dmsMPI_.getCellGreaterVertex(Cell{pair.type, lid}, *triangulation);
         pair.birth = triangulation->getVertexGlobalId(lid);
       }
       CTDiagram[i].dim = pair.type;
@@ -735,8 +854,8 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
          && triangulation->getSimplexRank(lid, simplexType) == ttk::MPIrank_) {
         CTDiagram[i].dim = pair.type;
         CTDiagram[i].isFinite = (pair.death >= 0);
-        lid
-          = dms_.getCellGreaterVertex(Cell{pair.type + 1, lid}, *triangulation);
+        lid = dmsMPI_.getCellGreaterVertex(
+          Cell{pair.type + 1, lid}, *triangulation);
         pair.death = triangulation->getVertexGlobalId(lid);
         fillDeathData(CTDiagram[i], pair, pair.death);
         augmentDeathPersistence(CTDiagram[i], lid, inputScalars);
@@ -767,7 +886,6 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
 
   // For each received element:
   // if it is own by the triangulation, get the data and place to send back
-  //#pragma omp parallel for schedule(dynamic, 1)
   for(int i = 0; i < ttk::MPIsize_; i++) {
     if(i != ttk::MPIrank_) {
       for(int j = 0; j < recvBufferSize[i]; j++) {
@@ -788,7 +906,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
           struct dataResponse res {
             .lid_ = element.lid_, .isBirth_ = element.isBirth_
           };
-          ttk::SimplexId vLid = dms_.getCellGreaterVertex(
+          ttk::SimplexId vLid = dmsMPI_.getCellGreaterVertex(
             Cell{element.dim_ + (1 - element.isBirth_), lid}, *triangulation);
           res.vertexGid_ = triangulation->getVertexGlobalId(vLid);
           res.offset_ = inputOffsets[vLid];
@@ -890,6 +1008,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
     vertexDistribution, MPI_PersistencePair, MPI_SimplexId, threadNumber_);
   return 0;
 };
+#endif
 
 template <typename scalarType, class triangulationType>
 int ttk::PersistenceDiagram::executeApproximateTopology(
@@ -1052,7 +1171,8 @@ template <class triangulationType>
 void ttk::PersistenceDiagram::checkManifold(
   const triangulationType *const triangulation) {
 
-  if(this->BackEnd != BACKEND::DISCRETE_MORSE_SANDWICH) {
+  if(this->BackEnd != BACKEND::DISCRETE_MORSE_SANDWICH
+     || this->BackEnd != BACKEND::DISCRETE_MORSE_SANDWICH_MPI) {
     return;
   }
 

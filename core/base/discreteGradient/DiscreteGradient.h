@@ -103,6 +103,7 @@ triangulation.
       int buildGradient(const triangulationType &triangulation,
                         bool bypassCache = false);
 
+#ifdef TTK_ENABLE_MPI
       template <typename triangulationType>
       int getSimplexRank(const triangulationType &triangulation,
                          const ttk::SimplexId &lid,
@@ -112,6 +113,7 @@ triangulation.
       int getSimplexRankWithGradientType(const triangulationType &triangulation,
                                          const ttk::SimplexId &lid,
                                          const int gradientType);
+#endif
       /**
        * Set the input scalar function.
        *

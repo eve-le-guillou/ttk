@@ -91,6 +91,7 @@ int DiscreteGradient::buildGradient(const triangulationType &triangulation,
   return 0;
 }
 
+#ifdef TTK_ENABLE_MPI
 template <typename triangulationType>
 int DiscreteGradient::getSimplexRank(const triangulationType &triangulation,
                                      const ttk::SimplexId &lid,
@@ -113,6 +114,7 @@ int DiscreteGradient::getSimplexRank(const triangulationType &triangulation,
   }
   return -1;
 }
+#endif
 
 template <typename triangulationType>
 int DiscreteGradient::setCriticalPoints(
@@ -215,9 +217,10 @@ int DiscreteGradient::getCriticalPoints(
 #endif // TTK_ENABLE_OPENMP
       if(this->isCellCritical(i, j)) {
         // Only non-ghost critical simplices are taken into consideration
-        if(getSimplexRank(triangulation, j, i) == ttk::MPIrank_) {
+#ifdef TTK_ENABLE_MPI
+        if(getSimplexRank(triangulation, j, i) == ttk::MPIrank_)
+#endif
           critCellsPerThread[tid].emplace_back(j);
-        }
       }
     }
 
@@ -768,7 +771,10 @@ int DiscreteGradient::getDescendingPath(
       vpath.push_back(vertex);
 
       if(isCellCritical(vertex)
-         || triangulation.getVertexRank(currentId) != ttk::MPIrank_) {
+#ifdef TTK_ENABLE_MPI
+         || triangulation.getVertexRank(currentId) != ttk::MPIrank_
+#endif
+      ) {
         break;
       }
 
@@ -932,7 +938,10 @@ int DiscreteGradient::getAscendingPath(const Cell &cell,
         vpath.push_back(triangle);
 
         if(isCellCritical(triangle)
-           || triangulation.getTriangleRank(currentId) != ttk::MPIrank_) {
+#ifdef TTK_ENABLE_MPI
+           || triangulation.getTriangleRank(currentId) != ttk::MPIrank_
+#endif
+        ) {
           break;
         }
 
@@ -990,7 +999,10 @@ int DiscreteGradient::getAscendingPath(const Cell &cell,
         vpath.push_back(tetra);
 
         if(isCellCritical(tetra)
-           || triangulation.getCellRank(currentId) != ttk::MPIrank_) {
+#ifdef TTK_ENABLE_MPI
+           || triangulation.getCellRank(currentId) != ttk::MPIrank_
+#endif
+        ) {
           break;
         }
 

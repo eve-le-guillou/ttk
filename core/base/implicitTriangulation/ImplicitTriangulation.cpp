@@ -3175,7 +3175,6 @@ int ttk::ImplicitTriangulation::getCellRankInternal(
 #endif // TTK_ENABLE_KAMIKAZE
 
   float p[3];
-  ttk::SimplexId gid = this->getCellGlobalId(lcid);
   this->metaGrid_->getCellIncenter(
     this->getCellGlobalId(lcid), this->dimensionality_, p);
   for(const auto neigh : this->neighborRanks_) {

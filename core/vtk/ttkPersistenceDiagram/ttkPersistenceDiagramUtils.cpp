@@ -302,6 +302,7 @@ int DiagramToVTU(vtkUnstructuredGrid *vtu,
   return 0;
 }
 
+#ifdef TTK_ENABLE_MPI
 int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
                             const ttk::DiagramType &diagram,
                             vtkDataArray *const inputScalars,
@@ -321,11 +322,6 @@ int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
 
   const auto pd = vtu->GetPointData();
   const auto cd = vtu->GetCellData();
-
-  /*if(pd == nullptr || cd == nullptr) {
-    dbg.printErr("Grid has no point data or no cell data");
-    return -2;
-  }*/
 
   // point data arrays
 
@@ -442,17 +438,13 @@ int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
     pairsId->InsertTuple1(diagram.size(), -1);
     pairsDim->InsertTuple1(diagram.size(), -1);
     isFinite->InsertTuple1(diagram.size(), false);
-    // persistence of global min-max pair
-    // if(ttk::MPIrank_ == 0) {
     const auto maxPersistence = diagram[0].persistence();
     persistence->InsertTuple1(diagram.size(), 2 * maxPersistence);
-    // birth == death == 0
     birthScalars->InsertTuple1(diagram.size(), 0);
-    //}
   }
-  // kill(getpid(), SIGINT);
   return 0;
 }
+#endif
 
 int ProjectDiagramInsideDomain(vtkUnstructuredGrid *const inputDiagram,
                                vtkUnstructuredGrid *const outputDiagram,

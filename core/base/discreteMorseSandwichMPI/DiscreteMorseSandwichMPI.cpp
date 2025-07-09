@@ -1,4 +1,6 @@
 #include <DiscreteMorseSandwichMPI.h>
+
+#ifdef TTK_ENABLE_MPI
 #include <algorithm>
 #include <array>
 #include <random>
@@ -77,3 +79,5 @@ void ttk::DiscreteMorseSandwichMPI::displayStats(
   }
   this->printMsg(rows, debug::Priority::DETAIL);
 }
+
+#endif // TTK_ENABLE_MPI
