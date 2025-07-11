@@ -575,7 +575,6 @@ namespace ttk {
     /**
      * @brief Updates the max of the global boundary of a propagation
      *
-     * @tparam GlobalBoundary: the global boundary type
      * @param m: the value of the new max
      * @param maxBoundary: the global boundary to update
      */
@@ -584,7 +583,6 @@ namespace ttk {
     /**
      * @brief Get the max of a process for a global boundary
      *
-     * @tparam GlobalBoundary: the global boundary type
      * @param rank: the rank of the process
      * @param currentMax: the retrieved max
      * @param maxBoundary: the Global Boundary
@@ -596,8 +594,6 @@ namespace ttk {
     /**
      * @brief Checks if a Local-Global Boundary is empty
      *
-     * @tparam GlobalBoundary: the global boundary type
-     * @tparam LocalBoundary: the local boundary type
      * @param localBoundary: the local boundary to check
      * @param globalBoundary: the global boundary to check
      * @return true if both are empty
@@ -609,7 +605,6 @@ namespace ttk {
     /**
      * @brief Add an edge to the local boundary
      *
-     * @tparam LocalBoundary
      * @param e: edge to add
      * @param isOnBoundary: true if the edge is already in the local boundary
      * @param localBoundary: local boundary
@@ -623,7 +618,6 @@ namespace ttk {
     /**
      * @brief Update the max in a global boundary for a particular process
      *
-     * @tparam GlobalBoundary: type of the global boundary
      * @param s2: originating triangle of the boundary
      * @param tauOrder: value of the new max
      * @param boundary: global boundary to update
@@ -638,6 +632,17 @@ namespace ttk {
       ttk::SimplexId rank,
       ttk::SimplexId computeProc = -1) const;
 
+    /**
+     * @brief Package message to send update of a local boundary on another
+     * process
+     *
+     * @param s2 Origin 2-saddle of the boundary
+     * @param egid1 Global identifier of the first edge to add
+     * @param egid2 Global identifier of the second edge to add
+     * @param tauOrder Order of the maximum of the local boundary of s2
+     * @param globalBoundary Global boundary of s2
+     * @param rank Rank of the process to send the message to
+     */
     template <typename GlobalBoundary>
     void updateLocalBoundary(
       const saddle<3> &s2,
@@ -647,6 +652,22 @@ namespace ttk {
       GlobalBoundary &globalBoundary,
       ttk::SimplexId rank) const;
 
+    /**
+     * @brief Merge of the global-local boundary of pTau into the global
+     * boundary of s2. For each process, the maximum is kept.
+     *
+     * @param onBoundary boolean bit-mask for the local boundary of pTau
+     * @param s2LocalBoundary Local boundary of s2
+     * @param s2GlobalBoundary Global boundary of s2
+     * @param pTauLocalBoundary Local boundary of pTau
+     * @param pTauGlobalBoundary Global boundary of pTau
+     * @param triangulation triangulation
+     * @param s2 Global identifier of the origin 2-saddle
+     * @return true if the global boundary of s2 has been modified during this
+     * method
+     * @return false if the global boundary of s2 has not been modified during
+     * this method
+     */
     template <typename LocalBoundary,
               typename GlobalBoundary,
               typename triangulationType>
@@ -657,7 +678,14 @@ namespace ttk {
                                GlobalBoundary &pTauGlobalBoundary,
                                triangulationType &triangulation,
                                ttk::SimplexId s2) const;
-
+    /**
+     * @brief Send the global boundary to all processes present in the boundary
+     *
+     * @param s2 Origin 2-saddle of the boundary
+     * @param pTau New current maximum of the local boundary
+     * @param tauOrder Order of pTau
+     * @param globalBoundary Global boundary of s2
+     */
     template <typename GlobalBoundary>
     void updateMergedBoundary(
       const saddle<3> &s2,
@@ -665,6 +693,17 @@ namespace ttk {
       const ttk::SimplexId *tauOrder,
       GlobalBoundary &globalBoundary) const;
 
+    /**
+     * @brief Receive and unpack the boundary updates.
+     *
+     * @param recvBoundaryBuffer Receive buffer of the boundary
+     * @param s2Locks Locks of the 2-saddles
+     * @param globalBoundaries All global boundaries
+     * @param localBoundaries All local Boundaries
+     * @param saddles2 2-saddles
+     * @param triangulation Triangulation
+     * @param cmpEdges Comparison for the edges
+     */
     template <typename triangulationType,
               typename GlobalBoundary,
               typename LocalBoundary,
@@ -678,6 +717,23 @@ namespace ttk {
       triangulationType &triangulation,
       compareEdges &cmpEdges) const;
 
+    /**
+     * @brief If the edge is owned by the current process, it is added to the
+     * local boundary. Otherwise, the global boundary is updated for the owner
+     * of the edge.
+     *
+     * @param s2Gid Global identifier of the origin 2-saddle s2
+     * @param pTau Local identifier of the triangle whose edges are to be added
+     * @param edgeId Identifier of the edge within the triangle (0 to 2)
+     * @param onBoundary Boolean vector of presence of edges
+     * @param globalBoundaryIds Global boundary of s2
+     * @param localBoundaryIds Local boundary of s2
+     * @param triangulation triangulation
+     * @param offsets Global order of vertices
+     * @param ghostEdges Vector that stores edges if they are ghosts
+     * @param hasChangedMax element of vector is true if the maximum has been
+     * changed for that particular process
+     */
     template <typename triangulationType,
               typename GlobalBoundary,
               typename LocalBoundary>
@@ -692,7 +748,20 @@ namespace ttk {
       const SimplexId *const offsets,
       std::vector<std::pair<ttk::SimplexId, ttk::SimplexId>> &ghostEdges,
       std::vector<bool> &hasChangedMax) const;
-
+    /**
+     * @brief Packages local-global boundary updates. Ghost edges in the
+     * ghostEdges are sent to their process owner. Global boundaries on other
+     * processes are also updated.
+     *
+     * @param s2 Origin 2-saddle
+     * @param tauOrder New maximum of the local boundary of s2
+     * @param globalBoundaryIds Global boundary of s2
+     * @param triangulation triangulation
+     * @param ghostEdges ghost edges to add to the boundary of s2 on other
+     * processes
+     * @param hasChangedMax element of vector is true if the maximum has been
+     * changed for that particular process
+     */
     template <typename triangulationType, typename GlobalBoundary>
     void packageLocalBoundaryUpdate(
       const saddle<3> &s2,
@@ -830,11 +899,31 @@ namespace ttk {
       MPI_Comm &MPIcomm,
       int localThreadNumber) const;
 
+    /**
+     * @brief Transforms the ghostPresenceVector in proper ghostPresence at the
+     * end of the computation of v-paths
+     *
+     * @param ghostPresence Output presence of extrema on processes
+     * @param ghostPresenceVector Input presence of extrema on processes
+     * @param localThreadNumber Number of threads available to compute this step
+     */
     inline void extractGhost(
       std::vector<std::vector<char>> &ghostPresence,
       std::vector<std::vector<saddleIdPerProcess>> &ghostPresenceVector,
       int localThreadNumber) const;
-
+    /**
+     * @brief Merge vector of vector (decomposed this way to be thread-safe)
+     * into vectors to be sent.
+     *
+     * @tparam sizeExtr Dimension of the extrema of the v-paths
+     * @param finishedVPathToSend Output merged vector
+     * @param finishedVPathToSendThread Input vector decomposed for threads
+     * @param ghostPresenceToSend Output merge vector
+     * @param ghostPresenceToSendThread Input vector decomposed for threads
+     * @param ghostCounterThread Counter of elements of each ghost presence
+     * vector
+     * @param localThreadNumber Number of threads available to compute this step
+     */
     template <int sizeExtr>
     void mergeThreadVectors(
       std::vector<std::vector<vpathFinished<sizeExtr>>> &finishedVPathToSend,
@@ -844,7 +933,17 @@ namespace ttk {
       std::vector<std::vector<std::vector<char>>> &ghostPresenceToSendThread,
       std::vector<std::vector<ttk::SimplexId>> &ghostCounterThread,
       int localThreadNumber) const;
-
+    /**
+     * @brief Exchange the finished v-paths and ghosts.
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @param ghostPresenceToSend Send buffer for the ghosts
+     * @param finishedVPathToSend Send buffer for the v-paths
+     * @param recvGhostPresence Receive buffer for the ghosts
+     * @param recvVPathFinished Receive buffer for the v-paths
+     * @param MPI_SimplexId MPI SimplexId type
+     * @param MPIcomm MPI communicator
+     */
     template <int sizeExtr>
     void exchangeFinalVPathAndGhosts(
       std::vector<std::vector<char>> &ghostPresenceToSend,
@@ -853,7 +952,29 @@ namespace ttk {
       std::vector<std::vector<vpathFinished<sizeExtr>>> &recvVPathFinished,
       MPI_Datatype &MPI_SimplexId,
       MPI_Comm &MPIcomm) const;
-
+    /**
+     * @brief Unpack the ghost presence vector and add it to the local graph.
+     *
+     * @tparam sizeExtr Dimension of extrema
+     * @tparam sizeRes Number of v-paths per saddle
+     * @param recvGhostPresence Receive buffer of ghost presence
+     * @param extremaLocks Vector of locks for extrema
+     * @param ghostPresence Output ghost presence
+     * @param localGhostPresenceMap Output ghost presence for graph extrema
+     * nodes that are owned by the current process but not by the local
+     * triangulation.
+     * @param localTriangToLocalVectExtrema Output map for graph extrema nodes
+     * locally present in the triangulation
+     * @param recvVPathFinished Receive buffer of v-paths
+     * @param saddleAtomic Vector of integers to implement atomic operations for
+     * saddles
+     * @param res Vector of extrema storing the graph
+     * @param getSimplexLocalId Method to get the local simplex identifier from
+     * global identifier.
+     * @param getSimplexRank Method to get the simplex rank from the local
+     * identifier.
+     * @param localThreadNumber Number of threads available to compute this step
+     */
     template <int sizeExtr,
               int sizeRes,
               typename GLI,
@@ -872,7 +993,22 @@ namespace ttk {
       const GLI getSimplexLocalId,
       const GSR getSimplexRank,
       int localThreadNumber) const;
-
+    /**
+     * @brief Merge global-local boundaries after reception of message
+     *
+     * @param recvBoundaryBuffer Receive buffer of boundaries
+     * @param s2Locks Locks of 2-saddles
+     * @param globalBoundaries All global boundaries
+     * @param localBoundaries All local boundaries
+     * @param saddles2 All 2-saddles
+     * @param i ith element of recvBoundaryBuffer
+     * @param lidBlock Current last identifier of a block
+     * @param lidElement Current last identifier of an element within a block
+     * @param pTauLidBlock Block identifier of the boundary to merge into
+     * current boundary
+     * @param pTauLidElement Element identifier of the boundary to merge into
+     * current boundary
+     */
     template <typename GlobalBoundary, typename LocalBoundary>
     void mergeDistributedBoundary(
       std::vector<ttk::SimplexId> &recvBoundaryBuffer,
@@ -885,7 +1021,23 @@ namespace ttk {
       ttk::SimplexId lidElement,
       ttk::SimplexId pTauLidBlock,
       ttk::SimplexId pTauLidElement) const;
-
+    /**
+     * @brief Updates local-global boundaries when receiving boundary updates
+     * from another process.
+     *
+     * @param recvBoundaryBuffer Receive buffer of boundaries
+     * @param s2Locks Locks of 2-saddles
+     * @param globalBoundaries All global boundaries
+     * @param localBoundaries All local boundaries
+     * @param saddles2 All 2-saddles
+     * @param i ith element of recvBoundaryBuffer
+     * @param lidBlock Current last identifier of a block
+     * @param lidElement Current last identifier of an element within a block
+     * @param leid1 Local identifier of the first edge to add to the local
+     * boundary
+     * @param leid2 Local identifier of the second edge to add to the local
+     * boundary
+     */
     template <typename GlobalBoundary, typename LocalBoundary>
     void addDistributedEdgeToLocalBoundary(
       std::vector<ttk::SimplexId> &recvBoundaryBuffer,
@@ -898,7 +1050,23 @@ namespace ttk {
       ttk::SimplexId lidElement,
       ttk::SimplexId leid1,
       ttk::SimplexId leid2) const;
-
+    /**
+     * @brief Package the ghost presence to send it back to the process owners
+     * by processing the ghost presence and computing which process is the owner
+     * of the extrema node in the graph to be constructed.
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @param finishedVPathToSendThread V-paths to send back
+     * @param ghostPresenceToSendThread Ghost presence to send back
+     * @param ghostCounterThread Counter of elements of each ghost presence
+     * vector
+     * @param sendFinishedVPathBufferThread
+     * @param localTriangToLocalVectExtrema
+     * @param getSimplexLocalId Method to get the local simplex identifier from
+     * global identifier.
+     * @param ghostPresence local ghost presence
+     * @param localThreadNumber Number of threads available to compute this step
+     */
     template <int sizeExtr, typename GLI>
     void packageGhost(
       std::vector<std::vector<std::vector<vpathFinished<sizeExtr>>>>
@@ -913,23 +1081,44 @@ namespace ttk {
       std::vector<std::vector<char>> &ghostPresence,
       int localThreadNumber) const;
 
+    /**
+     * @brief Get the local block and element identifiers from the local
+     * identifier in the triangulation.
+     *
+     * @param lid Local identifier in the triangulation
+     * @param lidBlock Identifier of in a block
+     * @param lidElement Identifier of the element within a block
+     */
     inline void getLid(ttk::SimplexId lid,
                        ttk::SimplexId &lidBlock,
                        ttk::SimplexId &lidElement) const;
+
     /**
      * @brief Follow the ascending 1-separatrices to compute the saddles ->
      * maxima association
      *
-     * @param[in] criticalCells Critical cells identifiers
-     * @param[in] getFaceStar Either getEdgeStar (in 2D) or getTriangleStar
+     * @param criticalSaddles Start critical saddles
+     * @param getFaceStar Either getEdgeStar (in 2D) or getTriangleStar
      * (in 3D)
-     * @param[in] getFaceStarNumber Either getEdgeStarNumber (in 2D) or
+     * @param getFaceStarNumber Either getEdgeStarNumber (in 2D) or
      * getTriangleStarNumber (in 3D)
-     * @param[in] isOnBoundary Either isEdgeOnBoundary (in 2D) or
+     * @param isOnBoundary Either isEdgeOnBoundary (in 2D) or
      * isTriangleOnBoundary (in 3D)
-     * @param[in] triangulation Triangulation
-     *
-     * @return a vector of maxima per 2-saddle
+     * @param fillExtremaOrder Either fillTriangleOrder (in 2D) or
+     * fillTetraOrder (in 3D)
+     * @param triangulation triangulation
+     * @param res output of a vector of maxima per 2-saddle
+     * @param localTriangToLocalVectExtrema
+     * @param ghostPresence Ghost presence of element of the graph present in
+     * the triangulation
+     * @param localGhostPresenceMap Ghost presence of element of the local graph
+     * not present in the triangulation
+     * @param ghostPresenceVector Stores the ghost presence as the computation
+     * of v-paths is performed.
+     * @param critMaxsOrder Local order of extrema
+     * @param offset Global orders of vertices
+     * @param MPIcomm MPI communicator
+     * @param localThreadNumber Number of threads available to compute this step
      */
     template <int sizeExtr,
               int sizeSad,
@@ -960,15 +1149,18 @@ namespace ttk {
     /**
      * @brief Compute the pairs of dimension 0
      *
-     * @param[out] pairs Output persistence pairs
-     * @param[in] pairedMinima If minima are paired
-     * @param[in] paired1Saddles If 1-saddles (or maxima in 1D) are paired
-     * @param[in] criticalEdges List of 1-saddles (or maxima in 1D)
-     * @param[in] critEdgesOrder Filtration order on critical edges
-     * @param[in] offsets Vertex offset field
-     * @param[in] triangulation Triangulation
+     * @param pairs Output persistence pairs
+     * @param criticalEdges List of 1-saddles
+     * @param critEdgesOrder Filtration order on critical edges
+     * @param criticalExtremas List of minima
+     * @param offsets Vertex offset field
+     * @param nConnComp Number of connected component
+     * @param triangulation triangulation
+     * @param MPIcomm MPI communicator
+     * @param localThreadNumber Number of threads available to compute this step
      */
     template <typename triangulationType>
+
     void getMinSaddlePairs(std::vector<PersistencePair> &pairs,
                            const std::vector<ttk::SimplexId> &criticalEdges,
                            const std::vector<ttk::SimplexId> &critEdgesOrder,
@@ -980,15 +1172,20 @@ namespace ttk {
                            int localThreadNumber) const;
 
     /**
-     * @brief Compute the pairs of dimension dim - 1
+     * @brief Compute the pairs of dimension dim - 1 with some pre- and
+     * post-processing
      *
-     * @param[out] pairs Output persistence pairs
-     * @param[in] pairedMaxima If maxima are paired
-     * @param[in] pairedSaddles If 2-saddles (or 1-saddles in 2D) are paired
-     * @param[in] criticalSaddles List of 2-saddles (or 1-saddles in 2D)
-     * @param[in] critSaddlesOrder Filtration order on critical saddles
-     * @param[in] critMaxsOrder Filtration order on maxima
-     * @param[in] triangulation Triangulation
+     * @param pairs Output persistence pairs
+     * @param criticalSaddles List of 2-saddles (or 1-saddles in 2D)
+     * @param critSaddlesOrder Filtration order on critical saddles
+     * @param criticalExtremas List of maxima
+     * @param critMaxsOrder Filtration order on maxima
+     * @param triangulation triangulation
+     * @param ignoreBoundary true if pairs on the boundary should not be
+     * computed
+     * @param offsets Vertex offset field
+     * @param MPIcomm MPI communicator
+     * @param localThreadNumber Number of threads available to compute this step
      */
     template <typename triangulationType>
     void getMaxSaddlePairs(std::vector<PersistencePair> &pairs,
@@ -1011,6 +1208,33 @@ namespace ttk {
               typename FEO,
               typename GSGID,
               typename FSO>
+    /**
+     * @brief Compute the pairs of dimension dim - 1
+     *
+     * @param pairs Output persistence pairs
+     * @param criticalSaddles List of 2-saddles (or 1-saddles in 2D)
+     * @param critSaddlesOrder Filtration order on critical saddles
+     * @param criticalExtremas List of maxima
+     * @param critMaxsOrder Filtration order on maxima
+     * @param triangulation triangulation
+     * @param offsets Vertex offset field
+     * @param globalToLocalSaddle Global to local identifier maps for saddles
+     * @param globalToLocalExtrema Global to local identifier maps for extrema
+     * @param getFaceStar Either getEdgeStar (in 2D) or getTriangleStar
+     * (in 3D)
+     * @param getFaceStarNumber Either getEdgeStarNumber (in 2D) or
+     * getTriangleStarNumber (in 3D)
+     * @param isOnBoundary Either isEdgeOnBoundary (in 2D) or
+     * isTriangleOnBoundary (in 3D)
+     * @param fillExtremaOrder Either fillTriangleOrder (in 2D) or
+     * fillTetraOrder (in 3D)
+     * @param getSaddleGlobalId Either getEdgeGlobalId (in 2D) or
+     * getTriangleGlobalId (in 3D)
+     * @param fillSaddleOrder Either fillEdgeOrder (in 2D) or
+     * fillTriangleOrder (in 3D)
+     * @param MPIcomm MPI communicator
+     * @param localThreadNumber Number of threads available to compute this step
+     */
     void computeMaxSaddlePairs(
       std::vector<PersistencePair> &pairs,
       const std::vector<SimplexId> &criticalSaddles,
@@ -1029,18 +1253,19 @@ namespace ttk {
       const FSO &fillSaddleOrder,
       MPI_Comm &MPIcomm,
       int localThreadNumber);
+
     /**
      * @brief Compute the saddle-saddle pairs (in 3D)
      *
-     * @param[out] pairs Output persistence pairs
-     * @param[in] paired1Saddles If 1-saddles are paired
-     * @param[in] paired2Saddles If 2-saddles are paired
-     * @param[in] exportBoundaries If 2-saddles boundaries must be exported
-     * @param[out] boundaries Vector of 2-saddles boundaries
-     * @param[in] critical1Saddles Full list of 1-saddles
-     * @param[in] critical2Saddles Full list of 2-saddles
-     * @param[in] crit1SaddlesOrder Filtration order on 1-saddles
-     * @param[in] triangulation Triangulation
+     * @param pairs Output persistence pairs
+     * @param exportBoundaries If 2-saddles boundaries must be exported
+     * @param boundaries Vector of 2-saddles boundaries
+     * @param critical1Saddles Full list of 1-saddles
+     * @param critical2Saddles Full list of 2-saddles
+     * @param crit1SaddlesOrder Local filtration order on critical 1-saddles
+     * @param crit2SaddlesOrder Local filtration order on critical 2-saddles
+     * @param triangulation triangulation
+     * @param offsets  Vertex offset field
      */
     template <typename triangulationType>
     void getSaddleSaddlePairs(std::vector<PersistencePair> &pairs,
@@ -1098,6 +1323,30 @@ namespace ttk {
      */
     using tripletType = std::array<ttk::SimplexId, 3>;
 
+    /**
+     * @brief Process one triplet (sv, t0, t1) in the self-correcting algorithm
+     * from the distributed graph for the min-sad or sad-max computation
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param sv Saddle
+     * @param saddleToPairedExtrema Vector of local identifier giving the saddle
+     * to extrema pairing
+     * @param extremaToPairedSaddle  Vector of local identifier giving the
+     * extrema to saddle pairing
+     * @param saddles List of saddles
+     * @param extremas List of extrema
+     * @param increasing if true, it is sad-max pairing, if false it is a
+     * min-sad pairing
+     * @param ghostPresence ghost presence of the graph
+     * @param sendBuffer Send buffer
+     * @param recomputations Vector of local recomputations that need to be
+     * performed
+     * @param cmpMessages Comparator for messages
+     * @param recvBuffer Receive buffer
+     * @param beginVect Index of the last processed message in the receive
+     * buffer
+     */
     template <int sizeExtr, int sizeSad>
     int processTriplet(
       saddleEdge<sizeSad> sv,
@@ -1117,7 +1366,23 @@ namespace ttk {
         &cmpMessages,
       std::vector<messageType<sizeExtr, sizeSad>> &recvBuffer,
       ttk::SimplexId beginVect) const;
-
+    /**
+     * @brief Store update message to send during self-correcting algorithm for
+     * sad-max and min-sad.
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param ghostPresence Ghost presence of the graph
+     * @param sendBuffer Send buffer
+     * @param sv Saddle of the triplet
+     * @param s1 Saddle that last changed the representative of rep1
+     * @param s2 Saddle that last changed the representative of rep2
+     * @param rep1 Extrema paired to the saddle
+     * @param rep2 Second extrema of the triplet
+     * @param sender Rank of the process to send the message to
+     * @param hasBeenModifed true if the message has been modified since its
+     * creation
+     */
     template <int sizeExtr, int sizeSad>
     void storeMessageToSend(
       std::vector<std::vector<char>> &ghostPresence,
@@ -1129,7 +1394,21 @@ namespace ttk {
       extremaNode<sizeExtr> &rep2,
       char sender = static_cast<char>(ttk::MPIrank_),
       char hasBeenModifed = 0) const;
-
+    /**
+     * @brief Store update message to send during self-correcting algorithm for
+     * sad-max and min-sad.
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param ghostPresence Ghost presence of the graph
+     * @param sendBuffer Send buffer
+     * @param sv Saddle of the triplet
+     * @param s1 Saddle that last changed the representative of rep1
+     * @param rep1 Extrema paired to the saddle
+     * @param sender Rank of the process to send the message to
+     * @param hasBeenModifed true if the message has been modified since its
+     * creation
+     */
     template <int sizeExtr, int sizeSad>
     void storeMessageToSend(
       std::vector<std::vector<char>> &ghostPresence,
@@ -1139,7 +1418,18 @@ namespace ttk {
       extremaNode<sizeExtr> &rep1,
       char sender = static_cast<char>(ttk::MPIrank_),
       char hasBeenModifed = 0) const;
-
+    /**
+     * @brief Store update message to send during self-correcting algorithm for
+     * sad-max and min-sad.
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param sendBuffer Send buffer
+     * @param sv Saddle of the triplet
+     * @param saddles List of saddles
+     * @param rep1 Extrema paired to the saddle
+     * @param rep2 Second extrema of the triplet
+     */
     template <int sizeExtr, int sizeSad>
     void storeMessageToSendToRepOwner(
       std::vector<std::vector<messageType<sizeExtr, sizeSad>>> &sendBuffer,
@@ -1147,25 +1437,68 @@ namespace ttk {
       std::vector<saddleEdge<sizeSad>> &saddles,
       extremaNode<sizeExtr> &rep1,
       extremaNode<sizeExtr> &rep2) const;
-
+    /**
+     * @brief Store update message to send during self-correcting algorithm for
+     * sad-max and min-sad.
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param sendBuffer Send buffer
+     * @param sv Saddle of the triplet
+     * @param saddles List of saddles
+     * @param rep1 Extrema paired to the saddle
+     */
     template <int sizeExtr, int sizeSad>
     void storeMessageToSendToRepOwner(
       std::vector<std::vector<messageType<sizeExtr, sizeSad>>> &sendBuffer,
       saddleEdge<sizeSad> &sv,
       std::vector<saddleEdge<sizeSad>> &saddles,
       extremaNode<sizeExtr> &rep1) const;
-
+    /**
+     * @brief Store message to trigger a recomputation of a triplet on the
+     * process that owns the saddle sv.
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param sendBuffer Send buffer
+     * @param sv Saddle of the triplet
+     */
     template <int sizeExtr, int sizeSad>
     void storeRerunToSend(
       std::vector<std::vector<messageType<sizeExtr, sizeSad>>> &sendBuffer,
       saddleEdge<sizeSad> &sv) const;
-
+    /**
+     * @brief Create a pair between sad and extr
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param sad Saddle to pair
+     * @param extr Extrema to pair
+     * @param saddleToPairedExtrema Vector of local identifier giving the saddle
+     * to extrema pairing
+     * @param extremaToPairedSaddle  Vector of local identifier giving the
+     * extrema to saddle pairing
+     */
     template <int sizeExtr, int sizeSad>
     void addPair(const saddleEdge<sizeSad> &sad,
                  const extremaNode<sizeExtr> &extr,
                  std::vector<ttk::SimplexId> &saddleToPairedExtrema,
                  std::vector<ttk::SimplexId> &extremaToPairedSaddle) const;
-
+    /**
+     * @brief Sets up message for a later recomputation of the triplet starting
+     * in sad. If sad is present in recvBuffer, then the information is stored
+     * there by modifying the message. Otherwise, the saddle is added to the
+     * recomputations vector
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param sad Saddle to recompute
+     * @param recomputations Vector of recomputations
+     * @param cmpMessages Comparator of messages
+     * @param recvBuffer Receive buffer
+     * @param beginVect Index of the last processed message in the receive
+     * buffer
+     */
     template <int sizeExtr, int sizeSad>
     void addToRecvBuffer(
       saddleEdge<sizeSad> &sad,
@@ -1178,13 +1511,37 @@ namespace ttk {
         &cmpMessages,
       std::vector<messageType<sizeExtr, sizeSad>> &recvBuffer,
       ttk::SimplexId beginVect) const;
-
+    /**
+     * @brief Remove a pair between sad and extr
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param sad Saddle of the pair to remove
+     * @param extr Extrema of the pair to remove
+     * @param saddleToPairedExtrema Vector of local identifier giving the saddle
+     * to extrema pairing
+     * @param extremaToPairedSaddle  Vector of local identifier giving the
+     * extrema to saddle pairing
+     */
     template <int sizeExtr, int sizeSad>
     void removePair(const saddleEdge<sizeSad> &sad,
                     const extremaNode<sizeExtr> &extr,
                     std::vector<ttk::SimplexId> &saddleToPairedExtrema,
                     std::vector<ttk::SimplexId> &extremaToPairedSaddle) const;
-
+    /**
+     * @brief Computes the representative of an extrema, given a saddle as limit
+     * of depth
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param extr the target extrema
+     * @param sv the saddle that acts as limit of depth
+     * @param increasing true if it is a sad-max pairing, it is a min-sad
+     * pairing otherwise
+     * @param extremas Vector of extremas
+     * @param saddles Vector of saddles
+     * @return ttk::SimplexId Index of the representative in the extremas vector
+     */
     template <int sizeExtr, int sizeSad>
     ttk::SimplexId getRep(extremaNode<sizeExtr> extr,
                           saddleEdge<sizeSad> sv,
@@ -1192,6 +1549,17 @@ namespace ttk {
                           std::vector<extremaNode<sizeExtr>> &extremas,
                           std::vector<saddleEdge<sizeSad>> &saddles) const;
 
+    /**
+     * @brief Add a saddle from another process in the local data structures
+     *
+     * @tparam sizeSad Dimension of the saddle
+     * @param s the saddle to add
+     * @param globalToLocalSaddle Global to local identifiers maps for saddles
+     * @param saddles Vector of saddles
+     * @param saddleToPairedExtrema Vector of local identifier giving the saddle
+     * to extrema pairing
+     * @return struct saddleEdge<sizeSad> Newly created saddle
+     */
     template <int sizeSad>
     struct saddleEdge<sizeSad> addSaddle(
       saddleEdge<sizeSad> s,
@@ -1199,6 +1567,22 @@ namespace ttk {
       std::vector<saddleEdge<sizeSad>> &saddles,
       std::vector<ttk::SimplexId> &saddleToPairedExtrema) const;
 
+    /**
+     * @brief Update the t1 extrema in the received message according to local
+     * knowledge of representatives.
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param extremaGid Global identifier of the extrema
+     * @param elt the message to update
+     * @param s saddle of the triplet
+     * @param globalToLocalExtrema Global to local identifier maps for extrema
+     * @param extremas Vector of extrema
+     * @param saddles Vector of saddles
+     * @param increasing true if it is a sad-max pairing, it is a min-sad
+     * pairing otherwise
+     * @return ttk::SimplexId identifier of t1 in the extremas vector
+     */
     template <int sizeExtr, int sizeSad>
     ttk::SimplexId getUpdatedT1(
       const ttk::SimplexId extremaGid,
@@ -1209,6 +1593,22 @@ namespace ttk {
       std::vector<saddleEdge<sizeSad>> &saddles,
       bool increasing) const;
 
+    /**
+     * @brief Update the t2 extrema in the received message according to local
+     * knowledge of representatives.
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param extremaGid Global identifier of the extrema
+     * @param elt the message to update
+     * @param s saddle of the triplet
+     * @param globalToLocalExtrema Global to local identifier maps for extrema
+     * @param extremas Vector of extrema
+     * @param saddles Vector of saddles
+     * @param increasing true if it is a sad-max pairing, it is a min-sad
+     * pairing otherwise
+     * @return ttk::SimplexId identifier of t2 in the extremas vector
+     */
     template <int sizeExtr, int sizeSad>
     ttk::SimplexId getUpdatedT2(
       const ttk::SimplexId extremaGid,
@@ -1218,12 +1618,37 @@ namespace ttk {
       std::vector<extremaNode<sizeExtr>> &extremas,
       std::vector<saddleEdge<sizeSad>> &saddles,
       bool increasing) const;
-
+    /**
+     * @brief After updates of t1 and t2, swap t1 and t2 in the message
+     * structure if the saddle should be paired with the updated t2 value
+     * instead of t1.
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param elt the message to update
+     * @param t1Lid Local identifier of t1
+     * @param t2Lid Local identifier of t2
+     * @param increasing true if it is a sad-max pairing, it is a min-sad
+     * pairing otherwise
+     */
     template <int sizeExtr, int sizeSad>
     void swapT1T2(messageType<sizeExtr, sizeSad> &elt,
                   ttk::SimplexId &t1Lid,
                   ttk::SimplexId &t2Lid,
                   bool increasing) const;
+    /**
+     * @brief Add an extremum to the extremas vector
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @param lid Local identifier of the extremum
+     * @param gid Global identifier of the extremum
+     * @param rank Rank of the process owner of the extremum
+     * @param vOrder Order of the extrema
+     * @param extremas Vector of extrema
+     * @param globalToLocalExtrema Global to local identifier maps for extrema
+     * @param extremaToPairedSaddle Vector of local identifier giving the
+     * extremum to saddle pairing
+     */
 
     template <int sizeExtr>
     void addLocalExtrema(
@@ -1236,6 +1661,30 @@ namespace ttk {
       std::vector<ttk::SimplexId> &extremaToPairedSaddle) const;
 
     template <int sizeExtr, int sizeSad>
+    /**
+     * @brief Unpack and process a message in the self-correcting algorithm for
+     * min-sad and sad-max pairings.
+     *
+     * @param element Element to unpack and process
+     * @param globalToLocalSaddle Global to local identifier maps for saddles
+     * @param globalToLocalExtrema Global to local identifier maps for extrema
+     * @param saddles Vector of saddles
+     * @param extremas Vector of extrema
+     * @param extremaToPairedSaddle Vector of local identifier giving the
+     * extremum to saddle pairing
+     * @param saddleToPairedExtrema Vector of local identifier giving the saddle
+     * to extremum pairing
+     * @param sendBuffer Send buffer
+     * @param ghostPresence Ghost presence of the graph
+     * @param sender Rank of the process that sent the message
+     * @param increasing true if it is a sad-max pairing, it is a min-sad
+     * pairing otherwise
+     * @param recomputations Vector of saddles to recompute
+     * @param cmpMessages Comparator of messages
+     * @param recvBuffer Receive buffer
+     * @param beginVect Index of the last processed message in the receive
+     * buffer
+     */
     void receiveElement(
       messageType<sizeExtr, sizeSad> element,
       std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalSaddle,
@@ -1261,14 +1710,22 @@ namespace ttk {
     /**
      * @brief Compute persistence pairs from triplets
      *
-     * @param[out] pairs Store generated persistence pairs
-     * @param[in,out] pairedExtrema If critical extrema are paired
-     * @param[in,out] pairedSaddles If critical saddles are paired
-     * @param[in,out] reps Extrema representatives
-     * @param[in] triplets Input triplets (saddle, extremum, extremum)
-     * @param[in] saddlesOrder Order on saddles
-     * @param[in] extremaOrder Order on extrema
-     * @param[in] pairDim Pair birth simplex dimension
+     * @param pairDim Pair birth simplex dimension
+     * @param extremas Vector of extrema
+     * @param saddles Vector of saddles
+     * @param saddleIds Saddle identifiers to compute
+     * @param saddleToPairedExtrema Vector of local identifier giving the saddle
+     * to extremum pairing
+     * @param extremaToPairedSaddle Vector of local identifier giving the
+     * extremum to saddle pairing
+     * @param globalToLocalSaddle Global to local identifier maps for saddles
+     * @param globalToLocalExtrema Global to local identifier maps for extrema
+     * @param ghostPresence Ghost presence of the graph
+     * @param MPI_MessageType MPI type for messages
+     * @param isFirstTime true if this function has been executed for the first
+     * time
+     * @param MPIcomm MPI communicator
+     * @param localThreadNumber Number of threads available to compute this step
      */
     template <int sizeExtr, int sizeSad>
     void tripletsToPersistencePairs(
@@ -1285,7 +1742,23 @@ namespace ttk {
       bool isFirstTime,
       MPI_Comm &MPIcomm,
       int localThreadNumber) const;
-
+    /**
+     * @brief Extract the pairs in the PersistencePair format from the data
+     * structures used in the self-correcting algorithm for min-sad and sad-max
+     * pairing.
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param pairs Output vector of pairs
+     * @param extremas Vector of extrema
+     * @param saddles Vector of saddles
+     * @param saddleToPairedExtrema Vector of local identifier giving the saddle
+     * to extremum pairing
+     * @param increasing true if it is a sad-max pairing, it is a min-sad
+     * pairing otherwise
+     * @param pairDim Pair birth simplex dimension
+     * @param localThreadNumber Number of threads available to compute this step
+     */
     template <int sizeExtr, int sizeSad>
     void extractPairs(std::vector<PersistencePair> &pairs,
                       std::vector<extremaNode<sizeExtr>> &extremas,
@@ -1294,7 +1767,17 @@ namespace ttk {
                       bool increasing,
                       const int pairDim,
                       int localThreadNumber) const;
-
+    /**
+     * @brief Compute the number of computed pairs
+     *
+     * @tparam sizeExtr Dimension of the extrema
+     * @tparam sizeSad Dimension of the saddle
+     * @param saddles Vector of saddles
+     * @param saddleToPairedExtrema Vector of local identifier giving the saddle
+     * to extremum pairing
+     * @param localThreadNumber Number of threads available to compute this step
+     * @return ttk::SimplexId Number of computed pairs
+     */
     template <int sizeExtr, int sizeSad>
     ttk::SimplexId
       computePairNumbers(std::vector<saddleEdge<sizeSad>> &saddles,
@@ -1303,20 +1786,19 @@ namespace ttk {
     /**
      * @brief Detect 1-saddles paired to a given 2-saddle
      *
-     * Adapted version of ttk::PersistentSimplexPairs::eliminateBoundaries()
-     *
-     * @param[in] s2 Input 2-saddle (critical triangle)
-     * @param[in,out] onBoundary Propagation mask
-     * @param[in,out] s2Boundaries Boundaries storage (compact)
-     * @param[in] s1Mapping From edge id to 1-saddle compact id in @p s1Locks
-     * @param[in] s2Mapping From triangle id to compact id
-     *   in @p s2Boundaries and @p s2Locks
-     * @param[in] partners Get 2-saddles paired to 1-saddles on boundary
-     * @param[in] s1Locks Vector of locks over 1-saddles
-     * @param[in] s2Locks Vector of locks over 2-saddles
-     * @param[in] triangulation Simplicial complex
-     *
-     * @return Identifier of paired 1-saddle or -1
+     * @param s2 Input 2-saddle (critical triangle)
+     * @param onBoundaryThread Propagation mask (specific to each thread)
+     * @param s2GlobalBoundaries Global boundaries
+     * @param s2LocalBoundaries Local Boundaries
+     * @param partners Get 2-saddles paired to 1-saddles on boundary
+     * @param s1Locks Vector of integer to be used as locks over 1-saddles
+     * @param s2Locks Vector of integer to be used as locks over 2-saddles
+     * @param saddles2 Vector of 2-saddles
+     * @param localEdgeToSaddle1 Vector of edges storing their paired saddle (or
+     * -1)
+     * @param triangulation triangulation
+     * @param offsets Global order of vertices
+     * @return SimplexId Identifier of paired 1-saddle or -1
      */
     template <typename triangulationType,
               typename GlobalBoundary,
@@ -4593,7 +5075,7 @@ void ttk::DiscreteMorseSandwichMPI::addEdgeToBoundary(
     ttk::SimplexId currentMax[] = {-1, -1};
     getMaxOfProc(rank, currentMax, globalBoundaryIds);
     if(currentMax[0] != -1) {
-      if(compareArray(currentMax, eOrder, 2)) { // TODO: correct comp?
+      if(compareArray(currentMax, eOrder, 2)) {
         updateMax(maxPerProcess(rank, eOrder), globalBoundaryIds);
         hasChangedMax[hasChangedMax.size() - 1] = true;
       }
