@@ -776,12 +776,9 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
     }
   };
 
-  const auto augmentBirthPersistence =
+  const auto augmentDeathPersistence =
     [this, &triangulation, &inputOffsets](
       PersistencePair &CTPair, ttk::SimplexId lid, const scalarType *scalars) {
-      triangulation->getVertexPoint(lid, CTPair.birth.coords[0],
-                                    CTPair.birth.coords[1],
-                                    CTPair.birth.coords[2]);
       triangulation->getVertexPoint(lid, CTPair.death.coords[0],
                                     CTPair.death.coords[1],
                                     CTPair.death.coords[2]);

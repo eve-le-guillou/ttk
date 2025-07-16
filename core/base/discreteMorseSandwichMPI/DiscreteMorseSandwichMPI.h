@@ -23,7 +23,6 @@
 
 #include <algorithm>
 #include <array>
-#include <csignal>
 #include <numeric>
 #include <random>
 #include <string>
@@ -114,7 +113,8 @@ namespace ttk {
     /**
      * @brief Struct used to send v-paths back to their
      * owner once the computation is over
-     *
+     * vOrder_ is necessarily a C array as MPI needs the whole struct to have
+     * contiguous memory
      */
     template <int sizeExtr>
     struct vpathFinished {
@@ -161,6 +161,9 @@ namespace ttk {
     /**
      * @brief Message type of the self-correcting algorithm for min-sad and
      * sad-max
+     *
+     * C arrays are needed as MPI needs the whole struct to have contiguous
+     * memory
      *
      * @tparam sizeExtr: dimension of the extrema
      * @tparam sizeSad: dimension of the saddle
@@ -424,6 +427,8 @@ namespace ttk {
      * @brief Struct representing saddles for the computation of min-sad and
      * sad-max.
      *
+     * C arrays are needed as MPI needs the whole struct to have contiguous
+     * memory
      * @tparam size: size of the order array (equal to the dimension of the
      * simplex)
      */
@@ -657,8 +662,6 @@ namespace ttk {
      * @param s2GlobalBoundary Global boundary of s2
      * @param pTauLocalBoundary Local boundary of pTau
      * @param pTauGlobalBoundary Global boundary of pTau
-     * @param triangulation triangulation
-     * @param s2 Global identifier of the origin 2-saddle
      * @return true if the global boundary of s2 has been modified during this
      * method
      * @return false if the global boundary of s2 has not been modified during
@@ -671,9 +674,7 @@ namespace ttk {
                                LocalBoundary &s2LocalBoundary,
                                GlobalBoundary &s2GlobalBoundary,
                                LocalBoundary &pTauLocalBoundary,
-                               GlobalBoundary &pTauGlobalBoundary,
-                               triangulationType &triangulation,
-                               ttk::SimplexId s2) const;
+                               GlobalBoundary &pTauGlobalBoundary) const;
     /**
      * @brief Send the global boundary to all processes present in the boundary
      *
@@ -716,7 +717,6 @@ namespace ttk {
      * local boundary. Otherwise, the global boundary is updated for the owner
      * of the edge.
      *
-     * @param s2Gid Global identifier of the origin 2-saddle s2
      * @param pTau Local identifier of the triangle whose edges are to be added
      * @param edgeId Identifier of the edge within the triangle (0 to 2)
      * @param onBoundary Boolean vector of presence of edges
@@ -732,7 +732,6 @@ namespace ttk {
               typename GlobalBoundary,
               typename LocalBoundary>
     void addEdgeToBoundary(
-      const ttk::SimplexId s2Gid,
       const ttk::SimplexId pTau,
       const ttk::SimplexId edgeId,
       std::vector<bool> &onBoundary,
@@ -787,12 +786,13 @@ namespace ttk {
     inline int buildGradient(const void *const scalars,
                              const size_t scalarsMTime,
                              const SimplexId *const offsets,
-                             const triangulationType &triangulation) {
+                             const triangulationType &triangulation,
+                             const std::vector<bool> *updateMask = nullptr) {
       this->dg_.setDebugLevel(this->debugLevel_);
       this->dg_.setThreadNumber(this->threadNumber_);
       this->dg_.setInputOffsets(offsets);
       this->dg_.setInputScalarField(scalars, scalarsMTime);
-      return this->dg_.buildGradient(triangulation);
+      return this->dg_.buildGradient(triangulation, false, updateMask);
     }
 
     /**
@@ -3641,17 +3641,8 @@ void ttk::DiscreteMorseSandwichMPI::removePair(
   const extremaNode<sizeExtr> &extr,
   std::vector<ttk::SimplexId> &saddleToPairedExtrema,
   std::vector<ttk::SimplexId> &extremaToPairedSaddle) const {
-  /*if(sad.gid_ == 4900) {
-    printMsg("removePair: " + std::to_string(sad.gid_) + ", "
-             + std::to_string(extr.gid_));
-  }*/
   if(extremaToPairedSaddle[extr.lid_] == sad.lid_) {
     extremaToPairedSaddle[extr.lid_] = -1;
-  } else {
-    printMsg("HAPPENING HERE FOR " + std::to_string(sad.gid_) + " and "
-             + std::to_string(extr.gid_) + " (true: "
-             + std::to_string(extremaToPairedSaddle.at(extr.lid_)) + ")");
-    // extremaToPairedSaddle.at(saddleToPairedExtrema.at(sad.lid_)] = -1;
   }
   saddleToPairedExtrema[sad.lid_] = -1;
 };
@@ -4662,7 +4653,6 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
     &cmpMessages,
   std::vector<messageType<sizeExtr, sizeSad>> &recvBuffer,
   ttk::SimplexId beginVect) const {
-  // TODO: enlever les .at
   // rep1 is either last correct in local or a ghost
   ttk::SimplexId r1Lid
     = getRep(extremas[sv.t_[0]], sv, increasing, extremas, saddles);
@@ -4695,8 +4685,7 @@ int ttk::DiscreteMorseSandwichMPI::processTriplet(
       }
       addPair(
         sv, extremas[r1Lid], saddleToPairedExtrema, extremaToPairedSaddle);
-      // If extrema is has local id, then is present in local TODO: CAREFUL:
-      // NOT TRUE extrema can be present in triangulation but not graph
+      // If extrema is has local id, then is present in local
       if(extremas[r1Lid].rank_ != ttk::MPIrank_
          || (ghostPresence[r1Lid].size() > 1)) {
         saddleEdge<sizeSad> s1;
@@ -4975,9 +4964,7 @@ bool ttk::DiscreteMorseSandwichMPI::mergeGlobalBoundaries(
   LocalBoundary &s2LocalBoundary,
   GlobalBoundary &s2GlobalBoundary,
   LocalBoundary &pTauLocalBoundary,
-  GlobalBoundary &pTauGlobalBoundary,
-  triangulationType &triangulation,
-  ttk::SimplexId s2) const {
+  GlobalBoundary &pTauGlobalBoundary) const {
   for(const auto e : pTauLocalBoundary) {
     onBoundary[e] = addBoundary(e, onBoundary[e], s2LocalBoundary);
   }
@@ -5040,7 +5027,6 @@ template <typename triangulationType,
           typename GlobalBoundary,
           typename LocalBoundary>
 void ttk::DiscreteMorseSandwichMPI::addEdgeToBoundary(
-  const ttk::SimplexId s2Gid,
   const ttk::SimplexId pTau,
   const ttk::SimplexId edgeId,
   std::vector<bool> &onBoundary,
@@ -5196,7 +5182,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
     std::vector<std::pair<ttk::SimplexId, ttk::SimplexId>> ghostEdges;
     std::vector<bool> hasChangedMax;
     for(ttk::SimplexId i = 0; i < 3; ++i) {
-      addEdgeToBoundary(s2.gid_, triangulation.getTriangleLocalId(s2.gid_), i,
+      addEdgeToBoundary(triangulation.getTriangleLocalId(s2.gid_), i,
                         onBoundary, globalBoundaryIds, localBoundaryIds,
                         triangulation, offsets, ghostEdges, hasChangedMax);
     }
@@ -5278,7 +5264,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
       std::vector<bool> hasChangedMax;
       std::vector<ttk::SimplexId> newMax;
       for(SimplexId i = 0; i < 3; ++i) {
-        this->addEdgeToBoundary(s2.gid_, pTau, i, onBoundary, globalBoundaryIds,
+        this->addEdgeToBoundary(pTau, i, onBoundary, globalBoundaryIds,
                                 localBoundaryIds, triangulation, offsets,
                                 ghostEdges, hasChangedMax);
       }
@@ -5393,8 +5379,7 @@ SimplexId ttk::DiscreteMorseSandwichMPI::eliminateBoundariesSandwich(
           mergeGlobalBoundaries(
             onBoundary, localBoundaryIds, globalBoundaryIds,
             s2LocalBoundaries[pTauLidBlock][pTauLidElement],
-            s2GlobalBoundaries[pTauLidBlock][pTauLidElement], triangulation,
-            s2.gid_);
+            s2GlobalBoundaries[pTauLidBlock][pTauLidElement]);
           tau = *localBoundaryIds.begin();
           fillEdgeOrder(tau, offsets, triangulation, tauOrder);
           updateMergedBoundary(s2, saddles2[pTauLidBlock][pTauLidElement].gid_,
@@ -5478,7 +5463,6 @@ void ttk::DiscreteMorseSandwichMPI::mergeDistributedBoundary(
   ttk::SimplexId pTauLidElement) const {
   int lock{0};
   saddle<3> &s{saddles2[lidBlock][lidElement]};
-  // TODO: add lock on boundary
   do {
 #pragma omp atomic capture
     {
@@ -6369,9 +6353,6 @@ void ttk::DiscreteMorseSandwichMPI::extractCriticalCells(
       criticalCellsByDim[1][i] = critEdges[i].id_;
     }
   }
-
-  /*this->printMsg("Extracted & sorted critical cells", 1.0,
-     tm.getElapsedTime(), this->threadNumber_, debug::LineMode::NEW);*/
 }
 
 template <typename triangulationType>
