@@ -2101,7 +2101,8 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
     sendFinishedVPathBufferThread[i].resize(ttk::MPIsize_);
   }
   ttk::SimplexId localElementNumber{0};
-  ttk::SimplexId totalFinishedElement{2 * criticalEdges.size()};
+  ttk::SimplexId totalFinishedElement{
+    static_cast<ttk::SimplexId>(2 * criticalEdges.size())};
   ttk::SimplexId totalElement{0};
   MPI_Allreduce(
     MPI_IN_PLACE, &totalFinishedElement, 1, MPI_SimplexId, MPI_SUM, MPIcomm);

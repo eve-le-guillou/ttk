@@ -501,7 +501,7 @@ namespace p_sort {
     if(isEmpty) {
       return;
     }
-    if(dist.size() != localSize) {
+    if(static_cast<int>(dist.size()) != localSize) {
       dist.resize(localSize);
       ttk::SimplexId dataSize = data.size();
       MPI_Allgather(&dataSize, 1, MPI_distanceType, dist.data(), 1,
