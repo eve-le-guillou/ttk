@@ -195,19 +195,19 @@ namespace ttk {
 
     inline void setComputeMinSad(const bool data) {
       this->dms_.setComputeMinSad(data);
-#ifdef TTK_ENABLE_MPI
+#if defined(TTK_ENABLE_MPI) && defined(TTK_ENABLE_OPENMP)
       this->dmsMPI_.setComputeMinSad(data);
 #endif
     }
     inline void setComputeSadSad(const bool data) {
       this->dms_.setComputeSadSad(data);
-#ifdef TTK_ENABLE_MPI
+#if defined(TTK_ENABLE_MPI) && defined(TTK_ENABLE_OPENMP)
       this->dmsMPI_.setComputeSadSad(data);
 #endif
     }
     inline void setComputeSadMax(const bool data) {
       this->dms_.setComputeSadMax(data);
-#ifdef TTK_ENABLE_MPI
+#if defined(TTK_ENABLE_MPI) && defined(TTK_ENABLE_OPENMP)
       this->dmsMPI_.setComputeSadMax(data);
 #endif
     }
@@ -313,7 +313,7 @@ namespace ttk {
           dms_.preconditionTriangulation(triangulation);
           triangulation->preconditionManifold();
         }
-#ifdef TTK_ENABLE_MPI
+#if defined(TTK_ENABLE_MPI) && defined(TTK_ENABLE_OPENMP)
         if(this->BackEnd == BACKEND::DISCRETE_MORSE_SANDWICH_MPI) {
           dmsMPI_.setDebugLevel(debugLevel_);
           dmsMPI_.setThreadNumber(threadNumber_);
@@ -348,7 +348,7 @@ namespace ttk {
     dcg::DiscreteGradient dcg_{};
     PersistentSimplexPairs psp_{};
     DiscreteMorseSandwich dms_{};
-#ifdef TTK_ENABLE_MPI
+#if defined(TTK_ENABLE_MPI) && defined(TTK_ENABLE_OPENMP)
     DiscreteMorseSandwichMPI dmsMPI_{};
 #endif
     // int BackEnd{0};
@@ -659,7 +659,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwich(
   return 0;
 }
 
-#ifdef TTK_ENABLE_MPI
+#if defined(TTK_ENABLE_MPI) && defined(TTK_ENABLE_OPENMP)
 template <typename scalarType, class triangulationType>
 int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
   std::vector<PersistencePair> &CTDiagram,

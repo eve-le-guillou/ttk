@@ -1,6 +1,6 @@
 #include <DiscreteMorseSandwichMPI.h>
 
-#ifdef TTK_ENABLE_MPI
+#if defined(TTK_ENABLE_MPI) && defined(TTK_ENABLE_OPENMP)
 #include <algorithm>
 #include <array>
 #include <random>

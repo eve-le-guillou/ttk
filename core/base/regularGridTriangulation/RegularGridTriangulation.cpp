@@ -77,7 +77,7 @@ int ttk::RegularGridTriangulation::getVertexRankInternal(
 int ttk::RegularGridTriangulation::getEdgeRankInternal(
   const SimplexId lvid) const {
 
-  ttk::SimplexId minId;
+  ttk::SimplexId minId{-1};
   int cellMinRank;
   this->TTK_TRIANGULATION_INTERNAL(getEdgeStar)(lvid, 0, minId);
   const auto nStar{this->TTK_TRIANGULATION_INTERNAL(getEdgeStarNumber)(lvid)};
@@ -98,7 +98,7 @@ int ttk::RegularGridTriangulation::getEdgeRankInternal(
 int ttk::RegularGridTriangulation::getTriangleRankInternal(
   const SimplexId lvid) const {
 
-  ttk::SimplexId minId;
+  ttk::SimplexId minId{-1};
   int cellMinRank;
   this->TTK_TRIANGULATION_INTERNAL(getTriangleStar)(lvid, 0, minId);
   const auto nStar{

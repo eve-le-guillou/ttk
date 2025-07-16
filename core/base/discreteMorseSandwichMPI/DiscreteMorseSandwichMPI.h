@@ -2934,7 +2934,8 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     {
 #pragma omp task
       {
-        for(ttk::SimplexId i = 0; i < extremasGid.size(); i++) {
+        for(ttk::SimplexId i = 0;
+            i < static_cast<ttk::SimplexId>(extremasGid.size()); i++) {
           globalToLocalExtrema.emplace(extremasGid[i], i);
         }
       }
@@ -3231,7 +3232,8 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   {
 #pragma omp task
     {
-      for(ttk::SimplexId i = 0; i < extremasGid.size(); i++) {
+      for(ttk::SimplexId i = 0;
+          i < static_cast<ttk::SimplexId>(extremasGid.size()); i++) {
         globalToLocalExtrema.emplace(extremasGid[i], i);
       }
     }
@@ -3482,7 +3484,8 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
     // maximum (if it exists) to be (more) compatible with FTM
 #pragma omp parallel for shared(saddleToPairedMax_, maxToPairedSaddle_) \
   num_threads(localThreadNumber)
-    for(ttk::SimplexId i = 0; i < pairs.size(); i++) {
+    for(ttk::SimplexId i = 0; i < static_cast<ttk::SimplexId>(pairs.size());
+        i++) {
       if(pairs[i].type < dim - 1) {
         continue;
       }
@@ -3493,7 +3496,8 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
         locatedId.emplace_back(i);
       }
     }
-    for(ttk::SimplexId i = 0; i < locatedId.size(); i++) {
+    for(ttk::SimplexId i = 0; i < static_cast<ttk::SimplexId>(locatedId.size());
+        i++) {
       ttk::SimplexId id = locatedId[i] - i;
       this->saddleToPairedMax_[globalToLocalSaddle[pairs[id].death]] = -1;
       this->maxToPairedSaddle_[globalToLocalExtrema[pairs[id].birth]] = -1;
@@ -5545,7 +5549,8 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
   std::vector<std::vector<saddle<3>>> &saddles2,
   triangulationType &triangulation,
   compareEdges &cmpEdges) const {
-  for(ttk::SimplexId i = 0; i < recvBoundaryBuffer.size(); i++) {
+  for(ttk::SimplexId i = 0;
+      i < static_cast<ttk::SimplexId>(recvBoundaryBuffer.size()); i++) {
     if(recvBoundaryBuffer[i] < -1) {
       int lock;
       ttk::SimplexId size = -recvBoundaryBuffer[i];
@@ -6065,7 +6070,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
 
   for(ttk::SimplexId i = 0; i < currentLastBlock_ + 1; i++) {
 #pragma omp parallel for num_threads(threadNumber_)
-    for(ttk::SimplexId j = 0; j < saddles2[i].size(); j++) {
+    for(ttk::SimplexId j = 0;
+        j < static_cast<ttk::SimplexId>(saddles2[i].size()); j++) {
       s2LocalBoundaries[i][j].clear();
       s2GlobalBoundaries[i][j].clear();
     }
