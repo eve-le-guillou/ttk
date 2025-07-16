@@ -1188,7 +1188,7 @@ void ttk::PersistenceDiagram::checkManifold(
   const triangulationType *const triangulation) {
 
   if(this->BackEnd != BACKEND::DISCRETE_MORSE_SANDWICH
-     || this->BackEnd != BACKEND::DISCRETE_MORSE_SANDWICH_MPI) {
+     && this->BackEnd != BACKEND::DISCRETE_MORSE_SANDWICH_MPI) {
     return;
   }
 
