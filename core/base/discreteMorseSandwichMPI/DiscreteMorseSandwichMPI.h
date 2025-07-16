@@ -667,9 +667,7 @@ namespace ttk {
      * @return false if the global boundary of s2 has not been modified during
      * this method
      */
-    template <typename LocalBoundary,
-              typename GlobalBoundary,
-              typename triangulationType>
+    template <typename LocalBoundary, typename GlobalBoundary>
     bool mergeGlobalBoundaries(std::vector<bool> &onBoundary,
                                LocalBoundary &s2LocalBoundary,
                                GlobalBoundary &s2GlobalBoundary,
@@ -4956,9 +4954,7 @@ void ttk::DiscreteMorseSandwichMPI::updateLocalBoundary(
   messageCounter_++;
 };
 
-template <typename LocalBoundary,
-          typename GlobalBoundary,
-          typename triangulationType>
+template <typename LocalBoundary, typename GlobalBoundary>
 bool ttk::DiscreteMorseSandwichMPI::mergeGlobalBoundaries(
   std::vector<bool> &onBoundary,
   LocalBoundary &s2LocalBoundary,
