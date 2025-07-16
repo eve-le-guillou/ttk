@@ -117,14 +117,13 @@ namespace p_sort {
       // n_act elts
       std::vector<dataType> medians(localSize * n_act);
       for(int k = 0; k < n_act; ++k) {
-        // if(d_ranges[k].first != d_ranges[k].second) {
         if(d_ranges[k].first != last) {
           dataType *ptr = &(*d_ranges[k].first);
           ttk::SimplexId index = subdist[k][localRank] / 2;
           medians[localRank * n_act + k] = ptr[index];
-          } else
-            medians[localRank * n_act + k] = *(last - 1);
-          //}
+        } else {
+          medians[localRank * n_act + k] = *(last - 1);
+        }
       }
       MPI_Allgather(MPI_IN_PLACE, n_act, MPI_valueType, &medians[0], n_act,
                     MPI_valueType, localComm);

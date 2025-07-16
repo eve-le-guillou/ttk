@@ -749,16 +749,15 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
         }
       };
 
-  const auto augmentBirthPersistence
-    = [this, &triangulation, &inputOffsets](PersistencePair &CTPair,
-                                            ttk::SimplexId lid,
-                                            const scalarType *scalars) {
-        triangulation->getVertexPoint(lid, CTPair.birth.coords[0],
-                                      CTPair.birth.coords[1],
-                                      CTPair.birth.coords[2]);
-        CTPair.birth.sfValue = scalars[lid];
-        CTPair.birth.offset = inputOffsets[lid];
-      };
+  const auto augmentBirthPersistence =
+    [this, &triangulation, &inputOffsets](
+      PersistencePair &CTPair, ttk::SimplexId lid, const scalarType *scalars) {
+      triangulation->getVertexPoint(lid, CTPair.birth.coords[0],
+                                    CTPair.birth.coords[1],
+                                    CTPair.birth.coords[2]);
+      CTPair.birth.sfValue = scalars[lid];
+      CTPair.birth.offset = inputOffsets[lid];
+    };
 
   const auto fillDeathData = [this, &dim](
                                PersistencePair &CTPair,
@@ -777,16 +776,19 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
     }
   };
 
-  const auto augmentDeathPersistence
-    = [this, &triangulation, &inputOffsets](PersistencePair &CTPair,
-                                            ttk::SimplexId lid,
-                                            const scalarType *scalars) {
-        triangulation->getVertexPoint(lid, CTPair.death.coords[0],
-                                      CTPair.death.coords[1],
-                                      CTPair.death.coords[2]);
-        CTPair.death.sfValue = scalars[lid];
-        CTPair.death.offset = inputOffsets[lid];
-      };
+  const auto augmentBirthPersistence =
+    [this, &triangulation, &inputOffsets](
+      PersistencePair &CTPair, ttk::SimplexId lid, const scalarType *scalars) {
+      triangulation->getVertexPoint(lid, CTPair.birth.coords[0],
+                                    CTPair.birth.coords[1],
+                                    CTPair.birth.coords[2]);
+      triangulation->getVertexPoint(lid, CTPair.death.coords[0],
+                                    CTPair.death.coords[1],
+                                    CTPair.death.coords[2]);
+      CTPair.death.sfValue = scalars[lid];
+      CTPair.death.offset = inputOffsets[lid];
+    };
+
   const auto getBirthSimplexType = [this, &dim](const int type) {
     switch(type) {
       case 0:
