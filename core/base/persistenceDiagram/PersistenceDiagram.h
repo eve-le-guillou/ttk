@@ -851,7 +851,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
       augmentBirthPersistence(CTDiagram[i], lid, inputScalars);
     } else {
       sendRecvBuffer[ttk::MPIrank_].emplace_back(
-        dataRequest{pair.birth, i, pair.type, 1});
+        dataRequest{pair.birth, i, static_cast<char>(pair.type), 1});
     }
     if(pair.death == -1) {
       CTDiagram[i].dim = pair.type;
@@ -877,7 +877,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
         augmentDeathPersistence(CTDiagram[i], lid, inputScalars);
       } else {
         sendRecvBuffer[ttk::MPIrank_].emplace_back(
-          dataRequest{pair.death, i, pair.type, 0});
+          dataRequest{pair.death, i, static_cast<char>(pair.type), 0});
       }
     }
   }

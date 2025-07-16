@@ -18,7 +18,7 @@
 /// \sa ttk::dcg::DiscreteGradient
 
 #pragma once
-#ifdef TTK_ENABLE_MPI
+#if defined(TTK_ENABLE_MPI) && defined(TTK_ENABLE_OPENMP)
 #include <DiscreteGradient.h>
 
 #include <algorithm>
@@ -1247,8 +1247,6 @@ namespace ttk {
      * @brief Compute the saddle-saddle pairs (in 3D)
      *
      * @param pairs Output persistence pairs
-     * @param exportBoundaries If 2-saddles boundaries must be exported
-     * @param boundaries Vector of 2-saddles boundaries
      * @param critical1Saddles Full list of 1-saddles
      * @param critical2Saddles Full list of 2-saddles
      * @param crit1SaddlesOrder Local filtration order on critical 1-saddles
@@ -1258,8 +1256,6 @@ namespace ttk {
      */
     template <typename triangulationType>
     void getSaddleSaddlePairs(std::vector<PersistencePair> &pairs,
-                              const bool exportBoundaries,
-                              std::vector<GeneratorType> &boundaries,
                               const std::vector<SimplexId> &critical1Saddles,
                               const std::vector<SimplexId> &critical2Saddles,
                               const std::vector<SimplexId> &crit1SaddlesOrder,
@@ -2429,7 +2425,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
     std::vector<Cell> vpath{};
     this->dg_.getAscendingPath(Cell{dim, v}, vpath, triangulation);
     const Cell &lastCell = vpath.back();
-    ttk::SimplexId saddleLocalId;
+    char saddleLocalId;
     if(lastCell.dim_ == dim) {
       ttk::SimplexId extremaId = triangulation.getCellGlobalId(lastCell.id_);
       int rank = triangulation.getCellRank(lastCell.id_);
@@ -2503,7 +2499,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
     }
   };
   // follow vpaths from 2-saddles to maxima
-  ttk::SimplexId saddleLocalId;
+  char saddleLocalId;
 #pragma omp parallel shared(extremaLocks, saddleAtomic) reduction(+: elementNumber) \
   num_threads(localThreadNumber)
   {
@@ -5722,8 +5718,6 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
 template <typename triangulationType>
 void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   std::vector<PersistencePair> &pairs,
-  const bool exportBoundaries,
-  std::vector<GeneratorType> &boundaries,
   const std::vector<SimplexId> &critical1Saddles,
   const std::vector<SimplexId> &critical2Saddles,
   const std::vector<SimplexId> &crit1SaddlesOrder,
@@ -6121,34 +6115,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
   }
   ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
-  /*if(exportBoundaries) {
-    boundaries.resize(s2Boundaries.size());
-    for(size_t i = 0; i < boundaries.size(); ++i) {
-      const auto &boundSet{s2Boundaries[i]};
-      if(boundSet.empty()) {
-        continue;
-      }
-      boundaries[i] = {
-        {boundSet.begin(), boundSet.end()},
-        saddles2[i],
-        std::array<SimplexId, 2>{
-          this->dg_.getCellGreaterVertex(Cell{2, saddles2[i]}, triangulation),
-          this->dg_.getCellGreaterVertex(
-            Cell{1, *boundSet.begin()}, triangulation),
-        }};
-    }
-  }*/
 
-  /*std::ofstream myfile;
-  myfile.open("/home/eveleguillou/experiment/DiscreteMorseSandwich/"
-              + std::to_string(ttk::MPIsize_) + "_pairs_"
-              + std::to_string(ttk::MPIrank_) + ".csv");
-  myfile << "s1,s2\n";
-  for(ttk::SimplexId i = nSadExtrPairs; i < pairs.size(); i++) {
-    myfile << std::to_string(pairs[i].birth) + ","
-                + std::to_string(pairs[i].death) + "\n";
-  }
-  myfile.close();*/
   for(ttk::SimplexId i = 0; i < currentLastBlock_ + 1; i++) {
 #pragma omp parallel for num_threads(threadNumber_)
     for(ttk::SimplexId j = 0; j < saddles2[i].size(); j++) {
@@ -6454,11 +6421,9 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
     MPI_Allreduce(
       MPI_IN_PLACE, &computeSaddleSaddles, 1, MPI_CHAR, MPI_LOR, ttk::MPIcomm_);
     if(computeSaddleSaddles) {
-      std::vector<GeneratorType> tmp{};
       this->sadSadLimit_ = static_cast<ttk::SimplexId>(
         triangulation.getNumberOfTriangles() * 0.0001);
-      // printMsg("sadSadLimit_: "+std::to_string(sadSadLimit_));
-      this->getSaddleSaddlePairs(pairs, false, tmp, criticalCellsByDim[1],
+      this->getSaddleSaddlePairs(pairs, criticalCellsByDim[1],
                                  criticalCellsByDim[2], critCellsOrder[1],
                                  critCellsOrder[2], triangulation, offsets);
     }
