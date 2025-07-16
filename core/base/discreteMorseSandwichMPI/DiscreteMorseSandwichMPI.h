@@ -1893,10 +1893,7 @@ namespace ttk {
       ttk::Timer t_mpi;
       ttk::startMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
 #endif
-      // Timer tm{};
       this->critCellsOrder_ = {};
-      /*this->printMsg(
-        "Memory cleanup", 1.0, tm.getElapsedTime(), 1, debug::LineMode::NEW);*/
 #ifdef TTK_ENABLE_MPI_TIME
       double elapsedTime
         = ttk::endMPITimer(t_mpi, ttk::MPIrank_, ttk::MPIsize_);
@@ -2351,9 +2348,6 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
     },
     localThreadNumber);
 
-  /*this->printMsg("Computed the descending 1-separatrices", 1.0,
-                 tm.getElapsedTime(), localThreadNumber,
-                 debug::LineMode::NEW);*/
   return 0;
 }
 
@@ -2699,11 +2693,6 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
       return triangulation.getCellRank(a);
     },
     localThreadNumber);
-
-  /*if(ttk::MPIrank_ == 0)
-    this->printMsg("Computed the ascending 1-separatrices", 1.0,
-                   tm.getElapsedTime(), localThreadNumber,
-                   debug::LineMode::NEW);*/
 }
 
 template <int sizeExtr, int sizeRes, typename GLI, typename GSR>
@@ -2931,8 +2920,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       }
     }
     TTK_PSORT(localThreadNumber, extremasGid.begin(), extremasGid.end());
-    const auto lastGid = std::unique(
-      /*std::execution::par_unseq,*/ extremasGid.begin(), extremasGid.end());
+    const auto lastGid = std::unique(extremasGid.begin(), extremasGid.end());
     extremasGid.erase(lastGid, extremasGid.end());
     std::unordered_map<ttk::SimplexId, ttk::SimplexId> globalToLocalExtrema{};
     globalToLocalExtrema.reserve(extremasGid.size());
@@ -3079,17 +3067,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
     }
     extractPairs<1, 2>(pairs, extremas, saddles, saddleToPairedExtrema, false,
                        0, localThreadNumber);
-    /*std::ofstream myfile;
-    myfile.open("/home/eveleguillou/experiment/DiscreteMorseSandwich/"
-                + std::to_string(ttk::MPIsize_) + "_pairs_"
-                + std::to_string(ttk::MPIrank_) + ".csv");
-    myfile << "min,sad\n";
-    for(ttk::SimplexId i = 0; i < pairs.size(); i++) {
-      myfile << std::to_string(pairs[i].birth) + ","
-                  + std::to_string(pairs[i].death) + "\n";
-    }
-    myfile.close();*/
-
     // non-paired minima
     if(totalNumberOfPairs > 1) {
 #pragma omp parallel for shared(pairs, nConnComp) num_threads(localThreadNumber)
@@ -3111,9 +3088,6 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
         nConnComp++;
       }
     }
-    /*this->printMsg("min-saddle pairs sequential part", 1.0,
-                   tmseq.getElapsedTime(), 1, debug::LineMode::NEW);
-    */
     if(ttk::MPIrank_ == 0)
       this->printMsg(
         "Computed " + std::to_string(nMinSadPairs) + " min-saddle pairs", 1.0,
@@ -3244,8 +3218,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
     }
   }
   TTK_PSORT(localThreadNumber, extremasGid.begin(), extremasGid.end());
-  const auto last = std::unique(
-    /*std::execution::par_unseq,*/ extremasGid.begin(), extremasGid.end());
+  const auto last = std::unique(extremasGid.begin(), extremasGid.end());
   extremasGid.erase(last, extremasGid.end());
   globalToLocalExtrema.reserve(extremasGid.size());
   std::vector<std::vector<char>> ghostPresence(
@@ -3376,16 +3349,6 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
                                   saddleToPairedExtrema, true, dim - 1,
                                   localThreadNumber);
   ttk::SimplexId nSadMaxPairs = pairs.size() - nMinSadPairs;
-  /*std::ofstream myfile;
-  myfile.open("/home/eveleguillou/experiment/DiscreteMorseSandwich/"
-              + std::to_string(ttk::MPIsize_) + "_pairs_"
-              + std::to_string(ttk::MPIrank_) + ".csv");
-  myfile << "sad,max\n";
-  for(ttk::SimplexId i = 0; i < pairs.size(); i++) {
-    myfile << std::to_string(pairs[i].birth) + ","
-                + std::to_string(pairs[i].death) + "\n";
-  }
-  myfile.close();*/
   MPI_Allreduce(
     MPI_IN_PLACE, &nSadMaxPairs, 1, MPI_SimplexId, MPI_SUM, MPIcomm);
 
@@ -3393,8 +3356,6 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
     this->printMsg(
       "Computed " + std::to_string(nSadMaxPairs) + " saddle-max pairs", 1.0,
       tm.getElapsedTime(), localThreadNumber);
-  /*this->printMsg("saddle-max pairs sequential part", 1.0,
-                 tmseq.getElapsedTime(), 1, debug::LineMode::NEW);*/
 }
 template <typename triangulationType>
 void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
@@ -3578,11 +3539,6 @@ ttk::SimplexId ttk::DiscreteMorseSandwichMPI::getRep(
     }
     rep = extremas[currentNode.rep_.extremaId_];
   }
-  /*if (sv.gid_ ==  4900){
-    printMsg("final, for saddle: "+std::to_string(sv.gid_)+", original extr:
-  "+std::to_string(extr.gid_)+", rep:
-  "+std::to_string(currentNode.gid_)+"("+std::to_string(currentNode.rank_)+")");
-  }*/
   return currentNode.lid_;
 };
 
@@ -3592,10 +3548,6 @@ void ttk::DiscreteMorseSandwichMPI::addPair(
   const extremaNode<sizeExtr> &extr,
   std::vector<ttk::SimplexId> &saddleToPairedExtrema,
   std::vector<ttk::SimplexId> &extremaToPairedSaddle) const {
-  /*if(sad.gid_ == 4900) {
-    printMsg("AddPair: " + std::to_string(sad.gid_) + ", "
-             + std::to_string(extr.gid_));
-  }*/
   saddleToPairedExtrema[sad.lid_] = extr.lid_;
   extremaToPairedSaddle[extr.lid_] = sad.lid_;
 };
@@ -4109,11 +4061,6 @@ void ttk::DiscreteMorseSandwichMPI::receiveElement(
     &cmpMessages,
   std::vector<messageType<sizeExtr, sizeSad>> &recvBuffer,
   ttk::SimplexId beginVect) const {
-  /*if(element.s_ == 71029541) {
-    printMsg("ReceiveElement: " + std::to_string(element.s_) + ", "
-             + std::to_string(element.t1_) + ", " + std::to_string(element.t2_)
-             + " from " + std::to_string(sender));
-  }*/
   struct saddleEdge<sizeSad> s;
   auto it = globalToLocalSaddle.find(element.s_);
   if(it != globalToLocalSaddle.end()) {
@@ -6195,8 +6142,6 @@ void ttk::DiscreteMorseSandwichMPI::extractCriticalCells(
   this->dg_.getCriticalPoints(criticalCellsByDim, triangulation);
 
   const auto dim{this->dg_.getDimensionality()};
-  /*this->printMsg("Extracted critical cells", 1.0, tm.getElapsedTime(),
-                 localThreadNumber, debug::LineMode::NEW);*/
   std::vector<EdgeSimplex> critEdges;
   std::vector<TriangleSimplex> critTriangles;
   std::vector<TetraSimplex> critTetras;
@@ -6491,12 +6436,6 @@ int ttk::DiscreteMorseSandwichMPI::computePersistencePairs(
 
     this->printMsg(rows, debug::Priority::DETAIL);
   }*/
-  /*this->printMsg(
-    "Computed " + std::to_string(pairs.size()) + " persistence pairs", 1.0,
-    tm.getElapsedTime(), this->threadNumber_);*/
-
-  // this->displayStats(pairs, criticalCellsByDim, pairedMinima, paired1Saddles,
-  //                   paired2Saddles, pairedMaxima);
 
   // free memory
   this->clear();
