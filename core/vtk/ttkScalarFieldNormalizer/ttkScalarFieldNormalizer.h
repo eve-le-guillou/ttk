@@ -33,12 +33,17 @@
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/clusteringKelvinHelmholtzInstabilities/">
 ///   Clustering Kelvin Helmholtz Instabilities example</a> \n
+///   - <a href="https://topology-tool-kit.github.io/examples/cosmicWeb/">
+///   Cosmic Web example</a> \n
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/harmonicSkeleton/">
 ///   Harmonic Skeleton example</a> \n
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/morseSmaleQuadrangulation/">Morse-Smale
 ///   Quadrangulation example</a> \n
+///   - <a
+///   href="https://topology-tool-kit.github.io/examples/mpiExample/">
+///   MPI example</a> \n
 ///
 
 #pragma once

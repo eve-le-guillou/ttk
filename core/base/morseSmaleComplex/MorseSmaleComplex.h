@@ -30,6 +30,8 @@
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/2manifoldLearning/">
 ///   2-Manifold Learning example</a> \n
+///   - <a href="https://topology-tool-kit.github.io/examples/cosmicWeb/">
+///   Cosmic Web example</a> \n
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/imageProcessing/">Image
 ///   Processing example</a> \n
@@ -69,6 +71,9 @@
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/tectonicPuzzle/">Tectonic
 ///   Puzzle example</a> \n
+///   - <a
+///   href="https://topology-tool-kit.github.io/examples/topologicalOptimization_darkSky/">Topological
+///   Optimization DarkSky</a>\n
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/tribute/">Tribute
 ///   example</a> \n

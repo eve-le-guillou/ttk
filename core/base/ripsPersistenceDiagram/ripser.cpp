@@ -56,9 +56,21 @@ derivative works thereof, in binary and source code form.
 
 */
 
-#include "ripser.h"
+#include <algorithm>
+#include <cassert>
+#include <chrono>
+#include <cmath>
+#include <fstream>
+#include <numeric>
+#include <queue>
+#include <unordered_map>
+
+#include <ripser.h>
 
 using namespace ripser;
+using namespace ttk::rpd;
+
+#define USE_COEFFICIENTS
 
 void check_overflow(index_t i);
 coefficient_t get_modulo(const coefficient_t val, const coefficient_t modulus);
@@ -91,15 +103,25 @@ static const std::string clear_line("\r\033[K");
 
 static const size_t num_coefficient_bits = 8;
 
-// 1L on windows is ALWAYS 32 bits, when on unix systems is pointer size
+#if defined(TTK_ENABLE_RIPSER_128BITS_IDS) \
+  && (defined(__GNUC__) || defined(__clang__))
 static const index_t max_simplex_index
   = (__int128(1) << (8 * sizeof(index_t) - 1 - num_coefficient_bits)) - 1;
 
-namespace std {
-  inline std::string to_string(__int128) {
-    return "";
-  }
-} // namespace std
+void check_overflow(index_t i) {
+  if
+#ifdef USE_COEFFICIENTS
+    (i > max_simplex_index)
+#else
+    (i < 0)
+#endif
+    throw std::overflow_error("simplex index " + std::to_string((uint64_t)i)
+                              + " in filtration is larger than maximum index");
+}
+#else
+// 1L on windows is ALWAYS 32 bits, when on unix systems is pointer size
+static const index_t max_simplex_index
+  = (uintptr_t(1) << (8 * sizeof(index_t) - 1 - num_coefficient_bits)) - 1;
 
 void check_overflow(index_t i) {
   if
@@ -112,6 +134,7 @@ void check_overflow(index_t i) {
                               + " in filtration is larger than maximum index "
                               + std::to_string(max_simplex_index));
 }
+#endif
 
 class binomial_coeff_table {
   /* Using flatten matrix */
@@ -167,7 +190,7 @@ std::vector<coefficient_t>
 #ifdef _MSC_VER
 #define PACK(...) __pragma(pack(push, 1)) __VA_ARGS__ __pragma(pack(pop))
 #else
-#define PACK(...) __attribute__((__packed__)) __VA_ARGS__
+#define PACK(...) __VA_ARGS__ __attribute__((__packed__))
 #endif
 
 PACK(struct entry_t {
@@ -407,6 +430,16 @@ struct sparse_distance_matrix {
   size_t size() const {
     return neighbors.size();
   }
+
+  // not in the original ripser: for keeping only critical edges instead of
+  // simplices
+  value_t operator()(const index_t i, const index_t j) const {
+    for(auto const &[index, diameter] : neighbors[i]) {
+      if(index == j)
+        return diameter;
+    }
+    return 0;
+  }
 };
 
 struct euclidean_distance_matrix {
@@ -514,6 +547,8 @@ class Ripser {
   index_t n, dim_max;
   const value_t threshold;
   const float ratio;
+  const bool critical_edges_only; // not in the original ripser
+  const bool infinite_pairs; // not in the original ripser
   const coefficient_t modulus;
   const binomial_coeff_table binomial_coeff;
   const std::vector<coefficient_t> multiplicative_inverse;
@@ -542,9 +577,13 @@ public:
          index_t _dim_max,
          value_t _threshold,
          float _ratio,
+         bool _critical_edges_only,
+         bool _infinite_pairs,
          coefficient_t _modulus)
     : dist(std::move(_dist)), n(dist.size()), dim_max(_dim_max),
-      threshold(_threshold), ratio(_ratio), modulus(_modulus),
+      threshold(_threshold), ratio(_ratio),
+      critical_edges_only(_critical_edges_only),
+      infinite_pairs(_infinite_pairs), modulus(_modulus),
       binomial_coeff(n, dim_max + 2),
       multiplicative_inverse(multiplicative_inverse_vector(_modulus)) {
   }
@@ -647,9 +686,10 @@ public:
 #endif
   }
 
+  template <typename PersistenceType>
   void compute_dim_0_pairs(std::vector<diameter_index_t> &edges,
                            std::vector<diameter_index_t> &columns_to_reduce,
-                           std::vector<std::vector<pers_pair_t>> &ph) {
+                           PersistenceType &ph) {
     union_find dset(n);
 
     edges = get_edges();
@@ -658,29 +698,35 @@ public:
     std::vector<index_t> vertices_of_edge(2);
     for(auto e : edges) {
       get_simplex_vertices(get_index(e), 1, n, vertices_of_edge.rbegin());
-      index_t u = dset.find(vertices_of_edge[0]),
-              v = dset.find(vertices_of_edge[1]);
+      const index_t u = dset.find(vertices_of_edge[0]),
+                    v = dset.find(vertices_of_edge[1]);
 
       if(u != v) {
         dset.link(u, v);
-        if(get_diameter(e) != 0)
-          ph[0].emplace_back(
-            simplex_diam_t{
-              {u == dset.find(vertices_of_edge[0]) ? vertices_of_edge[1]
-                                                   : vertices_of_edge[0]},
-              0.},
-            simplex_diam_t{
-              {vertices_of_edge[0], vertices_of_edge[1]}, get_diameter(e)});
+        if(get_diameter(e) != 0) {
+          if constexpr(std::is_same_v<PersistenceType,
+                                      MultidimensionalDiagram>) {
+            const int merged
+              = (u == dset.find(vertices_of_edge[0]) ? vertices_of_edge[1]
+                                                     : vertices_of_edge[0]);
+            ph[0].emplace_back(FiltratedSimplex{{merged}, 0.},
+                               FiltratedSimplex{{int(vertices_of_edge[0]),
+                                                 int(vertices_of_edge[1])},
+                                                get_diameter(e)});
+          } else if constexpr(std::is_same_v<PersistenceType, EdgeSets3>)
+            ph[0].emplace_back(vertices_of_edge[0], vertices_of_edge[1]);
+        }
       } else
         columns_to_reduce.push_back(e);
     }
     std::reverse(columns_to_reduce.begin(), columns_to_reduce.end());
 
-    for(index_t i = 0; i < n; ++i) {
-      if(dset.find(i) == i)
-        ph[0].emplace_back(
-          simplex_diam_t{{i}, 0.},
-          simplex_diam_t{{-1}, std::numeric_limits<value_t>::infinity()});
+    if constexpr(std::is_same_v<PersistenceType, MultidimensionalDiagram>) {
+      for(index_t i = 0; i < n; ++i) {
+        if(dset.find(i) == i)
+          ph[0].emplace_back(
+            FiltratedSimplex{{int(i)}, 0.}, FiltratedSimplex{{-1}, inf});
+      }
     }
   }
 
@@ -788,10 +834,25 @@ public:
                           std::vector<diameter_entry_t>,
                           greater_diameter_or_smaller_index<diameter_entry_t>>;
 
+  // not in the original ripser: for keeping only critical edges instead of
+  // simplices
+  Edge find_longest_edge(const Simplex &vertices) const {
+    const double l1 = dist(vertices[0], vertices[1]);
+    const double l2 = dist(vertices[1], vertices[2]);
+    const double l3 = dist(vertices[0], vertices[2]);
+    if(l1 > l2 && l1 > l3)
+      return {vertices[0], vertices[1]};
+    else if(l2 > l3)
+      return {vertices[1], vertices[2]};
+    else
+      return {vertices[0], vertices[2]};
+  }
+
+  template <typename PersistenceType>
   void compute_pairs(std::vector<diameter_index_t> &columns_to_reduce,
                      entry_hash_map &pivot_column_index,
                      index_t dim,
-                     std::vector<std::vector<pers_pair_t>> &ph) {
+                     PersistenceType &ph) {
     compressed_sparse_matrix<diameter_entry_t> reduction_matrix;
     size_t index_column_to_add;
 
@@ -845,16 +906,29 @@ public:
 
             pivot = get_pivot(working_coboundary);
           } else {
-            value_t death = get_diameter(pivot);
+            const value_t death = get_diameter(pivot);
             if(death > diameter * ratio) {
-              std::vector<index_t> vertices_birth(dim + 1),
-                vertices_death(dim + 2);
+              Simplex vertices_birth(dim + 1), vertices_death(dim + 2);
               get_simplex_vertices(
                 get_index(column_to_reduce), dim, n, vertices_birth.rbegin());
               get_simplex_vertices(
                 get_index(pivot), dim + 1, n, vertices_death.rbegin());
-              ph[dim].emplace_back(simplex_diam_t{vertices_birth, diameter},
-                                   simplex_diam_t{vertices_death, death});
+              if constexpr(std::is_same_v<PersistenceType,
+                                          MultidimensionalDiagram>) {
+                if(critical_edges_only) {
+                  const Edge longest = find_longest_edge(vertices_death);
+                  ph[dim].emplace_back(
+                    FiltratedSimplex{vertices_birth, diameter},
+                    FiltratedSimplex{{longest.first, longest.second}, death});
+                } else
+                  ph[dim].emplace_back(
+                    FiltratedSimplex{vertices_birth, diameter},
+                    FiltratedSimplex{vertices_death, death});
+              } else if constexpr(std::is_same_v<PersistenceType, EdgeSets3>) {
+                ph[2 * dim - 1].emplace_back(
+                  vertices_birth[0], vertices_birth[1]);
+                ph[2 * dim].emplace_back(find_longest_edge(vertices_death));
+              }
             }
 
             pivot_column_index.insert(
@@ -872,12 +946,15 @@ public:
             break;
           }
         } else {
-          std::vector<index_t> vertices_birth(dim + 1);
+          Simplex vertices_birth(dim + 1);
           get_simplex_vertices(
             get_index(column_to_reduce), dim, n, vertices_birth.rbegin());
-          ph[dim].emplace_back(
-            simplex_diam_t{vertices_birth, diameter},
-            simplex_diam_t{{-1}, std::numeric_limits<value_t>::infinity()});
+          if constexpr(std::is_same_v<PersistenceType,
+                                      MultidimensionalDiagram>) {
+            if(infinite_pairs)
+              ph[dim].emplace_back(FiltratedSimplex{vertices_birth, diameter},
+                                   FiltratedSimplex{{-1}, inf});
+          }
           break;
         }
       }
@@ -888,7 +965,9 @@ public:
   }
 
   std::vector<diameter_index_t> get_edges();
-  void compute_barcodes(std::vector<std::vector<pers_pair_t>> &ph) {
+
+  template <typename PersistenceType>
+  void compute_barcodes(PersistenceType &ph) {
     std::vector<diameter_index_t> simplices, columns_to_reduce;
 
     /* prevent cases where dim_max < 0 */
@@ -1055,28 +1134,64 @@ std::vector<diameter_index_t> Ripser<sparse_distance_matrix>::get_edges() {
   return edges;
 }
 
+template <typename PersistenceType>
 void ripser::ripser(std::vector<std::vector<value_t>> points,
+                    PersistenceType &ph,
                     value_t threshold,
                     index_t dim_max,
                     bool distanceMatrix,
-                    std::vector<std::vector<pers_pair_t>> &ph) {
-  double ratio = 1;
-  coefficient_t modulus = 2;
+                    bool criticalEdgesOnly,
+                    bool infinitePairs,
+                    coefficient_t modulus) {
+  const double ratio = 1.;
 
-  ph = std::vector<std::vector<pers_pair_t>>(
-    dim_max + 1, std::vector<pers_pair_t>(0));
+  if constexpr(std::is_same_v<PersistenceType, MultidimensionalDiagram>)
+    ph = MultidimensionalDiagram(dim_max + 1);
+  else if constexpr(std::is_same_v<PersistenceType, EdgeSets3>)
+    dim_max = std::max(dim_max, static_cast<index_t>(1));
 
   if(!distanceMatrix) {
-    euclidean_distance_matrix eucl_dist(std::move(points));
-    sparse_distance_matrix dist(eucl_dist, threshold);
-    Ripser<sparse_distance_matrix> ripser(
-      std::move(dist), dim_max, threshold, ratio, modulus);
-    ripser.compute_barcodes(ph);
+    if(threshold < inf) {
+      const euclidean_distance_matrix eucl_dist(std::move(points));
+      sparse_distance_matrix dist(eucl_dist, threshold);
+      Ripser ripser(std::move(dist), dim_max, threshold, ratio,
+                    criticalEdgesOnly, infinitePairs, modulus);
+      ripser.compute_barcodes(ph);
+    } else {
+      compressed_lower_distance_matrix dist(
+        euclidean_distance_matrix(std::move(points)));
+      Ripser ripser(std::move(dist), dim_max, threshold, ratio,
+                    criticalEdgesOnly, infinitePairs, modulus);
+      ripser.compute_barcodes(ph);
+    }
   } else {
-    compressed_lower_distance_matrix lower_dist(std::move(points[0]));
-    sparse_distance_matrix dist(lower_dist, threshold);
-    Ripser<sparse_distance_matrix> ripser(
-      std::move(dist), dim_max, threshold, ratio, modulus);
-    ripser.compute_barcodes(ph);
+    if(threshold < inf) {
+      const compressed_lower_distance_matrix lower_dist(std::move(points[0]));
+      sparse_distance_matrix dist(lower_dist, threshold);
+      Ripser ripser(std::move(dist), dim_max, threshold, ratio,
+                    criticalEdgesOnly, infinitePairs, modulus);
+      ripser.compute_barcodes(ph);
+    } else {
+      compressed_lower_distance_matrix dist(std::move(points[0]));
+      Ripser ripser(std::move(dist), dim_max, threshold, ratio,
+                    criticalEdgesOnly, infinitePairs, modulus);
+      ripser.compute_barcodes(ph);
+    }
   }
 }
+template void ripser::ripser(std::vector<std::vector<value_t>> points,
+                             MultidimensionalDiagram &ph,
+                             value_t threshold,
+                             index_t dim_max,
+                             bool distanceMatrix,
+                             bool criticalEdgesOnly,
+                             bool infinitePairs,
+                             coefficient_t modulus);
+template void ripser::ripser(std::vector<std::vector<value_t>> points,
+                             EdgeSets3 &ph,
+                             value_t threshold,
+                             index_t dim_max,
+                             bool distanceMatrix,
+                             bool criticalEdgesOnly,
+                             bool infinitePairs,
+                             coefficient_t modulus);

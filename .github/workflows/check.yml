@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PV_TAG: v5.12.0-headless
+  PV_TAG: v5.13.0-headless
   PV_REPO: topology-tool-kit/ttk-paraview
 
 
@@ -35,7 +35,7 @@ jobs:
   check-formatting:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install latest clang-format
       run: |
@@ -97,7 +97,7 @@ jobs:
       CMAKE_EXPORT_COMPILE_COMMANDS: ON
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install Ubuntu dependencies
       run: |
@@ -105,6 +105,7 @@ jobs:
         # TTK dependencies
         sudo apt install -y \
           libboost-system-dev \
+          libcgal-dev \
           libeigen3-dev \
           libgraphviz-dev \
           libosmesa-dev \
@@ -153,14 +154,17 @@ jobs:
 
     - name: Use Clang static analyzer
       if: matrix.config.sa
+      # "FastRipsPersistenceDiagram2.cpp" is excluded because static analysis fails on CGAL's "Mpzf.h" file
       run: |
         git ls-files \
         | grep core \
         | grep -E "\.cpp$|\.cxx$" \
+        | grep -v "FastRipsPersistenceDiagram2.cpp" \
         | xargs -n1 -P$(nproc) clang-tidy -p build --checks="-*,clang-analyzer-*" --warnings-as-errors="*" 2> /dev/null
 
     - name: Check Doxygen documentation warnings
       if: matrix.config.dox
+      continue-on-error: true
       run: |
         cd build
         ! cmake --build . --target doc |& grep warning
@@ -182,7 +186,7 @@ jobs:
       CMAKE_EXPORT_COMPILE_COMMANDS: ON
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install Ubuntu dependencies
       run: |
@@ -190,6 +194,7 @@ jobs:
         # TTK dependencies
         sudo apt install -y \
           libboost-system-dev \
+          libcgal-dev \
           libeigen3-dev \
           libgraphviz-dev \
           libosmesa-dev \

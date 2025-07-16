@@ -37,6 +37,9 @@
 ///   href="https://topology-tool-kit.github.io/examples/mergeTreeFeatureTracking/">Merge
 ///   Tree Feature Tracking example</a> \n
 ///   - <a
+///   href="https://topology-tool-kit.github.io/examples/mergeTreeWAE/">Merge
+///   tree Wasserstein Auto-Encoder example</a> \n
+///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/mergeTreePGA/">Merge
 ///   Tree Principal Geodesic Analysis example</a> \n
 
@@ -89,6 +92,7 @@ private:
   bool oldNW = NormalizedWasserstein;
   bool oldKS = KeepSubtree;
   double JoinSplitMixtureCoefficient = 0.5;
+  int DiagramPairTypes = 0;
   bool ComputeBarycenter = false;
   unsigned int NumberOfBarycenters = 1;
   double BarycenterSizeLimitPercent = 0.0;
@@ -310,6 +314,13 @@ public:
     resetDataVisualization();
   }
   vtkGetMacro(JoinSplitMixtureCoefficient, double);
+
+  void SetDiagramPairTypes(int diagramPairTypes) {
+    DiagramPairTypes = diagramPairTypes;
+    Modified();
+    resetDataVisualization();
+  }
+  vtkGetMacro(DiagramPairTypes, int);
 
   void SetComputeBarycenter(bool computeBarycenter) {
     ComputeBarycenter = computeBarycenter;

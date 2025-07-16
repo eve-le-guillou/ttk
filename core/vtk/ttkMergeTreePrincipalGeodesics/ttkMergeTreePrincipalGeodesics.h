@@ -39,6 +39,9 @@
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/mergeTreePGA/">Merge
 ///   Tree Principal Geodesic Analysis example</a> \n
+///   - <a
+///   href="https://topology-tool-kit.github.io/examples/persistenceDiagramPGA/">Persistence
+///   Diagram Principal Geodesic Analysis example</a> \n
 
 #pragma once
 
@@ -68,6 +71,7 @@ private:
    */
   // Input options
   double oldEpsilonTree1;
+  int DiagramPairTypes = 0;
   // Output options
 
   // ----------------------
@@ -113,12 +117,12 @@ public:
   }
 
   void SetNumberOfGeodesics(unsigned int numberOfGeodesics) {
-    numberOfGeodesics_ = numberOfGeodesics;
+    numberOfAxes_ = numberOfGeodesics;
     Modified();
     resetDataVisualization();
   }
   unsigned int GetNumberOfGeodesics() {
-    return numberOfGeodesics_;
+    return numberOfAxes_;
   }
 
   void SetNumberOfProjectionIntervals(unsigned int intervals) {
@@ -165,6 +169,13 @@ public:
   double GetJoinSplitMixtureCoefficient() {
     return mixtureCoefficient_;
   }
+
+  void SetDiagramPairTypes(int diagramPairTypes) {
+    DiagramPairTypes = diagramPairTypes;
+    Modified();
+    resetDataVisualization();
+  }
+  vtkGetMacro(DiagramPairTypes, int);
 
   void SetKeepState(bool keepState) {
     keepState_ = keepState;

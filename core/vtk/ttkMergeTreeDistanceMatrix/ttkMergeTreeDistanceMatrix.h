@@ -27,6 +27,9 @@
 ///   - <a
 ///   href="https://topology-tool-kit.github.io/examples/mergeTreePGA/">Merge
 ///   Tree Principal Geodesic Analysis example</a> \n
+///   - <a
+///   href="https://topology-tool-kit.github.io/examples/persistenceDiagramPGA/">
+///   Persistence Diagram Principal Geodesic Analysis example</a> \n
 
 #pragma once
 
@@ -59,6 +62,7 @@ private:
   bool oldKS = keepSubtree_;
 
   bool UseFieldDataParameters = false;
+  int DiagramPairTypes = 0;
 
 public:
   /**
@@ -186,6 +190,9 @@ public:
 
   vtkSetMacro(mixtureCoefficient_, double);
   vtkGetMacro(mixtureCoefficient_, double);
+
+  vtkSetMacro(DiagramPairTypes, int);
+  vtkGetMacro(DiagramPairTypes, int);
 
   /**
    * This static method and the macro below are VTK conventions on how to

@@ -9,7 +9,10 @@
 /// In distributed, using GlobalOrder set to True, this module will compute a
 /// global order, otherwise each process will locally compute its order.
 ///
-
+/// \b Online \b examples:\n
+///   - <a
+///   href="https://topology-tool-kit.github.io/examples/mpiExample/">
+///   MPI example</a> \n
 #pragma once
 
 // ttk common includes
@@ -290,7 +293,9 @@ namespace ttk {
         std::vector<globalOrder::vertexToSort<DT>> verticesToSort;
         verticesToSort.reserve(nVerts);
 #ifdef TTK_ENABLE_OPENMP
-#pragma omp declare reduction (merge : std::vector<globalOrder::vertexToSort<DT>> : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+#pragma omp declare reduction(                                           \
+    merge : std::vector<globalOrder::vertexToSort<DT>> : omp_out.insert( \
+        omp_out.end(), omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge : verticesToSort) schedule(static)
 #endif
         for(size_t i = 0; i < nVerts; i++) {

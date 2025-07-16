@@ -101,7 +101,8 @@ triangulation.
        */
       template <typename triangulationType>
       int buildGradient(const triangulationType &triangulation,
-                        bool bypassCache = false);
+                        bool bypassCache = false,
+                        const std::vector<bool> *updateMask = nullptr);
 
 #ifdef TTK_ENABLE_MPI
       template <typename triangulationType>
@@ -404,6 +405,23 @@ in the gradient.
                             const triangulationType &triangulation) const;
 
       /**
+       * @brief Store the subcomplexes around vertex for which offset
+       * at vertex is maximum
+       *
+       * @param[in] a Vertex Id
+       *
+       * @return Lower star as 4 sets of cells (0-cells, 1-cells, 2-cells and
+       * 3-cells)
+       */
+      template <typename triangulationType>
+      inline void lowerStarWithMask(lowerStarType &ls,
+                                    const SimplexId a,
+                                    const SimplexId *const offsets,
+                                    const triangulationType &triangulation,
+                                    const std::vector<bool> *updateMask
+                                    = nullptr) const;
+
+      /**
        * @brief Return the number of unpaired faces of a given cell in
        * a lower star
        *
@@ -446,6 +464,18 @@ in the gradient.
       template <typename triangulationType>
       int processLowerStars(const SimplexId *const offsets,
                             const triangulationType &triangulation);
+
+      /**
+       * Implements the ProcessLowerStars algorithm from "Theory and
+       * Algorithms for Constructing Discrete Morse Complexes from
+       * Grayscale Digital Images", V. Robins, P. J. Wood,
+       * A. P. Sheppard
+       */
+      template <typename triangulationType>
+      int processLowerStarsWithMask(const SimplexId *const offsets,
+                                    const triangulationType &triangulation,
+                                    const std::vector<bool> *updateMask
+                                    = nullptr);
 
       /**
        * @brief Initialize/Allocate discrete gradient memory

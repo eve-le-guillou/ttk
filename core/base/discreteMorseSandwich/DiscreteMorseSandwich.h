@@ -76,7 +76,7 @@ namespace ttk {
       this->dg_.setThreadNumber(this->threadNumber_);
       this->dg_.setInputOffsets(offsets);
       this->dg_.setInputScalarField(scalars, scalarsMTime);
-      return this->dg_.buildGradient(triangulation);
+      return this->dg_.buildGradient(triangulation, false, updateMask);
     }
 
     /**
