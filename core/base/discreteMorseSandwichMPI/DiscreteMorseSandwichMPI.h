@@ -5774,18 +5774,6 @@ void ttk::DiscreteMorseSandwichMPI::getSaddleSaddlePairs(
     = [&edgesFiltrOrder](const ttk::SimplexId a, const ttk::SimplexId b) {
         return edgesFiltrOrder[a] > edgesFiltrOrder[b];
       };
-  const auto cmpMaxPerProcess
-    = [](const maxPerProcess a, const maxPerProcess b) {
-        if(a.proc_ == b.proc_) {
-          return false;
-        }
-        for(int i = 0; i < 2; i++) {
-          if(a.max_[i] != b.max_[i]) {
-            return a.max_[i] > b.max_[i];
-          }
-        }
-        return false;
-      };
   sendBoundaryBufferLock_ = std::vector<Lock>(ttk::MPIsize_);
   sendComputeBufferLock_ = std::vector<Lock>(ttk::MPIsize_);
   for(int i = 0; i < 2; i++) {
