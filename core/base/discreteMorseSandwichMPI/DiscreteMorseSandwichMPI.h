@@ -377,7 +377,7 @@ namespace ttk {
                   Rep rep,
                   char rank,
                   ttk::SimplexId *vOrder)
-        : gid_{gid}, order_{order}, lid_{lid}, rank_{rank} {
+        : gid_{gid}, lid_{lid}, order_{order}, rank_{rank} {
         for(ttk::SimplexId i = 0; i < size; i++) {
           vOrder_[i] = vOrder[i];
         }
@@ -1204,7 +1204,6 @@ namespace ttk {
      * @param criticalExtremas List of maxima
      * @param critMaxsOrder Filtration order on maxima
      * @param triangulation triangulation
-     * @param offsets Vertex offset field
      * @param globalToLocalSaddle Global to local identifier maps for saddles
      * @param globalToLocalExtrema Global to local identifier maps for extrema
      * @param getFaceStar Either getEdgeStar (in 2D) or getTriangleStar
@@ -1229,7 +1228,6 @@ namespace ttk {
       const std::vector<ttk::SimplexId> &criticalExtremas,
       const std::vector<SimplexId> &critMaxsOrder,
       const triangulationType &triangulation,
-      const SimplexId *const offsets,
       std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalSaddle,
       std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalExtrema,
       const GFS &getFaceStar,
@@ -2945,10 +2943,10 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
           }
         }
       }
-      int numTask = std::max(localThreadNumber - 2, 1);
+      ttk::SimplexId numTask
+        = static_cast<ttk::SimplexId>(std::max(localThreadNumber - 2, 1));
 #pragma omp taskloop num_tasks(numTask)
-      for(ttk::SimplexId i = static_cast<ttk::SimplexId>(0);
-          i < criticalEdgesNumber; ++i) {
+      for(ttk::SimplexId i = 0; i < criticalEdgesNumber; ++i) {
         auto &mins = saddle1ToMinima[i];
         const auto s1 = criticalEdges[i];
         const auto last = std::unique(mins.begin(), mins.end());
@@ -3117,7 +3115,6 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   const std::vector<ttk::SimplexId> &criticalExtremas,
   const std::vector<SimplexId> &critMaxsOrder,
   const triangulationType &triangulation,
-  const SimplexId *const offsets,
   std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalSaddle,
   std::unordered_map<ttk::SimplexId, ttk::SimplexId> &globalToLocalExtrema,
   const GFS &getFaceStar,
@@ -3426,8 +3423,7 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
     if(dim == 3) {
       computeMaxSaddlePairs<4, 3>(
         pairs, criticalSaddles, critSaddlesOrder, criticalExtremas,
-        critMaxsOrder, triangulation, offsets, globalToLocalSaddle,
-        globalToLocalExtrema,
+        critMaxsOrder, triangulation, globalToLocalSaddle, globalToLocalExtrema,
         [&triangulation](const SimplexId a, const SimplexId i, SimplexId &r) {
           return triangulation.getTriangleStar(a, i, r);
         },
@@ -3452,8 +3448,7 @@ void ttk::DiscreteMorseSandwichMPI::getMaxSaddlePairs(
     } else {
       computeMaxSaddlePairs<3, 2>(
         pairs, criticalSaddles, critSaddlesOrder, criticalExtremas,
-        critMaxsOrder, triangulation, offsets, globalToLocalSaddle,
-        globalToLocalExtrema,
+        critMaxsOrder, triangulation, globalToLocalSaddle, globalToLocalExtrema,
         [&triangulation](const SimplexId a, const SimplexId i, SimplexId &r) {
           return triangulation.getEdgeStar(a, i, r);
         },
