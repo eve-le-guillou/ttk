@@ -3613,6 +3613,9 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   bool isFirstTime,
   MPI_Comm &MPIcomm,
   int localThreadNumber) const {
+  // The use of localThreadNumber in TTK_PSORT is not detected by the compiler,
+  // hence the following hack
+  TTK_FORCE_USE(localThreadNumber);
   std::array<std::vector<std::vector<messageType<sizeExtr, sizeSad>>>, 2>
     sendBuffer;
   sendBuffer[0].resize(
