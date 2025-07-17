@@ -3243,11 +3243,9 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
     }
     int numTask = std::max(localThreadNumber - 2, 1);
 #pragma omp taskloop num_tasks(numTask)
-    for(ttk::SimplexId i = 0; i < criticalSaddlesNumber; ++i) {
+    for(size_t i = 0; i < static_cast<size_t>(criticalSaddlesNumber); ++i) {
       auto &maxs = saddle2ToMaxima[i];
       const auto s2 = criticalSaddles[i];
-      // const auto last = std::unique(maxs.begin(), maxs.end());
-      // mins.erase(last, mins.end());
       if(maxs[sizeSad].gid_ != 2) {
         continue;
       }
