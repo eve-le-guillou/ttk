@@ -717,7 +717,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
   std::vector<std::vector<dataRequest>> sendRecvBuffer(ttk::MPIsize_);
 
   const auto createDataRequestMPIType =
-    [this, &MPI_SimplexId](MPI_Datatype &MPI_MessageType) {
+    [&MPI_SimplexId](MPI_Datatype &MPI_MessageType) {
       MPI_Datatype types[] = {MPI_SimplexId, MPI_SimplexId, MPI_CHAR, MPI_CHAR};
       int lengths[] = {1, 1, 1, 1};
       const long int mpi_offsets[]
@@ -737,7 +737,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
   };
 
   const auto createDataResponseMPIType =
-    [this, &MPI_SimplexId](MPI_Datatype &MPI_MessageType) {
+    [&MPI_SimplexId](MPI_Datatype &MPI_MessageType) {
       MPI_Datatype types[] = {MPI_SimplexId, MPI_SimplexId, MPI_SimplexId,
                               MPI_FLOAT,     MPI_DOUBLE,    MPI_CHAR};
       int lengths[] = {1, 1, 1, 3, 1, 1};
@@ -750,9 +750,9 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
     };
 
   const auto fillBirthData
-    = [this, &dim](PersistencePair &CTPair,
-                   DiscreteMorseSandwichMPI::PersistencePair &p,
-                   ttk::SimplexId birthId) {
+    = [&dim](PersistencePair &CTPair,
+             DiscreteMorseSandwichMPI::PersistencePair &p,
+             ttk::SimplexId birthId) {
         CTPair.birth.id = birthId;
         if(p.type == 0) {
           CTPair.birth.type = CriticalType::Local_minimum;
@@ -767,7 +767,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
       };
 
   const auto augmentBirthPersistence =
-    [this, &triangulation, &inputOffsets](
+    [&triangulation, &inputOffsets](
       PersistencePair &CTPair, ttk::SimplexId lid, const scalarType *scalars) {
       triangulation->getVertexPoint(lid, CTPair.birth.coords[0],
                                     CTPair.birth.coords[1],
@@ -776,7 +776,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
       CTPair.birth.offset = inputOffsets[lid];
     };
 
-  const auto fillDeathData = [this, &dim](
+  const auto fillDeathData = [&dim](
                                PersistencePair &CTPair,
                                DiscreteMorseSandwichMPI::PersistencePair &p,
                                ttk::SimplexId deathId) {
@@ -794,7 +794,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
   };
 
   const auto augmentDeathPersistence =
-    [this, &triangulation, &inputOffsets](
+    [&triangulation, &inputOffsets](
       PersistencePair &CTPair, ttk::SimplexId lid, const scalarType *scalars) {
       triangulation->getVertexPoint(lid, CTPair.death.coords[0],
                                     CTPair.death.coords[1],
@@ -803,7 +803,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
       CTPair.death.offset = inputOffsets[lid];
     };
 
-  const auto getBirthSimplexType = [this, &dim](const int type) {
+  const auto getBirthSimplexType = [&dim](const int type) {
     switch(type) {
       case 0:
         return 0;
@@ -818,7 +818,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
     }
   };
 
-  const auto getDeathSimplexType = [this, &dim](const int type) {
+  const auto getDeathSimplexType = [&dim](const int type) {
     switch(type) {
       case 0:
         return 1;
@@ -832,7 +832,8 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
         }
     }
   };
-  for(ttk::SimplexId i = 0; i < dms_pairs.size(); ++i) {
+  for(ttk::SimplexId i = 0; i < static_cast<ttk::SimplexId>(dms_pairs.size());
+      ++i) {
     auto &pair{dms_pairs[i]};
     int simplexType = getBirthSimplexType(pair.type);
     ttk::SimplexId lid

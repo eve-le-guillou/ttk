@@ -2133,7 +2133,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
             }
             r++;
           }
-          if(r == ghost.size()) {
+          if(r == static_cast<int>(ghost.size())) {
             ghost.emplace_back(saddleIdPerProcess{
               std::vector<ttk::SimplexId>{saddleId}, saddleRank});
           }
@@ -3615,8 +3615,6 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
   int localThreadNumber) const {
   std::array<std::vector<std::vector<messageType<sizeExtr, sizeSad>>>, 2>
     sendBuffer;
-  // recomputations.reserve(static_cast<ttk::SimplexId>(saddleIds.size() *
-  // 0.2));
   sendBuffer[0].resize(
     ttk::MPIsize_, std::vector<messageType<sizeExtr, sizeSad>>());
   sendBuffer[1].resize(
@@ -3735,9 +3733,7 @@ void ttk::DiscreteMorseSandwichMPI::tripletsToPersistencePairs(
 
       if(recvPerformedCount > 0) {
         for(int i = 0; i < recvPerformedCount; i++) {
-          // ttk::SimplexId sid{-1};
           r = recvStatusData[i].MPI_SOURCE;
-          // recomputations.clear();
           TTK_PSORT(localThreadNumber, recvBuffer[r].begin(),
                     recvBuffer[r].end(), cmpMessages);
         }
@@ -5518,8 +5514,8 @@ void ttk::DiscreteMorseSandwichMPI::addDistributedEdgeToLocalBoundary(
         ttk::SimplexId newMax[]
           = {recvBoundaryBuffer[i + j + 1], recvBoundaryBuffer[i + j + 2]};
         auto m = maxPerProcess(recvBoundaryBuffer[i + j], newMax);
-        auto it = std::find(globalBoundary.begin(), globalBoundary.end(), m);
-        if(it == globalBoundary.end()) {
+        auto itg = std::find(globalBoundary.begin(), globalBoundary.end(), m);
+        if(itg == globalBoundary.end()) {
           globalBoundary.emplace(m);
         }
       }
@@ -5590,11 +5586,11 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
           };
         } while(lock == 1);
         auto m = maxPerProcess(rank, newMax);
-        auto it = std::find(globalBoundaries[lidBlock][lidElement].begin(),
-                            globalBoundaries[lidBlock][lidElement].end(), m);
+        auto itg = std::find(globalBoundaries[lidBlock][lidElement].begin(),
+                             globalBoundaries[lidBlock][lidElement].end(), m);
 
-        if(it != globalBoundaries[lidBlock][lidElement].end()) {
-          globalBoundaries[lidBlock][lidElement].erase(it);
+        if(itg != globalBoundaries[lidBlock][lidElement].end()) {
+          globalBoundaries[lidBlock][lidElement].erase(itg);
         }
         if(!(newMax[0] == -1 && newMax[1] == -1)) {
           globalBoundaries[lidBlock][lidElement].emplace(
@@ -5607,11 +5603,11 @@ void ttk::DiscreteMorseSandwichMPI::receiveBoundaryUpdate(
         if(recvBoundaryBuffer[i + 5] == -1) {
           // This is a merge order
           ttk::SimplexId pTau = recvBoundaryBuffer[i + 6];
-          auto it = globalToLocalSaddle2_.find(pTau);
-          if(it != globalToLocalSaddle2_.end()) {
+          auto itgl = globalToLocalSaddle2_.find(pTau);
+          if(itgl != globalToLocalSaddle2_.end()) {
             // pTau is present on this process, therefore both the local and
             // global boundary need to be updated
-            ttk::SimplexId pTauLid = it->second;
+            ttk::SimplexId pTauLid = itgl->second;
             ttk::SimplexId pTauLidBlock;
             ttk::SimplexId pTauLidElement;
             getLid(pTauLid, pTauLidBlock, pTauLidElement);
