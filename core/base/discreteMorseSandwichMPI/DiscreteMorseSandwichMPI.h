@@ -3011,7 +3011,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       if(s0.gid_ == -1 && s1.gid_ == -1) {
         return false;
       }
-      return extremas[s0.t_[0]].vOrder_ > extremas[s1.t_[0]].vOrder_;
+      return extremas[s0.t_[0]].vOrder_[0] > extremas[s1.t_[0]].vOrder_[0];
     };
 
     // TRI des arcs
