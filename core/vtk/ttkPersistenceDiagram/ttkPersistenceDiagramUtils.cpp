@@ -302,7 +302,7 @@ int DiagramToVTU(vtkUnstructuredGrid *vtu,
   return 0;
 }
 
-#ifdef TTK_ENABLE_MPI
+#if defined(TTK_ENABLE_MPI) && defined(TTK_ENABLE_OPENMP)
 int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
                             const ttk::DiagramType &diagram,
                             vtkDataArray *const inputScalars,
@@ -317,6 +317,7 @@ int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
   MPI_Exscan(&nPairs, &beginning, 1, MPI_SimplexId, MPI_SUM, ttk::MPIcomm_);
 
   if(diagram.empty()) {
+    dbg.printMsg("Empty diagram on this rank");
     return 0;
   }
 
@@ -381,9 +382,7 @@ int DiagramToDistributedVTU(vtkUnstructuredGrid *vtu,
   connectivity->SetNumberOfComponents(1);
   connectivity->SetNumberOfTuples(2 * diagram.size());
 
-#ifdef TTK_ENABLE_OPENMP
 #pragma omp parallel for num_threads(dbg.getThreadNumber())
-#endif // TTK_ENABLE_OPENMP
   for(size_t i = 0; i < diagram.size(); ++i) {
     const auto &pair{diagram[i]};
     const auto i0{2 * i + 0}, i1{2 * i + 1};

@@ -78,7 +78,7 @@ int ttkPersistenceDiagram::dispatch(
   vtkNew<vtkUnstructuredGrid> const vtu{};
 
   // convert CTDiagram to vtkUnstructuredGrid
-#ifdef TTK_ENABLE_MPI
+#if defined(TTK_ENABLE_MPI) && defined(TTK_ENABLE_OPENMP)
   if(!ttk::isRunningWithMPI()) {
     DiagramToVTU(vtu, CTDiagram, inputScalarsArray, *this,
                  triangulation->getDimensionality(), this->ShowInsideDomain);
