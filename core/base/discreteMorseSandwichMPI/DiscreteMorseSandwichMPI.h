@@ -2946,7 +2946,7 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       ttk::SimplexId numTask
         = static_cast<ttk::SimplexId>(std::max(localThreadNumber - 2, 1));
 #pragma omp taskloop num_tasks(numTask)
-      for(ttk::SimplexId i = 0; i < criticalEdgesNumber; ++i) {
+      for(size_t i = 0; i < static_cast<size_t>(criticalEdgesNumber); ++i) {
         auto &mins = saddle1ToMinima[i];
         const auto s1 = criticalEdges[i];
         const auto last = std::unique(mins.begin(), mins.end());
