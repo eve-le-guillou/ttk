@@ -1105,7 +1105,6 @@ namespace ttk {
      * @param ghostPresenceVector Stores the ghost presence as the computation
      * of v-paths is performed.
      * @param critMaxsOrder Local order of extrema
-     * @param offset Global orders of vertices
      * @param MPIcomm MPI communicator
      * @param localThreadNumber Number of threads available to compute this step
      */
@@ -1131,7 +1130,6 @@ namespace ttk {
         &localGhostPresenceMap,
       std::vector<std::vector<saddleIdPerProcess>> &ghostPresenceVector,
       const std::vector<SimplexId> &critMaxsOrder,
-      const SimplexId *const offset,
       MPI_Comm &MPIcomm,
       int localThreadNumber) const;
 
@@ -2372,7 +2370,6 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
   std::unordered_map<ttk::SimplexId, std::vector<char>> &localGhostPresenceMap,
   std::vector<std::vector<saddleIdPerProcess>> &ghostPresenceVector,
   const std::vector<SimplexId> &critMaxsOrder,
-  const SimplexId *const offsets,
   MPI_Comm &MPIcomm,
   int localThreadNumber) const {
 
@@ -2950,7 +2947,8 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
       }
       int numTask = std::max(localThreadNumber - 2, 1);
 #pragma omp taskloop num_tasks(numTask)
-      for(ttk::SimplexId i = 0; i < criticalEdgesNumber; ++i) {
+      for(ttk::SimplexId i = static_cast<ttk::SimplexId>(0);
+          i < criticalEdgesNumber; ++i) {
         auto &mins = saddle1ToMinima[i];
         const auto s1 = criticalEdges[i];
         const auto last = std::unique(mins.begin(), mins.end());
@@ -3166,7 +3164,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
     criticalSaddles, getFaceStar, getFaceStarNumber, isOnBoundary,
     fillExtremaOrder, triangulation, saddle2ToMaxima,
     localTriangToLocalVectExtrema, localGhostPresenceVector,
-    localGhostPresenceMap, ghostPresenceVector, critMaxsOrder, offsets, MPIcomm,
+    localGhostPresenceMap, ghostPresenceVector, critMaxsOrder, MPIcomm,
     localThreadNumber);
 
   Timer tmseq{};
