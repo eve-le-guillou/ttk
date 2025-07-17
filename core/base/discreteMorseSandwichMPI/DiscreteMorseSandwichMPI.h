@@ -377,7 +377,7 @@ namespace ttk {
                   Rep rep,
                   char rank,
                   ttk::SimplexId *vOrder)
-        : gid_{gid}, order_{order}, rank_{rank}, lid_{lid} {
+        : gid_{gid}, order_{order}, lid_{lid}, rank_{rank} {
         for(ttk::SimplexId i = 0; i < size; i++) {
           vOrder_[i] = vOrder[i];
         }
@@ -1996,7 +1996,7 @@ void ttk::DiscreteMorseSandwichMPI::mergeThreadVectors(
       std::transform(finishedVPathToSendThread[i][j].begin(),
                      finishedVPathToSendThread[i][j].end(),
                      finishedVPathToSendThread[i][j].begin(),
-                     [this, &ghostCounter](vpathFinished<sizeExtr> &vp) {
+                     [&ghostCounter](vpathFinished<sizeExtr> &vp) {
                        vp.ghostPresenceSize_ += ghostCounter;
                        return vp;
                      });
@@ -2126,7 +2126,7 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
           int r{0};
           extremaLocks[id].lock();
           auto &ghost{ghostPresenceVector[id]};
-          while(r < ghost.size()) {
+          while(r < static_cast<int>(ghost.size())) {
             if(ghost[r].rank_ == saddleRank) {
               ghost[r].saddleIds_.emplace_back(saddleId);
               break;
@@ -2410,7 +2410,7 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
   const auto followVPath = [this, dim, &triangulation, &neighborsToId,
                             &extremaLocks, &res, &saddleAtomic,
                             &ghostPresenceVector, &sendBufferThread,
-                            &sendFinishedVPathBufferThread, offsets,
+                            &sendFinishedVPathBufferThread,
                             &localTriangToLocalVectExtrema, &fillExtremaOrder,
                             &critMaxsOrder](const SimplexId v,
                                             ttk::SimplexId saddleId,
@@ -2829,7 +2829,8 @@ void ttk::DiscreteMorseSandwichMPI::getMinSaddlePairs(
   int localThreadNumber) const {
   ttk::SimplexId totalNumberOfVertices{-1};
   ttk::SimplexId criticalExtremasNumber = criticalExtremas.size();
-  ttk::SimplexId criticalEdgesNumber = criticalEdges.size();
+  ttk::SimplexId criticalEdgesNumber
+    = static_cast<ttk::SimplexId>(criticalEdges.size());
   MPI_Datatype MPI_SimplexId = getMPIType(totalNumberOfVertices);
   ttk::SimplexId localNumberOfVertices = triangulation.getNumberOfVertices();
 
@@ -3294,7 +3295,7 @@ void ttk::DiscreteMorseSandwichMPI::computeMaxSaddlePairs(
   }
 
   const auto cmpSadMax
-    = [this, &extremas, &saddles](
+    = [&extremas, &saddles](
         const ttk::SimplexId &id1, const ttk::SimplexId &id2) -> bool {
     const auto &s0{saddles[id1]};
     const auto &s1{saddles[id2]};

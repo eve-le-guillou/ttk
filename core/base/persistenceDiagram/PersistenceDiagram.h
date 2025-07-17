@@ -1003,7 +1003,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
   createCriticalVertexMPIType(MPI_CriticalVertex);
   // Create MPI type for PersistencePair
   const auto createPersistencePairMPIType =
-    [this, &MPI_CriticalVertex, &MPI_SimplexId](MPI_Datatype &MPI_MessageType) {
+    [&MPI_CriticalVertex, &MPI_SimplexId](MPI_Datatype &MPI_MessageType) {
       MPI_Datatype types[]
         = {MPI_CriticalVertex, MPI_CriticalVertex, MPI_SimplexId, MPI_CHAR};
       int lengths[] = {1, 1, 1, 1};
