@@ -417,11 +417,11 @@ namespace ttk {
         rep_ = rep;
       };
 
-      bool operator==(const extremaNode<size> &t1) {
+      bool operator==(const extremaNode<size> &t1) const {
         return this->gid_ == t1.gid_;
       }
 
-      bool operator!=(const extremaNode<size> &t1) {
+      bool operator!=(const extremaNode<size> &t1) const {
         return this->gid_ != t1.gid_;
       }
       bool operator<(const extremaNode<size> &t1) const {
@@ -487,11 +487,11 @@ namespace ttk {
         }
       };
 
-      bool operator==(const saddleEdge<size> &s1) {
+      bool operator==(const saddleEdge<size> &s1) const {
         return this->gid_ == s1.gid_;
       }
 
-      bool operator<(const saddleEdge<size> &s1) {
+      bool operator<(const saddleEdge<size> &s1) const {
         if(this->gid_ == s1.gid_) {
           return false;
         }
@@ -6169,12 +6169,25 @@ void ttk::DiscreteMorseSandwichMPI::extractCriticalCells(
 #pragma omp task shared(critTetras)
 #endif
     critTetras.resize(criticalCellsByDim[3].size());
-    for(int i = 1; i < dim + 1; ++i) {
 #ifdef TTK_ENABLE_OPENMP
-#pragma omp task shared(critCellsOrder_) firstprivate(i)
+#pragma omp task shared(critCellsOrder_)
 #endif
-      this->critCellsOrder_[i].resize(
-        this->dg_.getNumberOfCells(i, triangulation), -1);
+    this->critCellsOrder_[1].resize(
+      this->dg_.getNumberOfCells(1, triangulation), -1);
+    if(dim > 1) {
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task shared(critCellsOrder_)
+#endif
+      this->critCellsOrder_[2].resize(
+        this->dg_.getNumberOfCells(2, triangulation), -1);
+    }
+
+    if(dim > 2) {
+#ifdef TTK_ENABLE_OPENMP
+#pragma omp task shared(critCellsOrder_)
+#endif
+      this->critCellsOrder_[3].resize(
+        this->dg_.getNumberOfCells(3, triangulation), -1);
     }
   }
 #ifdef TTK_ENABLE_OPENMP
