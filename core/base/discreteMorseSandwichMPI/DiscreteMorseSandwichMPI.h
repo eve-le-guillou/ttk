@@ -121,8 +121,29 @@ namespace ttk {
       ttk::SimplexId saddleId_;
       ttk::SimplexId extremaId_;
       ttk::SimplexId vOrder_[sizeExtr];
-      ttk::SimplexId ghostPresenceSize_;
+      ttk::SimplexId ghostPresenceSize_{0};
       char extremaRank_;
+
+      vpathFinished(ttk::SimplexId saddleId,
+                    ttk::SimplexId extremaId,
+                    char rank)
+        : saddleId_{saddleId}, extremaId_{extremaId}, extremaRank_{rank} {
+        for(int i = 0; i < sizeExtr; i++) {
+          vOrder_[i] = 0;
+        }
+      }
+      vpathFinished(ttk::SimplexId saddleId,
+                    ttk::SimplexId extremaId,
+                    char rank,
+                    ttk::SimplexId vOrder)
+        : saddleId_{saddleId}, extremaId_{extremaId}, extremaRank_{rank} {
+        vOrder_[0] = vOrder;
+      }
+      vpathFinished() : saddleId_{-1}, extremaId_{-1}, extremaRank_{0} {
+        for(int i = 0; i < sizeExtr; i++) {
+          vOrder_[i] = 0;
+        }
+      }
 
       bool operator==(const vpathFinished<sizeExtr> &vp) {
         return this->saddleId_ == vp.saddleId_
@@ -403,7 +424,7 @@ namespace ttk {
       bool operator!=(const extremaNode<size> &t1) {
         return this->gid_ != t1.gid_;
       }
-      bool operator<(const extremaNode<size> &t1) {
+      bool operator<(const extremaNode<size> &t1) const {
         if(this->gid_ == t1.gid_) {
           return false;
         }
@@ -2146,12 +2167,9 @@ int ttk::DiscreteMorseSandwichMPI::getSaddle1ToMinima(
           } else {
             // We store it to send it back to whoever will own the extrema
             sendFinishedVPathBufferThread[threadNumber][saddleRank]
-              .emplace_back(vpathFinished<1>{
-                .saddleId_ = saddleId,
-                .extremaId_ = extremaId,
-                .vOrder_ = {offsets[lastCell.id_]},
-                .ghostPresenceSize_ = 0,
-                .extremaRank_ = static_cast<char>(ttk::MPIrank_)});
+              .emplace_back(vpathFinished<1>(saddleId, extremaId,
+                                             static_cast<char>(ttk::MPIrank_),
+                                             offsets[lastCell.id_]));
           }
         }
       }
@@ -2453,11 +2471,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
             saddleLocalId = saddleAtomic[saddleId]++;
             res[saddleId][saddleLocalId] = n;
           } else {
-            auto vp{vpathFinished<sizeExtr>{
-              .saddleId_ = saddleId,
-              .extremaId_ = extremaId,
-              .ghostPresenceSize_ = 0,
-              .extremaRank_ = static_cast<char>(ttk::MPIrank_)}};
+            auto vp{vpathFinished<sizeExtr>(
+              saddleId, extremaId, static_cast<char>(ttk::MPIrank_))};
             fillExtremaOrder(lastCell.id_, vp.vOrder_);
             // We store it to send it back to whoever will own the extrema
             sendFinishedVPathBufferThread[threadNumber][saddleRank]
@@ -2477,11 +2492,8 @@ void ttk::DiscreteMorseSandwichMPI::getSaddle2ToMaxima(
         } else {
           // We store it to send it back to whoever will own the extrema
           sendFinishedVPathBufferThread[threadNumber][saddleRank].emplace_back(
-            vpathFinished<sizeExtr>{
-              .saddleId_ = saddleId,
-              .extremaId_ = -1,
-              .ghostPresenceSize_ = 0,
-              .extremaRank_ = static_cast<char>(ttk::MPIrank_)});
+            vpathFinished<sizeExtr>(
+              saddleId, -1, static_cast<char>(ttk::MPIrank_)));
         }
       }
       eltNumber++;

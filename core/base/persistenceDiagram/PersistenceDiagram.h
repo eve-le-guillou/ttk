@@ -731,7 +731,7 @@ int ttk::PersistenceDiagram::executeDiscreteMorseSandwichMPI(
     ttk::SimplexId lid_{-1};
     ttk::SimplexId vertexGid_{-1};
     ttk::SimplexId offset_{-1};
-    float coords_[3];
+    float coords_[3] = {0, 0, 0};
     double sfValue_{0};
     char isBirth_{0};
   };
