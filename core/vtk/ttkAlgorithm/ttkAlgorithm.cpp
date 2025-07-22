@@ -359,6 +359,14 @@ vtkDataArray *ttkAlgorithm::GetOrderArray(vtkDataSet *const inputData,
     }
 
     default: {
+      if(!ttk::isRunningWithMPI()) {
+        this->printMsg("Retrieved order array `"
+                         + std::string(orderArray->GetName())
+                         + "` for scalar array `"
+                         + std::string(scalarArray->GetName()) + "`.",
+                       ttk::debug::Priority::DETAIL);
+        return orderArray;
+      }
       return checkForGlobalAndComputeOrderArray(
         inputData, scalarArray, scalarArrayIdx, getGlobalOrder, orderArray,
         triangulation, enforceOrderArrayIdx);

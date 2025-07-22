@@ -69,11 +69,13 @@ int ttkPersistenceDiagram::dispatch(
                    + std::to_string(status));
     return 0;
   }
-
-  /*if(CTDiagram.empty()) {
-    this->printErr("Empty diagram!");
-    return 0;
-  }*/
+#ifdef TTK_ENABLE_MPI
+  if(!ttk::isRunningWithMPI())
+#endif
+    if(CTDiagram.empty()) {
+      this->printErr("Empty diagram!");
+      return 0;
+    }
 
   vtkNew<vtkUnstructuredGrid> const vtu{};
 
